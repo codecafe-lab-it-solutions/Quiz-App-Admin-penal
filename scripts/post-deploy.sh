@@ -30,6 +30,13 @@ npx prisma generate
 log "Applying database migrations..."
 npx prisma migrate deploy
 
+# prisma/seed.ts is idempotent: it skips creating the super-admin if that
+# email already exists, and skips the whole demo dataset (departments,
+# faculty, students, quizzes) if "Computer Science" already exists. So this
+# is a no-op on every deploy after the first - safe to run unconditionally.
+log "Seeding database (super admin + demo data)..."
+npx prisma db seed
+
 # --- Build -------------------------------------------------------------------
 # `npm run build` is just `next build` here - `prisma generate` already ran
 # via `postinstall` above, and migrations were already applied above too.
