@@ -1,0 +1,41 @@
+name: Deploy
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "lts/Krypton"
+
+      - name: Install PM2
+        run: npm install -g pm2
+
+      - name: Setup SSH Config
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          echo "${{ secrets.CCL_PROD_WEBAPP_SSH_KEY }}" > ~/.ssh/ccl-prod-sites
+          chmod 600 ~/.ssh/ccl-prod-sites
+          cat > ~/.ssh/config << EOF
+          Host CCL-PROD-SITES
+              HostName ${{ secrets.CCL_PROD_WEBAPP_HOST }}
+              User webapp
+              IdentityFile ~/.ssh/ccl-prod-sites
+              StrictHostKeyChecking no
+              UserKnownHostsFile=/dev/null
+          EOF
+          chmod 600 ~/.ssh/config
+
+      - name: Deploy with PM2
+        run: pm2 deploy ecosystem.config.cjs production
