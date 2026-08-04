@@ -1,0 +1,84 @@
+"use client";
+
+import { useRouter } from "next/navigation";
+import { toast } from "sonner";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { LogOut, User } from "lucide-react";
+import { apiClient } from "@/lib/api-client";
+
+interface TopbarProps {
+  name: string;
+  email: string;
+  role: string;
+}
+
+function initials(name: string) {
+  return name
+    .split(" ")
+    .map((p) => p[0])
+    .join("")
+    .slice(0, 2)
+    .toUpperCase();
+}
+
+export function Topbar({ name, email, role }: TopbarProps) {
+  const router = useRouter();
+
+  const handleLogout = async () => {
+    try {
+      await apiClient.post("/api/auth/logout");
+    } catch {
+      // ignore - cookies are cleared server-side regardless
+    } finally {
+      toast.success("Signed out");
+      router.push("/login");
+      router.refresh();
+    }
+  };
+
+  return (
+    <header className="flex h-16 items-center justify-between border-b bg-card px-6">
+      <div />
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button variant="ghost" className="flex items-center gap-2 px-2">
+            <Avatar className="h-8 w-8">
+              <AvatarFallback className="bg-primary text-primary-foreground text-xs">
+                {initials(name)}
+              </AvatarFallback>
+            </Avatar>
+            <div className="hidden text-left sm:block">
+              <p className="text-sm font-medium leading-tight">{name}</p>
+              <p className="text-xs capitalize leading-tight text-muted-foreground">{role.replace("_", " ")}</p>
+            </div>
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="w-56">
+          <DropdownMenuLabel>
+            <div className="flex items-center gap-2">
+              <User className="h-4 w-4" />
+              <div>
+                <p className="text-sm font-medium">{name}</p>
+                <p className="text-xs font-normal text-muted-foreground">{email}</p>
+              </div>
+            </div>
+          </DropdownMenuLabel>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem onClick={handleLogout} className="text-destructive focus:text-destructive">
+            <LogOut className="mr-2 h-4 w-4" />
+            Log out
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </header>
+  );
+}

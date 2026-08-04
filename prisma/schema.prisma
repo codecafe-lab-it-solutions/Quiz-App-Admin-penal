@@ -1,0 +1,473 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Enums
+// ---------------------------------------------------------------------------
+
+enum AdminRole {
+  super_admin
+  admin
+}
+
+enum PersonStatus {
+  active
+  inactive
+}
+
+enum QuizStatus {
+  draft
+  scheduled
+  live
+  completed
+}
+
+enum QuestionType {
+  mcq
+  formula
+}
+
+enum AllotmentStatus {
+  allotted
+  attempted
+  absent
+}
+
+enum AttemptStatus {
+  in_progress
+  submitted
+  auto_submitted
+}
+
+enum AttendanceStatus {
+  present
+  absent
+}
+
+enum ResultStatus {
+  pending
+  declared
+  published
+}
+
+enum AntiCheatEventType {
+  screen_switch
+  overlay_detected
+  background
+}
+
+// ---------------------------------------------------------------------------
+// Identity / accounts
+// ---------------------------------------------------------------------------
+
+model Admin {
+  id             Int       @id @default(autoincrement())
+  name           String
+  email          String    @unique
+  passwordHash   String    @map("password_hash")
+  role           AdminRole @default(admin)
+  refreshTokenHash String? @map("refresh_token_hash")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  @@map("admins")
+}
+
+model Department {
+  id        Int      @id @default(autoincrement())
+  name      String   @unique
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  courses   Course[]
+  faculties Faculty[]
+
+  @@map("departments")
+}
+
+model Course {
+  id           Int      @id @default(autoincrement())
+  name         String
+  code         String   @unique
+  departmentId Int      @map("department_id")
+  credits      Int      @default(0)
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  department Department @relation(fields: [departmentId], references: [id])
+  sections   Section[]
+
+  facultyMaps FacultyCourseSectionMap[]
+  studentMaps StudentCourseSectionMap[]
+  quizzes     Quiz[]
+  attendance  Attendance[]
+
+  @@index([departmentId])
+  @@map("courses")
+}
+
+model AcademicSession {
+  id        Int      @id @default(autoincrement())
+  name      String
+  startDate DateTime @map("start_date")
+  endDate   DateTime @map("end_date")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  sections Section[]
+
+  @@map("academic_sessions")
+}
+
+model Section {
+  id        Int      @id @default(autoincrement())
+  name      String
+  courseId  Int      @map("course_id")
+  sessionId Int      @map("session_id")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  course  Course          @relation(fields: [courseId], references: [id])
+  session AcademicSession @relation(fields: [sessionId], references: [id])
+
+  facultyMaps FacultyCourseSectionMap[]
+  studentMaps StudentCourseSectionMap[]
+  quizzes     Quiz[]
+
+  @@index([courseId])
+  @@index([sessionId])
+  @@map("sections")
+}
+
+model Building {
+  id            Int      @id @default(autoincrement())
+  name          String
+  latitude      Decimal  @db.Decimal(10, 7)
+  longitude     Decimal  @db.Decimal(10, 7)
+  radiusMeters  Int      @map("radius_meters")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  quizzes Quiz[]
+
+  @@map("buildings")
+}
+
+model Faculty {
+  id             Int          @id @default(autoincrement())
+  name           String
+  email          String       @unique
+  phone          String?
+  passwordHash   String       @map("password_hash")
+  employeeCode   String       @unique @map("employee_code")
+  departmentId   Int          @map("department_id")
+  status         PersonStatus @default(active)
+  refreshTokenHash String?    @map("refresh_token_hash")
+  createdAt      DateTime     @default(now()) @map("created_at")
+  updatedAt      DateTime     @updatedAt @map("updated_at")
+
+  department Department @relation(fields: [departmentId], references: [id])
+
+  courseSectionMaps FacultyCourseSectionMap[]
+  quizzes           Quiz[]
+
+  @@index([departmentId])
+  @@index([status])
+  @@map("faculties")
+}
+
+model Student {
+  id             Int          @id @default(autoincrement())
+  name           String
+  email          String       @unique
+  phone          String?
+  passwordHash   String       @map("password_hash")
+  rollNo         String       @unique @map("roll_no")
+  enrollmentNo   String       @unique @map("enrollment_no")
+  status         PersonStatus @default(active)
+  refreshTokenHash String?    @map("refresh_token_hash")
+  createdAt      DateTime     @default(now()) @map("created_at")
+  updatedAt      DateTime     @updatedAt @map("updated_at")
+
+  courseSectionMaps StudentCourseSectionMap[]
+  quizAllotments    QuizAllotment[]
+  quizAttempts      QuizAttempt[]
+  attendance        Attendance[]
+  results           Result[]
+
+  @@index([status])
+  @@map("students")
+}
+
+// ---------------------------------------------------------------------------
+// Mapping
+// ---------------------------------------------------------------------------
+
+model FacultyCourseSectionMap {
+  id        Int      @id @default(autoincrement())
+  facultyId Int      @map("faculty_id")
+  courseId  Int      @map("course_id")
+  sectionId Int      @map("section_id")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  faculty Faculty @relation(fields: [facultyId], references: [id], onDelete: Cascade)
+  course  Course  @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  section Section @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+
+  @@unique([facultyId, courseId, sectionId])
+  @@index([courseId])
+  @@index([sectionId])
+  @@map("faculty_course_section_map")
+}
+
+model StudentCourseSectionMap {
+  id        Int      @id @default(autoincrement())
+  studentId Int      @map("student_id")
+  courseId  Int      @map("course_id")
+  sectionId Int      @map("section_id")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  student Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  course  Course  @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  section Section @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+
+  @@unique([studentId, courseId, sectionId])
+  @@index([courseId])
+  @@index([sectionId])
+  @@map("student_course_section_map")
+}
+
+// ---------------------------------------------------------------------------
+// Quiz domain
+// ---------------------------------------------------------------------------
+
+model Quiz {
+  id                Int        @id @default(autoincrement())
+  title             String
+  courseId          Int        @map("course_id")
+  sectionId         Int        @map("section_id")
+  facultyId         Int        @map("faculty_id")
+  buildingId        Int        @map("building_id")
+  startTime         DateTime   @map("start_time")
+  endTime           DateTime   @map("end_time")
+  durationMinutes   Int        @map("duration_minutes")
+  totalMarks        Int        @map("total_marks")
+  randomize         Boolean    @default(true)
+  negativeMarking   Boolean    @default(false) @map("negative_marking")
+  allowSkipSwitch   Boolean    @default(true) @map("allow_skip_switch")
+  status            QuizStatus @default(draft)
+  actualStartTime   DateTime?  @map("actual_start_time")
+  actualStopTime    DateTime?  @map("actual_stop_time")
+  createdAt         DateTime   @default(now()) @map("created_at")
+  updatedAt         DateTime   @updatedAt @map("updated_at")
+
+  course   Course   @relation(fields: [courseId], references: [id])
+  section  Section  @relation(fields: [sectionId], references: [id])
+  faculty  Faculty  @relation(fields: [facultyId], references: [id])
+  building Building @relation(fields: [buildingId], references: [id])
+
+  questions   Question[]
+  allotments  QuizAllotment[]
+  attempts    QuizAttempt[]
+  attendance  Attendance[]
+  results     Result[]
+
+  @@index([courseId])
+  @@index([sectionId])
+  @@index([facultyId])
+  @@index([buildingId])
+  @@index([status])
+  @@map("quizzes")
+}
+
+model Question {
+  id              Int          @id @default(autoincrement())
+  quizId          Int          @map("quiz_id")
+  questionText    String       @db.Text @map("question_text")
+  questionType    QuestionType @map("question_type")
+  marks           Int
+  negativeMarks   Int          @default(0) @map("negative_marks")
+  orderIndex      Int          @map("order_index")
+  createdAt       DateTime     @default(now()) @map("created_at")
+  updatedAt       DateTime     @updatedAt @map("updated_at")
+
+  quiz    Quiz              @relation(fields: [quizId], references: [id], onDelete: Cascade)
+  options QuestionOption[]
+  formula QuestionFormula?
+  answers StudentAnswer[]
+
+  @@index([quizId])
+  @@map("questions")
+}
+
+model QuestionOption {
+  id         Int     @id @default(autoincrement())
+  questionId Int     @map("question_id")
+  optionText String  @db.Text @map("option_text")
+  isCorrect  Boolean @default(false) @map("is_correct")
+
+  question Question        @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  answers  StudentAnswer[]
+
+  @@index([questionId])
+  @@map("question_options")
+}
+
+model QuestionFormula {
+  id            Int   @id @default(autoincrement())
+  questionId    Int   @unique @map("question_id")
+  correctValue  Float @map("correct_value")
+  tolerance     Float
+
+  question Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@map("question_formula")
+}
+
+model QuizAllotment {
+  id        Int             @id @default(autoincrement())
+  quizId    Int             @map("quiz_id")
+  studentId Int             @map("student_id")
+  status    AllotmentStatus @default(allotted)
+  createdAt DateTime        @default(now()) @map("created_at")
+  updatedAt DateTime        @updatedAt @map("updated_at")
+
+  quiz    Quiz    @relation(fields: [quizId], references: [id], onDelete: Cascade)
+  student Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@unique([quizId, studentId])
+  @@index([studentId])
+  @@index([status])
+  @@map("quiz_allotments")
+}
+
+model QuizAttempt {
+  id              Int           @id @default(autoincrement())
+  quizId          Int           @map("quiz_id")
+  studentId       Int           @map("student_id")
+  startTime       DateTime      @default(now()) @map("start_time")
+  endTime         DateTime?     @map("end_time")
+  status          AttemptStatus @default(in_progress)
+  latitude        Decimal?      @db.Decimal(10, 7)
+  longitude       Decimal?      @db.Decimal(10, 7)
+  autoSubmitted   Boolean       @default(false) @map("auto_submitted")
+  autoSubmitReason String?      @map("auto_submit_reason")
+  questionOrder   String?       @db.Text @map("question_order")
+  createdAt       DateTime      @default(now()) @map("created_at")
+  updatedAt       DateTime      @updatedAt @map("updated_at")
+
+  quiz    Quiz    @relation(fields: [quizId], references: [id], onDelete: Cascade)
+  student Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  answers          StudentAnswer[]
+  antiCheatEvents  AntiCheatEvent[]
+  geofenceLogs     GeofenceLog[]
+
+  @@unique([quizId, studentId])
+  @@index([studentId])
+  @@index([status])
+  @@map("quiz_attempts")
+}
+
+model StudentAnswer {
+  id               Int      @id @default(autoincrement())
+  attemptId        Int      @map("attempt_id")
+  questionId       Int      @map("question_id")
+  selectedOptionId Int?     @map("selected_option_id")
+  answerValue      Float?   @map("answer_value")
+  isCorrect        Boolean? @map("is_correct")
+  marksObtained    Float    @default(0) @map("marks_obtained")
+  orderIndex       Int      @map("order_index")
+  isSkipped        Boolean  @default(false) @map("is_skipped")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  attempt        QuizAttempt     @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+  question       Question        @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  selectedOption QuestionOption? @relation(fields: [selectedOptionId], references: [id])
+
+  @@unique([attemptId, questionId])
+  @@index([questionId])
+  @@index([selectedOptionId])
+  @@map("student_answers")
+}
+
+model Attendance {
+  id        Int               @id @default(autoincrement())
+  studentId Int               @map("student_id")
+  courseId  Int               @map("course_id")
+  quizId    Int               @map("quiz_id")
+  date      DateTime          @db.Date
+  status    AttendanceStatus
+  createdAt DateTime          @default(now()) @map("created_at")
+  updatedAt DateTime          @updatedAt @map("updated_at")
+
+  student Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  course  Course  @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  quiz    Quiz    @relation(fields: [quizId], references: [id], onDelete: Cascade)
+
+  @@unique([studentId, quizId])
+  @@index([courseId])
+  @@index([date])
+  @@index([status])
+  @@map("attendance")
+}
+
+model Result {
+  id            Int          @id @default(autoincrement())
+  quizId        Int          @map("quiz_id")
+  studentId     Int          @map("student_id")
+  marksObtained Float        @default(0) @map("marks_obtained")
+  percentage    Float        @default(0)
+  status        ResultStatus @default(pending)
+  declaredAt    DateTime?    @map("declared_at")
+  publishedAt   DateTime?    @map("published_at")
+  createdAt     DateTime     @default(now()) @map("created_at")
+  updatedAt     DateTime     @updatedAt @map("updated_at")
+
+  quiz    Quiz    @relation(fields: [quizId], references: [id], onDelete: Cascade)
+  student Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@unique([quizId, studentId])
+  @@index([studentId])
+  @@index([status])
+  @@map("results")
+}
+
+model AntiCheatEvent {
+  id          Int                @id @default(autoincrement())
+  attemptId   Int                @map("attempt_id")
+  eventType   AntiCheatEventType @map("event_type")
+  eventTime   DateTime           @default(now()) @map("event_time")
+  actionTaken String?            @map("action_taken")
+
+  attempt QuizAttempt @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+
+  @@index([attemptId])
+  @@map("anti_cheat_events")
+}
+
+model GeofenceLog {
+  id              Int      @id @default(autoincrement())
+  attemptId       Int?     @map("attempt_id")
+  quizId          Int      @map("quiz_id")
+  studentId       Int      @map("student_id")
+  latitude        Decimal  @db.Decimal(10, 7)
+  longitude       Decimal  @db.Decimal(10, 7)
+  distanceMeters  Float    @map("distance_meters")
+  isWithinRange   Boolean  @map("is_within_range")
+  checkedAt       DateTime @default(now()) @map("checked_at")
+
+  attempt QuizAttempt? @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+
+  @@index([attemptId])
+  @@index([quizId])
+  @@index([studentId])
+  @@map("geofence_logs")
+}
