@@ -85,9 +85,14 @@ interface SidebarProps {
 export function Sidebar({ mobileOpen, onClose }: SidebarProps) {
   const pathname = usePathname();
   const navRef = useRef<HTMLElement>(null);
+  const activeLinkRef = useRef<HTMLAnchorElement>(null);
 
   useEffect(() => {
-    navRef.current?.scrollTo({ top: 0 });
+    // Only nudges the scroll position when the active item isn't already
+    // visible (e.g. a deep link, or a fresh page load) - if it's already in
+    // view (the common case: user scrolled the nav themselves and clicked
+    // something visible), this is a no-op and the scroll position is left alone.
+    activeLinkRef.current?.scrollIntoView({ block: "nearest" });
   }, [pathname]);
 
   const nav = (
@@ -105,6 +110,7 @@ export function Sidebar({ mobileOpen, onClose }: SidebarProps) {
                 <Link
                   key={item.href}
                   href={item.href}
+                  ref={active ? activeLinkRef : undefined}
                   onClick={onClose}
                   className={cn(
                     "flex items-center gap-2 rounded-md px-2 py-2 text-sm font-medium transition-colors",

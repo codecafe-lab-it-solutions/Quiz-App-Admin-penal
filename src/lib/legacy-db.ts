@@ -2,12 +2,15 @@ import bcrypt from "bcryptjs";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { listBatchRegistry } from "@/lib/config";
+import { ApiError } from "@/lib/api-response";
+import { hashPassword } from "@/lib/auth";
 
 /**
- * Every read against the legacy university database (isr_* tables) goes
- * through this file. These tables are owned by the legacy system - this app
- * never writes to them. Two open items from the integration spec are
- * isolated here so a later fix only touches one place:
+ * Every read (and, per an explicit product decision, the admin-panel writes
+ * below) against the legacy university database (isr_* tables) goes through
+ * this file. These tables are otherwise owned by the legacy system. Two open
+ * items from the integration spec are isolated here so a later fix only
+ * touches one place:
  *  - the password hash scheme in isr_login_tbl.user_password (verifyLegacyPassword)
  *  - the column names inside isr_reg_<batch>_tbl (getStudentCourses / getCourseRegistrations)
  */
@@ -220,6 +223,65 @@ export async function listStudents(params: {
 }
 
 // ---------------------------------------------------------------------------
+// Faculty / Student creation - writes into the legacy tables at the admin's
+// explicit request. Roll and email must be unique across isr_login_tbl.
+// ---------------------------------------------------------------------------
+
+export async function createFaculty(data: {
+  roll: string;
+  name: string;
+  email: string;
+  password: string;
+}): Promise<LegacyFaculty> {
+  const existingRoll = await prisma.isrLoginTbl.findUnique({ where: { userRoll: data.roll } });
+  if (existingRoll) throw new ApiError(409, "A user with this roll number already exists");
+
+  const existingEmail = await prisma.isrLoginTbl.findFirst({ where: { userEmail: data.email } });
+  if (existingEmail) throw new ApiError(409, "A user with this email already exists");
+
+  const passwordHash = await hashPassword(data.password);
+
+  await prisma.$transaction([
+    prisma.isrLoginTbl.create({
+      data: { userRoll: data.roll, userEmail: data.email, userPassword: passwordHash, userType: "FAC" },
+    }),
+    prisma.isrFacultyTbl.create({ data: { roll: data.roll, name: data.name } }),
+  ]);
+
+  return { roll: data.roll, name: data.name, email: data.email };
+}
+
+export async function createStudent(data: {
+  roll: string;
+  name: string;
+  email: string;
+  password: string;
+  major: string;
+  batch: string;
+  semNow: string;
+}): Promise<LegacyStudent> {
+  const existingRoll = await prisma.isrLoginTbl.findUnique({ where: { userRoll: data.roll } });
+  if (existingRoll) throw new ApiError(409, "A user with this roll number already exists");
+
+  const existingEmail = await prisma.isrLoginTbl.findFirst({ where: { userEmail: data.email } });
+  if (existingEmail) throw new ApiError(409, "A user with this email already exists");
+
+  const passwordHash = await hashPassword(data.password);
+
+  await prisma.$transaction([
+    prisma.isrLoginTbl.create({
+      data: { userRoll: data.roll, userEmail: data.email, userPassword: passwordHash, userType: "STU" },
+    }),
+    prisma.isrStuDataTbl.create({ data: { stuRoll: data.roll, stuName: data.name } }),
+    prisma.isrStuMainTbl.create({
+      data: { roll: data.roll, major: data.major, name: data.name, batch: data.batch, semNow: data.semNow },
+    }),
+  ]);
+
+  return { roll: data.roll, name: data.name, email: data.email, major: data.major, batch: data.batch, semNow: data.semNow };
+}
+
+// ---------------------------------------------------------------------------
 // Faculty <-> Course mapping (isr_sub_available_tbl)
 // ---------------------------------------------------------------------------
 
@@ -263,6 +325,26 @@ export async function isFacultyMappedToCourse(facultyRoll: string, courseCode: s
     where: { facRoll: facultyRoll, subCode: courseCode, subList },
   });
   return count > 0;
+}
+
+export async function createFacultyCourseMapping(data: {
+  facRoll: string;
+  subCode: string;
+  branch: string;
+  sem: string;
+  subList: string;
+}): Promise<FacultyCourseMapping> {
+  const faculty = await prisma.isrFacultyTbl.findUnique({ where: { roll: data.facRoll } });
+  if (!faculty) throw new ApiError(404, "No faculty found for this roll number");
+
+  const alreadyMapped = await isFacultyMappedToCourse(data.facRoll, data.subCode, data.subList);
+  if (alreadyMapped) throw new ApiError(409, "This faculty is already mapped to this course for the current cycle");
+
+  const row = await prisma.isrSubAvailableTbl.create({
+    data: { sem: data.sem, subList: data.subList, subCode: data.subCode, facRoll: data.facRoll, branch: data.branch },
+  });
+
+  return { id: row.id, sem: row.sem, subList: row.subList, subCode: row.subCode, facRoll: row.facRoll, facultyName: faculty.name, branch: row.branch };
 }
 
 // ---------------------------------------------------------------------------
@@ -321,4 +403,32 @@ export async function getCourseRegistrations(courseCode: string): Promise<(Stude
   }
 
   return results;
+}
+
+export async function createStudentCourseMapping(data: {
+  roll: string;
+  subCode: string;
+}): Promise<StudentCourseRow & { batch: string }> {
+  const student = await getStudentByRoll(data.roll);
+  if (!student || !student.batch) throw new ApiError(404, "No student found for this roll number, or the student has no batch on record");
+
+  const tableName = await resolveBatchTable(student.batch);
+  if (!tableName) throw new ApiError(400, `No registration table is configured for batch "${student.batch}"`);
+
+  const existing = await prisma.$queryRawUnsafe<{ cnt: bigint }[]>(
+    `SELECT COUNT(*) AS cnt FROM \`${tableName}\` WHERE \`${REG_ROLL_COLUMN}\` = ? AND \`${REG_SUB_CODE_COLUMN}\` = ?`,
+    data.roll,
+    data.subCode
+  );
+  if (Number(existing[0]?.cnt ?? 0) > 0) {
+    throw new ApiError(409, "Student is already registered for this course");
+  }
+
+  await prisma.$executeRawUnsafe(
+    `INSERT INTO \`${tableName}\` (\`${REG_ROLL_COLUMN}\`, \`${REG_SUB_CODE_COLUMN}\`) VALUES (?, ?)`,
+    data.roll,
+    data.subCode
+  );
+
+  return { roll: data.roll, subCode: data.subCode, batch: student.batch };
 }
