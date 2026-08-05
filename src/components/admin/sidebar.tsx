@@ -17,6 +17,7 @@ import {
   FileBarChart,
   ShieldCheck,
   CalendarClock,
+  X,
 } from "lucide-react";
 
 interface NavItem {
@@ -75,52 +76,87 @@ const NAV_GROUPS: NavGroup[] = [
   },
 ];
 
-export function Sidebar() {
+interface SidebarProps {
+  mobileOpen: boolean;
+  onClose: () => void;
+}
+
+export function Sidebar({ mobileOpen, onClose }: SidebarProps) {
   const pathname = usePathname();
 
-  return (
-    <aside className="hidden w-64 shrink-0 border-r bg-card md:block">
-      <div className="flex h-16 items-center gap-2 border-b px-5">
-        <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary text-primary-foreground">
-          <GraduationCap className="h-4 w-4" />
-        </div>
-        <span className="text-sm font-semibold leading-tight">
-          Quiz &amp; Attendance
-          <br />
-          Admin Panel
-        </span>
-      </div>
-
-      <nav className="space-y-6 overflow-y-auto p-4">
-        {NAV_GROUPS.map((group) => (
-          <div key={group.title}>
-            <p className="mb-2 px-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-              {group.title}
-            </p>
-            <div className="space-y-1">
-              {group.items.map((item) => {
-                const active = pathname === item.href || pathname?.startsWith(item.href + "/");
-                const Icon = item.icon;
-                return (
-                  <Link
-                    key={item.href}
-                    href={item.href}
-                    className={cn(
-                      "flex items-center gap-2 rounded-md px-2 py-2 text-sm font-medium transition-colors",
-                      active
-                        ? "bg-primary text-primary-foreground"
-                        : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-                    )}
-                  >
-                    <Icon className="h-4 w-4 shrink-0" />
-                    <span className="truncate">{item.label}</span>
-                  </Link>
-                );
-              })}
-            </div>
+  const nav = (
+    <nav className="flex-1 space-y-6 overflow-y-auto p-4">
+      {NAV_GROUPS.map((group) => (
+        <div key={group.title}>
+          <p className="mb-2 px-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+            {group.title}
+          </p>
+          <div className="space-y-1">
+            {group.items.map((item) => {
+              const active = pathname === item.href || pathname?.startsWith(item.href + "/");
+              const Icon = item.icon;
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  onClick={onClose}
+                  className={cn(
+                    "flex items-center gap-2 rounded-md px-2 py-2 text-sm font-medium transition-colors",
+                    active
+                      ? "bg-primary text-primary-foreground"
+                      : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                  )}
+                >
+                  <Icon className="h-4 w-4 shrink-0" />
+                  <span className="truncate">{item.label}</span>
+                </Link>
+              );
+            })}
           </div>
-        ))}
-      </nav>
-    </aside>
+        </div>
+      ))}
+    </nav>
+  );
+
+  return (
+    <>
+      {/* Mobile overlay */}
+      {mobileOpen && (
+        <div
+          className="fixed inset-0 z-40 bg-black/50 lg:hidden"
+          onClick={onClose}
+          aria-hidden="true"
+        />
+      )}
+
+      <aside
+        className={cn(
+          "fixed inset-y-0 left-0 z-50 flex h-full w-64 shrink-0 flex-col border-r bg-card transition-transform duration-200 ease-in-out",
+          "lg:static lg:z-auto lg:translate-x-0",
+          mobileOpen ? "translate-x-0" : "-translate-x-full"
+        )}
+      >
+        <div className="flex h-16 shrink-0 items-center gap-2 border-b px-5">
+          <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary text-primary-foreground">
+            <GraduationCap className="h-4 w-4" />
+          </div>
+          <span className="text-sm font-semibold leading-tight">
+            Quiz &amp; Attendance
+            <br />
+            Admin Panel
+          </span>
+          <button
+            type="button"
+            onClick={onClose}
+            className="ml-auto rounded-md p-1 text-muted-foreground hover:bg-accent hover:text-accent-foreground lg:hidden"
+            aria-label="Close menu"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        {nav}
+      </aside>
+    </>
   );
 }

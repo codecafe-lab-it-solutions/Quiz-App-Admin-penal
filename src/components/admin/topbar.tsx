@@ -12,13 +12,14 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { LogOut, User } from "lucide-react";
+import { LogOut, Menu, User } from "lucide-react";
 import { apiClient } from "@/lib/api-client";
 
 interface TopbarProps {
   name: string;
   email: string;
   role: string;
+  onMenuClick: () => void;
 }
 
 function initials(name: string) {
@@ -30,7 +31,7 @@ function initials(name: string) {
     .toUpperCase();
 }
 
-export function Topbar({ name, email, role }: TopbarProps) {
+export function Topbar({ name, email, role, onMenuClick }: TopbarProps) {
   const router = useRouter();
 
   const handleLogout = async () => {
@@ -46,8 +47,17 @@ export function Topbar({ name, email, role }: TopbarProps) {
   };
 
   return (
-    <header className="flex h-16 items-center justify-between border-b bg-card px-6">
-      <div />
+    <header className="flex h-16 shrink-0 items-center justify-between border-b bg-card px-4 lg:px-6">
+      <Button
+        variant="ghost"
+        size="icon"
+        className="lg:hidden"
+        onClick={onMenuClick}
+        aria-label="Open menu"
+      >
+        <Menu className="h-5 w-5" />
+      </Button>
+      <div className="hidden lg:block" />
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button variant="ghost" className="flex items-center gap-2 px-2">
