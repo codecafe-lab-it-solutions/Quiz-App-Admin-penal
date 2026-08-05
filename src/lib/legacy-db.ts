@@ -223,8 +223,10 @@ export async function listStudents(params: {
 }
 
 // ---------------------------------------------------------------------------
-// Faculty / Student creation - writes into the legacy tables at the admin's
-// explicit request. Roll and email must be unique across isr_login_tbl.
+// Faculty / Student CRUD - writes into the legacy tables at the admin's
+// explicit request. Roll and email must be unique across isr_login_tbl. Roll
+// is the identity/primary key across every one of these tables, so it's
+// never editable once created - only name/email/password/profile fields are.
 // ---------------------------------------------------------------------------
 
 export async function createFaculty(data: {
@@ -249,6 +251,48 @@ export async function createFaculty(data: {
   ]);
 
   return { roll: data.roll, name: data.name, email: data.email };
+}
+
+export async function updateFaculty(
+  roll: string,
+  data: { name?: string; email?: string; password?: string }
+): Promise<LegacyFaculty> {
+  const login = await prisma.isrLoginTbl.findUnique({ where: { userRoll: roll } });
+  if (!login || login.userType !== "FAC") throw new ApiError(404, "Faculty not found");
+
+  if (data.email && data.email !== login.userEmail) {
+    const emailConflict = await prisma.isrLoginTbl.findFirst({ where: { userEmail: data.email, userRoll: { not: roll } } });
+    if (emailConflict) throw new ApiError(409, "A user with this email already exists");
+  }
+
+  if (data.email || data.password) {
+    await prisma.isrLoginTbl.update({
+      where: { userRoll: roll },
+      data: {
+        ...(data.email ? { userEmail: data.email } : {}),
+        ...(data.password ? { userPassword: await hashPassword(data.password) } : {}),
+      },
+    });
+  }
+
+  if (data.name) {
+    await prisma.isrFacultyTbl.update({ where: { roll }, data: { name: data.name } });
+  }
+
+  const faculty = await getFacultyByRoll(roll);
+  if (!faculty) throw new ApiError(404, "Faculty not found");
+  return faculty;
+}
+
+export async function deleteFaculty(roll: string): Promise<void> {
+  const login = await prisma.isrLoginTbl.findUnique({ where: { userRoll: roll } });
+  if (!login || login.userType !== "FAC") throw new ApiError(404, "Faculty not found");
+
+  // Mapping rows aren't FK-linked to isr_faculty_tbl (facRoll is a bare
+  // string, see the mapping section below), so they'd otherwise be orphaned.
+  await prisma.isrSubAvailableTbl.deleteMany({ where: { facRoll: roll } });
+  await prisma.isrFacultyTbl.delete({ where: { roll } });
+  await prisma.isrLoginTbl.delete({ where: { userRoll: roll } });
 }
 
 export async function createStudent(data: {
@@ -279,6 +323,73 @@ export async function createStudent(data: {
   ]);
 
   return { roll: data.roll, name: data.name, email: data.email, major: data.major, batch: data.batch, semNow: data.semNow };
+}
+
+export async function updateStudent(
+  roll: string,
+  data: { name?: string; email?: string; password?: string; major?: string; batch?: string; semNow?: string }
+): Promise<LegacyStudent> {
+  const login = await prisma.isrLoginTbl.findUnique({ where: { userRoll: roll } });
+  if (!login || login.userType !== "STU") throw new ApiError(404, "Student not found");
+
+  if (data.email && data.email !== login.userEmail) {
+    const emailConflict = await prisma.isrLoginTbl.findFirst({ where: { userEmail: data.email, userRoll: { not: roll } } });
+    if (emailConflict) throw new ApiError(409, "A user with this email already exists");
+  }
+
+  if (data.email || data.password) {
+    await prisma.isrLoginTbl.update({
+      where: { userRoll: roll },
+      data: {
+        ...(data.email ? { userEmail: data.email } : {}),
+        ...(data.password ? { userPassword: await hashPassword(data.password) } : {}),
+      },
+    });
+  }
+
+  if (data.name) {
+    await prisma.isrStuDataTbl.update({ where: { stuRoll: roll }, data: { stuName: data.name } });
+  }
+
+  if (data.name || data.major || data.batch || data.semNow) {
+    await prisma.isrStuMainTbl.upsert({
+      where: { roll },
+      update: {
+        ...(data.name ? { name: data.name } : {}),
+        ...(data.major ? { major: data.major } : {}),
+        ...(data.batch ? { batch: data.batch } : {}),
+        ...(data.semNow ? { semNow: data.semNow } : {}),
+      },
+      create: {
+        roll,
+        name: data.name ?? "",
+        major: data.major ?? "",
+        batch: data.batch ?? "",
+        semNow: data.semNow ?? "",
+      },
+    });
+  }
+
+  const student = await getStudentByRoll(roll);
+  if (!student) throw new ApiError(404, "Student not found");
+  return student;
+}
+
+export async function deleteStudent(roll: string): Promise<void> {
+  const login = await prisma.isrLoginTbl.findUnique({ where: { userRoll: roll } });
+  if (!login || login.userType !== "STU") throw new ApiError(404, "Student not found");
+
+  const student = await getStudentByRoll(roll);
+  if (student?.batch) {
+    const tableName = await resolveBatchTable(student.batch);
+    if (tableName) {
+      await prisma.$executeRawUnsafe(`DELETE FROM \`${tableName}\` WHERE \`${REG_ROLL_COLUMN}\` = ?`, roll);
+    }
+  }
+
+  await prisma.isrStuMainTbl.deleteMany({ where: { roll } });
+  await prisma.isrStuDataTbl.delete({ where: { stuRoll: roll } });
+  await prisma.isrLoginTbl.delete({ where: { userRoll: roll } });
 }
 
 // ---------------------------------------------------------------------------

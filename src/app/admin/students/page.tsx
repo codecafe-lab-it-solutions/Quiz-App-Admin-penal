@@ -11,6 +11,7 @@ import { apiClient, ApiClientError } from "@/lib/api-client";
 import { DataTable, DataTableColumn } from "@/components/admin/data-table";
 import { FilterBar } from "@/components/admin/filter-bar";
 import { PaginationBar } from "@/components/admin/pagination-bar";
+import { ConfirmDialog } from "@/components/admin/confirm-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -22,7 +23,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { ChevronRight, Plus } from "lucide-react";
+import { ChevronRight, Pencil, Plus, Trash2 } from "lucide-react";
 
 interface Student {
   roll: string;
@@ -44,7 +45,7 @@ const schema = z.object({
   roll: z.string().trim().min(1, "Roll is required"),
   name: z.string().trim().min(2, "Name must be at least 2 characters"),
   email: z.string().trim().email("Enter a valid email"),
-  password: z.string().min(6, "Password must be at least 6 characters"),
+  password: z.string().optional(),
   major: z.string().trim().min(1, "Major is required"),
   batch: z.string().trim().min(1, "Batch is required"),
   semNow: z.string().trim().min(1, "Semester is required"),
@@ -55,6 +56,7 @@ export default function StudentListPage() {
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [editing, setEditing] = useState<Student | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
   const params = new URLSearchParams({ page: String(page), pageSize: "10", search });
@@ -69,21 +71,63 @@ export default function StudentListPage() {
   } = useForm<FormValues>({ resolver: zodResolver(schema) });
 
   const openCreate = () => {
+    setEditing(null);
     reset({ roll: "", name: "", email: "", password: "", major: "", batch: "", semNow: "" });
+    setDialogOpen(true);
+  };
+
+  const openEdit = (student: Student) => {
+    setEditing(student);
+    reset({
+      roll: student.roll,
+      name: student.name,
+      email: student.email,
+      password: "",
+      major: student.major,
+      batch: student.batch,
+      semNow: student.semNow,
+    });
     setDialogOpen(true);
   };
 
   const onSubmit = async (values: FormValues) => {
     setSubmitting(true);
     try {
-      await apiClient.post("/api/admin/students", values);
-      toast.success("Student added");
+      if (editing) {
+        await apiClient.patch(`/api/admin/students/${editing.roll}`, {
+          name: values.name,
+          email: values.email,
+          password: values.password || undefined,
+          major: values.major,
+          batch: values.batch,
+          semNow: values.semNow,
+        });
+        toast.success("Student updated");
+      } else {
+        if (!values.password || values.password.length < 6) {
+          toast.error("Password must be at least 6 characters");
+          setSubmitting(false);
+          return;
+        }
+        await apiClient.post("/api/admin/students", values);
+        toast.success("Student added");
+      }
       setDialogOpen(false);
       mutate();
     } catch (error) {
       toast.error(error instanceof ApiClientError ? error.message : "Save failed");
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handleDelete = async (roll: string) => {
+    try {
+      await apiClient.delete(`/api/admin/students/${roll}`);
+      toast.success("Student deleted");
+      mutate();
+    } catch (error) {
+      toast.error(error instanceof ApiClientError ? error.message : "Delete failed");
     }
   };
 
@@ -99,11 +143,27 @@ export default function StudentListPage() {
       header: "",
       className: "text-right",
       render: (r) => (
-        <Button asChild variant="ghost" size="icon">
-          <Link href={`/admin/students/${r.roll}`}>
-            <ChevronRight className="h-4 w-4" />
-          </Link>
-        </Button>
+        <div className="flex justify-end gap-1">
+          <Button variant="ghost" size="icon" onClick={() => openEdit(r)}>
+            <Pencil className="h-4 w-4" />
+          </Button>
+          <ConfirmDialog
+            trigger={
+              <Button variant="ghost" size="icon">
+                <Trash2 className="h-4 w-4 text-destructive" />
+              </Button>
+            }
+            title="Delete student?"
+            description={`Delete "${r.name}" (${r.roll})? This removes their login and course registrations. This cannot be undone.`}
+            confirmLabel="Delete"
+            onConfirm={() => handleDelete(r.roll)}
+          />
+          <Button asChild variant="ghost" size="icon">
+            <Link href={`/admin/students/${r.roll}`}>
+              <ChevronRight className="h-4 w-4" />
+            </Link>
+          </Button>
+        </div>
       ),
     },
   ];
@@ -147,16 +207,18 @@ export default function StudentListPage() {
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Add Student</DialogTitle>
+            <DialogTitle>{editing ? "Edit Student" : "Add Student"}</DialogTitle>
             <DialogDescription>
-              Creates a new student login and profile directly in the university directory.
+              {editing
+                ? "Update this student's profile, or reset their password."
+                : "Creates a new student login and profile directly in the university directory."}
             </DialogDescription>
           </DialogHeader>
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-4" noValidate>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div className="space-y-1.5">
                 <Label htmlFor="roll">Roll</Label>
-                <Input id="roll" {...register("roll")} placeholder="e.g. R2025001" />
+                <Input id="roll" {...register("roll")} placeholder="e.g. R2025001" disabled={!!editing} />
                 {errors.roll && <p className="text-sm text-destructive">{errors.roll.message}</p>}
               </div>
               <div className="space-y-1.5">
@@ -171,8 +233,13 @@ export default function StudentListPage() {
               {errors.email && <p className="text-sm text-destructive">{errors.email.message}</p>}
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="password">Password</Label>
-              <Input id="password" type="password" {...register("password")} />
+              <Label htmlFor="password">{editing ? "Reset password (optional)" : "Password"}</Label>
+              <Input
+                id="password"
+                type="password"
+                {...register("password")}
+                placeholder={editing ? "Leave blank to keep current password" : ""}
+              />
               {errors.password && <p className="text-sm text-destructive">{errors.password.message}</p>}
             </div>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">

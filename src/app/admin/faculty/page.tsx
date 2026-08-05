@@ -11,6 +11,7 @@ import { apiClient, ApiClientError } from "@/lib/api-client";
 import { DataTable, DataTableColumn } from "@/components/admin/data-table";
 import { FilterBar } from "@/components/admin/filter-bar";
 import { PaginationBar } from "@/components/admin/pagination-bar";
+import { ConfirmDialog } from "@/components/admin/confirm-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -22,7 +23,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { ChevronRight, Plus } from "lucide-react";
+import { ChevronRight, Pencil, Plus, Trash2 } from "lucide-react";
 
 interface Faculty {
   roll: string;
@@ -41,7 +42,7 @@ const schema = z.object({
   roll: z.string().trim().min(1, "Roll is required"),
   name: z.string().trim().min(2, "Name must be at least 2 characters"),
   email: z.string().trim().email("Enter a valid email"),
-  password: z.string().min(6, "Password must be at least 6 characters"),
+  password: z.string().optional(),
 });
 type FormValues = z.infer<typeof schema>;
 
@@ -49,6 +50,7 @@ export default function FacultyListPage() {
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [editing, setEditing] = useState<Faculty | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
   const params = new URLSearchParams({ page: String(page), pageSize: "10", search });
@@ -63,21 +65,52 @@ export default function FacultyListPage() {
   } = useForm<FormValues>({ resolver: zodResolver(schema) });
 
   const openCreate = () => {
+    setEditing(null);
     reset({ roll: "", name: "", email: "", password: "" });
+    setDialogOpen(true);
+  };
+
+  const openEdit = (faculty: Faculty) => {
+    setEditing(faculty);
+    reset({ roll: faculty.roll, name: faculty.name, email: faculty.email, password: "" });
     setDialogOpen(true);
   };
 
   const onSubmit = async (values: FormValues) => {
     setSubmitting(true);
     try {
-      await apiClient.post("/api/admin/faculty", values);
-      toast.success("Faculty added");
+      if (editing) {
+        await apiClient.patch(`/api/admin/faculty/${editing.roll}`, {
+          name: values.name,
+          email: values.email,
+          password: values.password || undefined,
+        });
+        toast.success("Faculty updated");
+      } else {
+        if (!values.password || values.password.length < 6) {
+          toast.error("Password must be at least 6 characters");
+          setSubmitting(false);
+          return;
+        }
+        await apiClient.post("/api/admin/faculty", values);
+        toast.success("Faculty added");
+      }
       setDialogOpen(false);
       mutate();
     } catch (error) {
       toast.error(error instanceof ApiClientError ? error.message : "Save failed");
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handleDelete = async (roll: string) => {
+    try {
+      await apiClient.delete(`/api/admin/faculty/${roll}`);
+      toast.success("Faculty deleted");
+      mutate();
+    } catch (error) {
+      toast.error(error instanceof ApiClientError ? error.message : "Delete failed");
     }
   };
 
@@ -90,11 +123,27 @@ export default function FacultyListPage() {
       header: "",
       className: "text-right",
       render: (r) => (
-        <Button asChild variant="ghost" size="icon">
-          <Link href={`/admin/faculty/${r.roll}`}>
-            <ChevronRight className="h-4 w-4" />
-          </Link>
-        </Button>
+        <div className="flex justify-end gap-1">
+          <Button variant="ghost" size="icon" onClick={() => openEdit(r)}>
+            <Pencil className="h-4 w-4" />
+          </Button>
+          <ConfirmDialog
+            trigger={
+              <Button variant="ghost" size="icon">
+                <Trash2 className="h-4 w-4 text-destructive" />
+              </Button>
+            }
+            title="Delete faculty?"
+            description={`Delete "${r.name}" (${r.roll})? This removes their login and course mappings. This cannot be undone.`}
+            confirmLabel="Delete"
+            onConfirm={() => handleDelete(r.roll)}
+          />
+          <Button asChild variant="ghost" size="icon">
+            <Link href={`/admin/faculty/${r.roll}`}>
+              <ChevronRight className="h-4 w-4" />
+            </Link>
+          </Button>
+        </div>
       ),
     },
   ];
@@ -138,15 +187,17 @@ export default function FacultyListPage() {
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Add Faculty</DialogTitle>
+            <DialogTitle>{editing ? "Edit Faculty" : "Add Faculty"}</DialogTitle>
             <DialogDescription>
-              Creates a new faculty login and profile directly in the university directory.
+              {editing
+                ? "Update this faculty member's profile, or reset their password."
+                : "Creates a new faculty login and profile directly in the university directory."}
             </DialogDescription>
           </DialogHeader>
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-4" noValidate>
             <div className="space-y-1.5">
               <Label htmlFor="roll">Roll</Label>
-              <Input id="roll" {...register("roll")} placeholder="e.g. F2025001" />
+              <Input id="roll" {...register("roll")} placeholder="e.g. F2025001" disabled={!!editing} />
               {errors.roll && <p className="text-sm text-destructive">{errors.roll.message}</p>}
             </div>
             <div className="space-y-1.5">
@@ -160,8 +211,13 @@ export default function FacultyListPage() {
               {errors.email && <p className="text-sm text-destructive">{errors.email.message}</p>}
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="password">Password</Label>
-              <Input id="password" type="password" {...register("password")} />
+              <Label htmlFor="password">{editing ? "Reset password (optional)" : "Password"}</Label>
+              <Input
+                id="password"
+                type="password"
+                {...register("password")}
+                placeholder={editing ? "Leave blank to keep current password" : ""}
+              />
               {errors.password && <p className="text-sm text-destructive">{errors.password.message}</p>}
             </div>
             <DialogFooter>

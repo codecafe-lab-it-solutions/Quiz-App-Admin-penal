@@ -35,10 +35,39 @@ function LoginForm() {
   const onSubmit = async (values: LoginFormValues) => {
     setSubmitting(true);
     try {
-      await apiClient.post("/api/auth/admin/login", values);
+      // A single form serves admin, faculty and student accounts - try each
+      // login endpoint in turn rather than making the user pick a role.
+      // Wrong-role attempts fail as a plain 401 ("Invalid email or
+      // password"), same as a wrong password, so this leaks nothing about
+      // which roles exist for a given email.
+      const attempts: { path: string; role: "admin" | "faculty" | "student"; fallback: string }[] = [
+        { path: "/api/auth/admin/login", role: "admin", fallback: "/admin/dashboard" },
+        { path: "/api/auth/faculty/login", role: "faculty", fallback: "/faculty" },
+        { path: "/api/auth/student/login", role: "student", fallback: "/student" },
+      ];
+
+      let signedInAs: (typeof attempts)[number] | null = null;
+      let lastError: unknown = null;
+
+      for (const attempt of attempts) {
+        try {
+          await apiClient.post(attempt.path, values);
+          signedInAs = attempt;
+          break;
+        } catch (error) {
+          lastError = error;
+          const status = error instanceof ApiClientError ? error.status : 0;
+          if (status !== 401) throw error; // validation error, server error, etc. - stop immediately
+        }
+      }
+
+      if (!signedInAs) throw lastError instanceof Error ? lastError : new Error("Login failed");
+
       toast.success("Welcome back!");
       const redirect = searchParams.get("redirect");
-      router.push(redirect && redirect.startsWith("/admin") ? redirect : "/admin/dashboard");
+      const target =
+        signedInAs.role === "admin" && redirect && redirect.startsWith("/admin") ? redirect : signedInAs.fallback;
+      router.push(target);
       router.refresh();
     } catch (error) {
       const message = error instanceof ApiClientError ? error.message : "Login failed";
@@ -55,8 +84,8 @@ function LoginForm() {
           <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-primary text-primary-foreground">
             <GraduationCap className="h-6 w-6" />
           </div>
-          <CardTitle className="text-xl">Quiz & Attendance Admin</CardTitle>
-          <CardDescription>Sign in to manage faculty, students and reports</CardDescription>
+          <CardTitle className="text-xl">Quiz &amp; Attendance</CardTitle>
+          <CardDescription>Sign in as an admin, faculty member, or student</CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-4" noValidate>

@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -12,7 +13,8 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { GraduationCap, LogOut, Menu, User } from "lucide-react";
+import { ChangePasswordDialog } from "@/components/admin/change-password-dialog";
+import { GraduationCap, KeyRound, LogOut, Menu, User } from "lucide-react";
 import { apiClient } from "@/lib/api-client";
 
 interface TopbarProps {
@@ -33,6 +35,7 @@ function initials(name: string) {
 
 export function Topbar({ name, email, role, onMenuClick }: TopbarProps) {
   const router = useRouter();
+  const [changePasswordOpen, setChangePasswordOpen] = useState(false);
 
   const handleLogout = async () => {
     try {
@@ -96,12 +99,18 @@ export function Topbar({ name, email, role, onMenuClick }: TopbarProps) {
             </div>
           </DropdownMenuLabel>
           <DropdownMenuSeparator />
+          <DropdownMenuItem onClick={() => setChangePasswordOpen(true)}>
+            <KeyRound className="mr-2 h-4 w-4" />
+            Change password
+          </DropdownMenuItem>
           <DropdownMenuItem onClick={handleLogout} className="text-destructive focus:text-destructive">
             <LogOut className="mr-2 h-4 w-4" />
             Log out
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
+
+      <ChangePasswordDialog open={changePasswordOpen} onOpenChange={setChangePasswordOpen} />
     </header>
   );
 }
