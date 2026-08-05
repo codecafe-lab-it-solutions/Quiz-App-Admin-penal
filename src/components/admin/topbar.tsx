@@ -12,7 +12,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { LogOut, Menu, User } from "lucide-react";
+import { GraduationCap, LogOut, Menu, User } from "lucide-react";
 import { apiClient } from "@/lib/api-client";
 
 interface TopbarProps {
@@ -47,7 +47,7 @@ export function Topbar({ name, email, role, onMenuClick }: TopbarProps) {
   };
 
   return (
-    <header className="flex h-16 shrink-0 items-center justify-between border-b bg-card px-4 lg:px-6">
+    <header className="flex h-16 shrink-0 items-center gap-3 border-b bg-card px-4 lg:px-6">
       <Button
         variant="ghost"
         size="icon"
@@ -57,7 +57,20 @@ export function Topbar({ name, email, role, onMenuClick }: TopbarProps) {
       >
         <Menu className="h-5 w-5" />
       </Button>
-      <div className="hidden lg:block" />
+
+      <div className="flex items-center gap-2">
+        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-primary text-primary-foreground">
+          <GraduationCap className="h-4 w-4" />
+        </div>
+        <span className="hidden text-sm font-semibold leading-tight sm:block">
+          Quiz &amp; Attendance
+          <br />
+          Admin Panel
+        </span>
+      </div>
+
+      <div className="flex-1" />
+
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button variant="ghost" className="flex items-center gap-2 px-2">

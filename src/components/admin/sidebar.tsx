@@ -142,19 +142,11 @@ export function Sidebar({ mobileOpen, onClose }: SidebarProps) {
           mobileOpen ? "translate-x-0" : "-translate-x-full"
         )}
       >
-        <div className="flex h-16 shrink-0 items-center gap-2 border-b px-5">
-          <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary text-primary-foreground">
-            <GraduationCap className="h-4 w-4" />
-          </div>
-          <span className="text-sm font-semibold leading-tight">
-            Quiz &amp; Attendance
-            <br />
-            Admin Panel
-          </span>
+        <div className="flex h-16 shrink-0 items-center justify-end border-b px-4 lg:hidden">
           <button
             type="button"
             onClick={onClose}
-            className="ml-auto rounded-md p-1 text-muted-foreground hover:bg-accent hover:text-accent-foreground lg:hidden"
+            className="rounded-md p-1 text-muted-foreground hover:bg-accent hover:text-accent-foreground"
             aria-label="Close menu"
           >
             <X className="h-5 w-5" />
