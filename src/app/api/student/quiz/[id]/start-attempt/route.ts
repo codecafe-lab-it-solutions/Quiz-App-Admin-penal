@@ -24,7 +24,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     const body = startAttemptSchema.parse(await req.json());
 
     const allotment = await prisma.quizAllotment.findUnique({
-      where: { quizId_studentId: { quizId, studentId: user.sub } },
+      where: { quizId_studentRoll: { quizId, studentRoll: String(user.sub) } },
     });
     if (!allotment) throw new ApiError(403, "This quiz is not allotted to you");
 
@@ -36,7 +36,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     if (quiz.status !== "live") throw new ApiError(400, "This quiz is not currently live");
 
     const existingAttempt = await prisma.quizAttempt.findUnique({
-      where: { quizId_studentId: { quizId, studentId: user.sub } },
+      where: { quizId_studentRoll: { quizId, studentRoll: String(user.sub) } },
     });
     if (existingAttempt) throw new ApiError(409, "You have already started or completed this attempt");
 
@@ -53,7 +53,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       await prisma.geofenceLog.create({
         data: {
           quizId,
-          studentId: user.sub,
+          studentRoll: String(user.sub),
           latitude: body.latitude,
           longitude: body.longitude,
           distanceMeters,
@@ -74,7 +74,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       const newAttempt = await tx.quizAttempt.create({
         data: {
           quizId,
-          studentId: user.sub,
+          studentRoll: String(user.sub),
           latitude: body.latitude,
           longitude: body.longitude,
           status: "in_progress",
@@ -86,7 +86,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
         data: {
           attemptId: newAttempt.id,
           quizId,
-          studentId: user.sub,
+          studentRoll: String(user.sub),
           latitude: body.latitude,
           longitude: body.longitude,
           distanceMeters,

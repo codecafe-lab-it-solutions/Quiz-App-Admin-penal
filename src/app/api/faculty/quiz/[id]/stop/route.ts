@@ -11,7 +11,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
 
     const { id } = idParamSchema.parse(params);
     const quiz = await prisma.quiz.findUnique({ where: { id } });
-    if (!quiz || quiz.facultyId !== user.sub) throw new ApiError(404, "Quiz not found");
+    if (!quiz || quiz.facultyRoll !== String(user.sub)) throw new ApiError(404, "Quiz not found");
     if (quiz.status !== "live") throw new ApiError(400, "Only a live quiz can be stopped");
 
     const stopTime = new Date();
@@ -24,7 +24,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
 
       const unattempted = await tx.quizAllotment.findMany({
         where: { quizId: id, status: "allotted" },
-        select: { studentId: true },
+        select: { studentRoll: true },
       });
 
       if (unattempted.length > 0) {
@@ -33,12 +33,12 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
           data: { status: "absent" },
         });
 
-        for (const { studentId } of unattempted) {
+        for (const { studentRoll } of unattempted) {
           await tx.attendance.upsert({
-            where: { studentId_quizId: { studentId, quizId: id } },
+            where: { studentRoll_quizId: { studentRoll, quizId: id } },
             update: { status: "absent" },
             create: {
-              studentId,
+              studentRoll,
               courseId: quiz.courseId,
               quizId: id,
               date: quiz.startTime,

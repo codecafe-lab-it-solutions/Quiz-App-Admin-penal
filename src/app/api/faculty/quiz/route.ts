@@ -3,6 +3,8 @@ import { prisma } from "@/lib/db";
 import { created, handleApiError, ApiError } from "@/lib/api-response";
 import { getAuthUser, requireRole } from "@/lib/auth";
 import { quizCreateSchema } from "@/lib/validators/quiz";
+import { isFacultyMappedToCourse } from "@/lib/legacy-db";
+import { getCurrentSubList } from "@/lib/config";
 
 export async function POST(req: NextRequest) {
   try {
@@ -11,26 +13,22 @@ export async function POST(req: NextRequest) {
 
     const body = quizCreateSchema.parse(await req.json());
 
-    const mapping = await prisma.facultyCourseSectionMap.findUnique({
-      where: {
-        facultyId_courseId_sectionId: {
-          facultyId: user.sub,
-          courseId: body.courseId,
-          sectionId: body.sectionId,
-        },
-      },
-    });
-    if (!mapping) {
-      throw new ApiError(403, "You are not mapped to teach this course/section combination");
+    const course = await prisma.course.findUnique({ where: { id: body.courseId } });
+    if (!course) throw new ApiError(404, "Course not found");
+
+    const currentSubList = await getCurrentSubList();
+    const mapped = await isFacultyMappedToCourse(String(user.sub), course.code, currentSubList);
+    if (!mapped) {
+      throw new ApiError(403, "You are not mapped to teach this course");
     }
 
     const quiz = await prisma.quiz.create({
       data: {
         title: body.title,
         courseId: body.courseId,
-        sectionId: body.sectionId,
+        sectionId: body.sectionId ?? null,
         buildingId: body.buildingId,
-        facultyId: user.sub,
+        facultyRoll: String(user.sub),
         startTime: body.startTime,
         endTime: body.endTime,
         durationMinutes: body.durationMinutes,

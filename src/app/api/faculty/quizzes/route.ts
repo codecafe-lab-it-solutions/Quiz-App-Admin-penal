@@ -14,7 +14,7 @@ export async function GET(req: NextRequest) {
     const status = params.status as "draft" | "scheduled" | "live" | "completed" | undefined;
 
     const where = {
-      facultyId: user.sub,
+      facultyRoll: String(user.sub),
       ...(status ? { status } : {}),
       ...(search ? { title: { contains: search } } : {}),
     };

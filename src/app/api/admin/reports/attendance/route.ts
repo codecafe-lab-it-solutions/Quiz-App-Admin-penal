@@ -6,6 +6,7 @@ import { attendanceReportQuerySchema } from "@/lib/validators/reports";
 import { paginationMeta } from "@/lib/validators/common";
 import { buildWorkbookBuffer, excelResponseHeaders } from "@/lib/excel";
 import { buildPdfTableBuffer, pdfResponseHeaders } from "@/lib/pdf";
+import { getStudentNamesByRolls } from "@/lib/legacy-db";
 
 export async function GET(req: NextRequest) {
   try {
@@ -31,7 +32,6 @@ export async function GET(req: NextRequest) {
       where,
       orderBy: { date: "desc" as const },
       include: {
-        student: { select: { id: true, name: true, rollNo: true, enrollmentNo: true } },
         course: { select: { id: true, name: true, code: true } },
         quiz: { select: { id: true, title: true, section: { select: { id: true, name: true } } } },
       },
@@ -39,6 +39,7 @@ export async function GET(req: NextRequest) {
 
     if (query.export === "excel") {
       const rows = await prisma.attendance.findMany(baseQuery);
+      const names = await getStudentNamesByRolls(rows.map((r) => r.studentRoll));
       const buffer = buildWorkbookBuffer(
         [
           { key: "studentName", label: "Student Name" },
@@ -50,10 +51,10 @@ export async function GET(req: NextRequest) {
           { key: "status", label: "Status" },
         ],
         rows.map((r) => ({
-          studentName: r.student.name,
-          rollNo: r.student.rollNo,
+          studentName: names.get(r.studentRoll) ?? r.studentRoll,
+          rollNo: r.studentRoll,
           course: `${r.course.name} (${r.course.code})`,
-          section: r.quiz.section.name,
+          section: r.quiz.section?.name ?? "—",
           quiz: r.quiz.title,
           date: r.date.toISOString().slice(0, 10),
           status: r.status,
@@ -65,14 +66,15 @@ export async function GET(req: NextRequest) {
 
     if (query.export === "pdf") {
       const rows = await prisma.attendance.findMany(baseQuery);
+      const names = await getStudentNamesByRolls(rows.map((r) => r.studentRoll));
       const buffer = buildPdfTableBuffer(
         "Course-wise Attendance Report",
         ["Student", "Roll No", "Course", "Section", "Quiz", "Date", "Status"],
         rows.map((r) => [
-          r.student.name,
-          r.student.rollNo,
+          names.get(r.studentRoll) ?? r.studentRoll,
+          r.studentRoll,
           `${r.course.name} (${r.course.code})`,
-          r.quiz.section.name,
+          r.quiz.section?.name ?? "—",
           r.quiz.title,
           r.date.toISOString().slice(0, 10),
           r.status,
@@ -90,7 +92,10 @@ export async function GET(req: NextRequest) {
       prisma.attendance.count({ where }),
     ]);
 
-    return ok({ items, meta: paginationMeta(total, query.page, query.pageSize) });
+    const names = await getStudentNamesByRolls(items.map((r) => r.studentRoll));
+    const itemsWithNames = items.map((r) => ({ ...r, studentName: names.get(r.studentRoll) ?? r.studentRoll }));
+
+    return ok({ items: itemsWithNames, meta: paginationMeta(total, query.page, query.pageSize) });
   } catch (error) {
     return handleApiError(error);
   }

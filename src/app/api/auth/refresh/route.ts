@@ -10,6 +10,7 @@ import {
   signRefreshToken,
   tokenPayloadFromUser,
 } from "@/lib/auth";
+import { getFacultyByRoll, getStudentByRoll } from "@/lib/legacy-db";
 import { setAuthCookies } from "@/lib/cookies";
 
 export async function POST(req: NextRequest) {
@@ -22,41 +23,39 @@ export async function POST(req: NextRequest) {
 
     const decoded = verifyRefreshToken(refreshToken);
 
-    let storedHash: string | null = null;
     let payload: ReturnType<typeof tokenPayloadFromUser>;
 
     if (decoded.role === "admin") {
-      const admin = await prisma.admin.findUnique({ where: { id: decoded.sub } });
+      const admin = await prisma.admin.findUnique({ where: { id: Number(decoded.sub) } });
       if (!admin?.refreshTokenHash) throw new ApiError(401, "Session expired, please log in again");
-      storedHash = admin.refreshTokenHash;
+      const valid = await compareToken(refreshToken, admin.refreshTokenHash);
+      if (!valid) throw new ApiError(401, "Session expired, please log in again");
       payload = tokenPayloadFromUser({ id: admin.id, email: admin.email, name: admin.name, role: admin.role }, "admin");
-    } else if (decoded.role === "faculty") {
-      const faculty = await prisma.faculty.findUnique({ where: { id: decoded.sub } });
-      if (!faculty?.refreshTokenHash) throw new ApiError(401, "Session expired, please log in again");
-      storedHash = faculty.refreshTokenHash;
-      payload = tokenPayloadFromUser({ id: faculty.id, email: faculty.email, name: faculty.name }, "faculty");
-    } else {
-      const student = await prisma.student.findUnique({ where: { id: decoded.sub } });
-      if (!student?.refreshTokenHash) throw new ApiError(401, "Session expired, please log in again");
-      storedHash = student.refreshTokenHash;
-      payload = tokenPayloadFromUser({ id: student.id, email: student.email, name: student.name }, "student");
+
+      const newAccessToken = signAccessToken(payload);
+      const newRefreshToken = signRefreshToken(payload);
+      await prisma.admin.update({ where: { id: admin.id }, data: { refreshTokenHash: await hashToken(newRefreshToken) } });
+
+      const response = ok({ accessToken: newAccessToken, refreshToken: newRefreshToken });
+      setAuthCookies(response, newAccessToken, newRefreshToken);
+      return response;
     }
 
-    const valid = await compareToken(refreshToken, storedHash);
-    if (!valid) throw new ApiError(401, "Session expired, please log in again");
+    // Faculty/student have no app-owned refresh-token-hash storage (identity
+    // lives in the read-only legacy tables), so rotation here just re-verifies
+    // the JWT signature/expiry and re-mints tokens off the current legacy profile.
+    if (decoded.role === "faculty") {
+      const faculty = await getFacultyByRoll(String(decoded.sub));
+      if (!faculty) throw new ApiError(401, "Session expired, please log in again");
+      payload = tokenPayloadFromUser({ id: faculty.roll, email: faculty.email, name: faculty.name }, "faculty");
+    } else {
+      const student = await getStudentByRoll(String(decoded.sub));
+      if (!student) throw new ApiError(401, "Session expired, please log in again");
+      payload = tokenPayloadFromUser({ id: student.roll, email: student.email, name: student.name }, "student");
+    }
 
     const newAccessToken = signAccessToken(payload);
     const newRefreshToken = signRefreshToken(payload);
-    const newHash = await hashToken(newRefreshToken);
-
-    if (decoded.role === "admin") {
-      await prisma.admin.update({ where: { id: decoded.sub }, data: { refreshTokenHash: newHash } });
-    } else if (decoded.role === "faculty") {
-      await prisma.faculty.update({ where: { id: decoded.sub }, data: { refreshTokenHash: newHash } });
-    } else {
-      await prisma.student.update({ where: { id: decoded.sub }, data: { refreshTokenHash: newHash } });
-    }
-
     const response = ok({ accessToken: newAccessToken, refreshToken: newRefreshToken });
     setAuthCookies(response, newAccessToken, newRefreshToken);
     return response;

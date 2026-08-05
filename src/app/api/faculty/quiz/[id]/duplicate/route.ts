@@ -14,7 +14,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       where: { id },
       include: { questions: { include: { options: true, formula: true } } },
     });
-    if (!source || source.facultyId !== user.sub) throw new ApiError(404, "Quiz not found");
+    if (!source || source.facultyRoll !== String(user.sub)) throw new ApiError(404, "Quiz not found");
 
     const duplicate = await prisma.$transaction(async (tx) => {
       const newQuiz = await tx.quiz.create({
@@ -22,7 +22,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
           title: `${source.title} (Copy)`,
           courseId: source.courseId,
           sectionId: source.sectionId,
-          facultyId: source.facultyId,
+          facultyRoll: source.facultyRoll,
           buildingId: source.buildingId,
           startTime: source.startTime,
           endTime: source.endTime,

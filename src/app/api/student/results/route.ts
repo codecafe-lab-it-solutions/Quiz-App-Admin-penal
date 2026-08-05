@@ -11,7 +11,7 @@ export async function GET(req: NextRequest) {
 
     const { page, pageSize } = paginationSchema.parse(Object.fromEntries(req.nextUrl.searchParams));
 
-    const where = { studentId: user.sub, status: "published" as const };
+    const where = { studentRoll: String(user.sub), status: "published" as const };
 
     const [items, total] = await Promise.all([
       prisma.result.findMany({

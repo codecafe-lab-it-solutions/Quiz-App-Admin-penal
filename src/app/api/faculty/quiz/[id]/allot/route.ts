@@ -4,6 +4,7 @@ import { ok, handleApiError, ApiError } from "@/lib/api-response";
 import { getAuthUser, requireRole } from "@/lib/auth";
 import { allotSchema } from "@/lib/validators/quiz";
 import { idParamSchema } from "@/lib/validators/common";
+import { getCourseRegistrations } from "@/lib/legacy-db";
 
 export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
   try {
@@ -11,43 +12,40 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     requireRole(user, "faculty");
 
     const { id: quizId } = idParamSchema.parse(params);
-    const quiz = await prisma.quiz.findUnique({ where: { id: quizId } });
-    if (!quiz || quiz.facultyId !== user.sub) throw new ApiError(404, "Quiz not found");
+    const quiz = await prisma.quiz.findUnique({ where: { id: quizId }, include: { course: true } });
+    if (!quiz || quiz.facultyRoll !== String(user.sub)) throw new ApiError(404, "Quiz not found");
     if (quiz.status === "completed") throw new ApiError(400, "Cannot allot a completed quiz");
 
     const body = allotSchema.parse(await req.json());
 
-    let studentIds: number[];
+    let studentRolls: string[];
 
-    if (body.mode === "section") {
-      const mapped = await prisma.studentCourseSectionMap.findMany({
-        where: { courseId: quiz.courseId, sectionId: quiz.sectionId },
-        select: { studentId: true },
-      });
-      studentIds = mapped.map((m) => m.studentId);
+    if (body.mode === "course") {
+      const registrations = await getCourseRegistrations(quiz.course.code);
+      studentRolls = [...new Set(registrations.map((r) => r.roll))];
     } else {
-      if (!body.studentIds || body.studentIds.length === 0) {
-        throw new ApiError(400, "Provide at least one student id for custom allotment");
+      if (!body.studentRolls || body.studentRolls.length === 0) {
+        throw new ApiError(400, "Provide at least one student roll for custom allotment");
       }
-      studentIds = body.studentIds;
+      studentRolls = body.studentRolls;
     }
 
-    if (studentIds.length === 0) {
+    if (studentRolls.length === 0) {
       throw new ApiError(400, "No students found to allot");
     }
 
     await prisma.$transaction(
-      studentIds.map((studentId) =>
+      studentRolls.map((studentRoll) =>
         prisma.quizAllotment.upsert({
-          where: { quizId_studentId: { quizId, studentId } },
+          where: { quizId_studentRoll: { quizId, studentRoll } },
           update: {},
-          create: { quizId, studentId, status: "allotted" },
+          create: { quizId, studentRoll, status: "allotted" },
         })
       )
     );
 
     const total = await prisma.quizAllotment.count({ where: { quizId } });
-    return ok({ message: "Quiz allotted", allottedCount: studentIds.length, totalAllotted: total });
+    return ok({ message: "Quiz allotted", allottedCount: studentRolls.length, totalAllotted: total });
   } catch (error) {
     return handleApiError(error);
   }

@@ -22,7 +22,7 @@ export async function GET(req: NextRequest) {
         skip: (page - 1) * pageSize,
         take: pageSize,
         orderBy: { name: "asc" },
-        include: { _count: { select: { courses: true, faculties: true } } },
+        include: { _count: { select: { courses: true } } },
       }),
       prisma.department.count({ where }),
     ]);

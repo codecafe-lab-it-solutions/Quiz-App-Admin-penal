@@ -10,7 +10,9 @@
     { "key": "refreshToken", "value": "" },
     { "key": "quizId", "value": "1" },
     { "key": "attemptId", "value": "1" },
-    { "key": "id", "value": "1" }
+    { "key": "id", "value": "1" },
+    { "key": "facultyRoll", "value": "" },
+    { "key": "studentRoll", "value": "" }
   ],
   "auth": {
     "type": "bearer",
@@ -75,28 +77,21 @@
     {
       "name": "Admin",
       "item": [
-        { "name": "List Faculty", "request": { "method": "GET", "url": "{{baseUrl}}/api/admin/faculty?page=1&pageSize=10" } },
-        { "name": "Create Faculty", "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "url": "{{baseUrl}}/api/admin/faculty", "body": { "mode": "raw", "raw": "{\n  \"name\": \"Jane Doe\",\n  \"email\": \"jane.doe@example.edu\",\n  \"employeeCode\": \"FAC1001\",\n  \"departmentId\": 1,\n  \"password\": \"password123\"\n}" } } },
-        { "name": "Get Faculty", "request": { "method": "GET", "url": "{{baseUrl}}/api/admin/faculty/{{id}}" } },
-        { "name": "Update Faculty", "request": { "method": "PATCH", "header": [{ "key": "Content-Type", "value": "application/json" }], "url": "{{baseUrl}}/api/admin/faculty/{{id}}", "body": { "mode": "raw", "raw": "{\n  \"status\": \"active\"\n}" } } },
-        { "name": "Deactivate Faculty", "request": { "method": "DELETE", "url": "{{baseUrl}}/api/admin/faculty/{{id}}" } },
-        { "name": "Download Faculty Template", "request": { "method": "GET", "url": "{{baseUrl}}/api/admin/faculty/template" } },
-        { "name": "Bulk Upload Faculty", "request": { "method": "POST", "url": "{{baseUrl}}/api/admin/faculty/bulk-upload", "body": { "mode": "formdata", "formdata": [{ "key": "file", "type": "file", "src": "" }] } } },
+        { "name": "List Faculty (read-only, legacy DB)", "request": { "method": "GET", "url": "{{baseUrl}}/api/admin/faculty?page=1&pageSize=10&search=" } },
+        { "name": "Get Faculty (read-only, legacy DB)", "request": { "method": "GET", "url": "{{baseUrl}}/api/admin/faculty/{{facultyRoll}}" } },
 
-        { "name": "List Students", "request": { "method": "GET", "url": "{{baseUrl}}/api/admin/students?page=1&pageSize=10" } },
-        { "name": "Create Student", "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "url": "{{baseUrl}}/api/admin/students", "body": { "mode": "raw", "raw": "{\n  \"name\": \"John Smith\",\n  \"email\": \"john.smith@example.edu\",\n  \"rollNo\": \"R2024001\",\n  \"enrollmentNo\": \"EN2024001\",\n  \"password\": \"password123\"\n}" } } },
-        { "name": "Get Student", "request": { "method": "GET", "url": "{{baseUrl}}/api/admin/students/{{id}}" } },
-        { "name": "Update Student", "request": { "method": "PATCH", "header": [{ "key": "Content-Type", "value": "application/json" }], "url": "{{baseUrl}}/api/admin/students/{{id}}", "body": { "mode": "raw", "raw": "{\n  \"status\": \"active\"\n}" } } },
-        { "name": "Deactivate Student", "request": { "method": "DELETE", "url": "{{baseUrl}}/api/admin/students/{{id}}" } },
-        { "name": "Download Student Template", "request": { "method": "GET", "url": "{{baseUrl}}/api/admin/students/template" } },
-        { "name": "Bulk Upload Students", "request": { "method": "POST", "url": "{{baseUrl}}/api/admin/students/bulk-upload", "body": { "mode": "formdata", "formdata": [{ "key": "file", "type": "file", "src": "" }] } } },
+        { "name": "List Students (read-only, legacy DB)", "request": { "method": "GET", "url": "{{baseUrl}}/api/admin/students?page=1&pageSize=10&search=" } },
+        { "name": "Get Student (read-only, legacy DB)", "request": { "method": "GET", "url": "{{baseUrl}}/api/admin/students/{{studentRoll}}" } },
 
-        { "name": "Faculty-Course-Section: List", "request": { "method": "GET", "url": "{{baseUrl}}/api/admin/mapping/faculty-course-section" } },
-        { "name": "Faculty-Course-Section: Create", "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "url": "{{baseUrl}}/api/admin/mapping/faculty-course-section", "body": { "mode": "raw", "raw": "{\n  \"facultyId\": 1,\n  \"mappings\": [{ \"courseId\": 1, \"sectionId\": 1 }]\n}" } } },
-        { "name": "Faculty-Course-Section: Delete", "request": { "method": "DELETE", "url": "{{baseUrl}}/api/admin/mapping/faculty-course-section?id={{id}}" } },
-        { "name": "Student-Course-Section: List", "request": { "method": "GET", "url": "{{baseUrl}}/api/admin/mapping/student-course-section" } },
-        { "name": "Student-Course-Section: Create", "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "url": "{{baseUrl}}/api/admin/mapping/student-course-section", "body": { "mode": "raw", "raw": "{\n  \"studentId\": 1,\n  \"mappings\": [{ \"courseId\": 1, \"sectionId\": 1 }]\n}" } } },
-        { "name": "Student-Course-Section: Delete", "request": { "method": "DELETE", "url": "{{baseUrl}}/api/admin/mapping/student-course-section?id={{id}}" } },
+        { "name": "Faculty-Course Mapping: List (read-only, filtered by current sub_list)", "request": { "method": "GET", "url": "{{baseUrl}}/api/admin/mapping/faculty-course-section?facultyRoll=" } },
+        { "name": "Student-Course Mapping: Search by roll (read-only)", "request": { "method": "GET", "url": "{{baseUrl}}/api/admin/mapping/student-course-section?roll={{studentRoll}}" } },
+        { "name": "Student-Course Mapping: Search by course code (read-only)", "request": { "method": "GET", "url": "{{baseUrl}}/api/admin/mapping/student-course-section?courseCode=CS201" } },
+
+        { "name": "Semester Config: Get", "request": { "method": "GET", "url": "{{baseUrl}}/api/admin/config/semester" } },
+        { "name": "Semester Config: Set current sub_list", "request": { "method": "PUT", "header": [{ "key": "Content-Type", "value": "application/json" }], "url": "{{baseUrl}}/api/admin/config/semester", "body": { "mode": "raw", "raw": "{\n  \"currentSubList\": \"C2\"\n}" } } },
+        { "name": "Semester Config: Add/update batch table", "request": { "method": "PUT", "header": [{ "key": "Content-Type", "value": "application/json" }], "url": "{{baseUrl}}/api/admin/config/semester", "body": { "mode": "raw", "raw": "{\n  \"upsertBatch\": { \"batchName\": \"2023B1\", \"tableName\": \"isr_reg_2023B1_tbl\", \"isActive\": true }\n}" } } },
+        { "name": "Semester Config: Toggle batch table active", "request": { "method": "PUT", "header": [{ "key": "Content-Type", "value": "application/json" }], "url": "{{baseUrl}}/api/admin/config/semester", "body": { "mode": "raw", "raw": "{\n  \"toggleBatch\": { \"batchName\": \"2023B1\", \"isActive\": false }\n}" } } },
+        { "name": "Semester Config: Remove batch table", "request": { "method": "PUT", "header": [{ "key": "Content-Type", "value": "application/json" }], "url": "{{baseUrl}}/api/admin/config/semester", "body": { "mode": "raw", "raw": "{\n  \"removeBatch\": \"2023B1\"\n}" } } },
 
         { "name": "Departments: List", "request": { "method": "GET", "url": "{{baseUrl}}/api/admin/departments" } },
         { "name": "Departments: Create", "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "url": "{{baseUrl}}/api/admin/departments", "body": { "mode": "raw", "raw": "{\n  \"name\": \"Computer Science\"\n}" } } },
@@ -152,7 +147,7 @@
         { "name": "Duplicate Quiz", "request": { "method": "POST", "url": "{{baseUrl}}/api/faculty/quiz/{{quizId}}/duplicate" } },
         { "name": "Get Questions", "request": { "method": "GET", "url": "{{baseUrl}}/api/faculty/quiz/{{quizId}}/questions" } },
         { "name": "Add/Update Questions", "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "url": "{{baseUrl}}/api/faculty/quiz/{{quizId}}/questions", "body": { "mode": "raw", "raw": "{\n  \"questions\": [\n    {\n      \"questionType\": \"mcq\",\n      \"questionText\": \"2 + 2 = ?\",\n      \"marks\": 1,\n      \"negativeMarks\": 0,\n      \"orderIndex\": 0,\n      \"options\": [\n        { \"optionText\": \"3\", \"isCorrect\": false },\n        { \"optionText\": \"4\", \"isCorrect\": true }\n      ]\n    },\n    {\n      \"questionType\": \"formula\",\n      \"questionText\": \"Value of pi to 2 decimals?\",\n      \"marks\": 2,\n      \"negativeMarks\": 0,\n      \"orderIndex\": 1,\n      \"correctValue\": 3.14,\n      \"tolerance\": 0.01\n    }\n  ]\n}" } } },
-        { "name": "Allot Quiz", "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "url": "{{baseUrl}}/api/faculty/quiz/{{quizId}}/allot", "body": { "mode": "raw", "raw": "{\n  \"mode\": \"section\"\n}" } } },
+        { "name": "Allot Quiz", "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "url": "{{baseUrl}}/api/faculty/quiz/{{quizId}}/allot", "body": { "mode": "raw", "raw": "{\n  \"mode\": \"course\"\n}" } } },
         { "name": "Start Quiz", "request": { "method": "POST", "url": "{{baseUrl}}/api/faculty/quiz/{{quizId}}/start" } },
         { "name": "Stop Quiz", "request": { "method": "POST", "url": "{{baseUrl}}/api/faculty/quiz/{{quizId}}/stop" } },
         { "name": "Get Attempts", "request": { "method": "GET", "url": "{{baseUrl}}/api/faculty/quiz/{{quizId}}/attempts" } },

@@ -11,7 +11,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
 
     const { id: quizId } = idParamSchema.parse(params);
     const quiz = await prisma.quiz.findUnique({ where: { id: quizId } });
-    if (!quiz || quiz.facultyId !== user.sub) throw new ApiError(404, "Quiz not found");
+    if (!quiz || quiz.facultyRoll !== String(user.sub)) throw new ApiError(404, "Quiz not found");
     if (quiz.status !== "completed") throw new ApiError(400, "Results can only be declared for a completed quiz");
 
     const attempts = await prisma.quizAttempt.findMany({
@@ -27,11 +27,11 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
         const percentage = quiz.totalMarks > 0 ? (marksObtained / quiz.totalMarks) * 100 : 0;
 
         return prisma.result.upsert({
-          where: { quizId_studentId: { quizId, studentId: attempt.studentId } },
+          where: { quizId_studentRoll: { quizId, studentRoll: attempt.studentRoll } },
           update: { marksObtained, percentage, status: "declared", declaredAt },
           create: {
             quizId,
-            studentId: attempt.studentId,
+            studentRoll: attempt.studentRoll,
             marksObtained,
             percentage,
             status: "declared",

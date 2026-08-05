@@ -86,7 +86,6 @@ model Department {
   updatedAt DateTime @updatedAt @map("updated_at")
 
   courses   Course[]
-  faculties Faculty[]
 
   @@map("departments")
 }
@@ -103,8 +102,6 @@ model Course {
   department Department @relation(fields: [departmentId], references: [id])
   sections   Section[]
 
-  facultyMaps FacultyCourseSectionMap[]
-  studentMaps StudentCourseSectionMap[]
   quizzes     Quiz[]
   attendance  Attendance[]
 
@@ -136,8 +133,6 @@ model Section {
   course  Course          @relation(fields: [courseId], references: [id])
   session AcademicSession @relation(fields: [sessionId], references: [id])
 
-  facultyMaps FacultyCourseSectionMap[]
-  studentMaps StudentCourseSectionMap[]
   quizzes     Quiz[]
 
   @@index([courseId])
@@ -159,88 +154,79 @@ model Building {
   @@map("buildings")
 }
 
-model Faculty {
-  id             Int          @id @default(autoincrement())
-  name           String
-  email          String       @unique
-  phone          String?
-  passwordHash   String       @map("password_hash")
-  employeeCode   String       @unique @map("employee_code")
-  departmentId   Int          @map("department_id")
-  status         PersonStatus @default(active)
-  refreshTokenHash String?    @map("refresh_token_hash")
-  createdAt      DateTime     @default(now()) @map("created_at")
-  updatedAt      DateTime     @updatedAt @map("updated_at")
+// ---------------------------------------------------------------------------
+// Legacy university database — read-only from this app's perspective.
+// Faculty/Student master data and course mapping live here, not in this
+// app's own tables. Never write to these models from application code.
+// ---------------------------------------------------------------------------
 
-  department Department @relation(fields: [departmentId], references: [id])
+model IsrLoginTbl {
+  userRoll     String @id @map("user_roll")
+  userEmail    String @map("user_email")
+  userPassword String @map("user_password")
+  userType     String @map("user_type") // 'FAC' | 'STU'
 
-  courseSectionMaps FacultyCourseSectionMap[]
-  quizzes           Quiz[]
-
-  @@index([departmentId])
-  @@index([status])
-  @@map("faculties")
+  @@map("isr_login_tbl")
 }
 
-model Student {
-  id             Int          @id @default(autoincrement())
-  name           String
-  email          String       @unique
-  phone          String?
-  passwordHash   String       @map("password_hash")
-  rollNo         String       @unique @map("roll_no")
-  enrollmentNo   String       @unique @map("enrollment_no")
-  status         PersonStatus @default(active)
-  refreshTokenHash String?    @map("refresh_token_hash")
-  createdAt      DateTime     @default(now()) @map("created_at")
-  updatedAt      DateTime     @updatedAt @map("updated_at")
+model IsrFacultyTbl {
+  roll String @id
+  name String
 
-  courseSectionMaps StudentCourseSectionMap[]
-  quizAllotments    QuizAllotment[]
-  quizAttempts      QuizAttempt[]
-  attendance        Attendance[]
-  results           Result[]
+  @@map("isr_faculty_tbl")
+}
 
-  @@index([status])
-  @@map("students")
+model IsrStuDataTbl {
+  stuRoll String @id @map("stu_roll")
+  stuName String @map("stu_name")
+
+  @@map("isr_stu_data_tbl")
+}
+
+model IsrStuMainTbl {
+  roll   String @id
+  major  String
+  name   String
+  batch  String
+  semNow String @map("sem_now")
+
+  @@map("isr_stu_main_tbl")
+}
+
+// PK assumed autoincrement surrogate — unconfirmed, see spec open item #3.
+model IsrSubAvailableTbl {
+  id      Int    @id @default(autoincrement())
+  sem     String
+  subList String @map("sub_list") // semester-cycle code, e.g. "C2" — admin-configurable "current" value
+  subCode String @map("sub_code")
+  facRoll String @map("fac_roll")
+  branch  String
+
+  @@map("isr_sub_available_tbl")
 }
 
 // ---------------------------------------------------------------------------
-// Mapping
+// App-owned configuration for the legacy integration
 // ---------------------------------------------------------------------------
 
-model FacultyCourseSectionMap {
-  id        Int      @id @default(autoincrement())
-  facultyId Int      @map("faculty_id")
-  courseId  Int      @map("course_id")
-  sectionId Int      @map("section_id")
-  createdAt DateTime @default(now()) @map("created_at")
+model SemesterConfig {
+  id              Int      @id @default(autoincrement())
+  currentSubList  String   @map("current_sub_list")
+  updatedAt       DateTime @updatedAt @map("updated_at")
 
-  faculty Faculty @relation(fields: [facultyId], references: [id], onDelete: Cascade)
-  course  Course  @relation(fields: [courseId], references: [id], onDelete: Cascade)
-  section Section @relation(fields: [sectionId], references: [id], onDelete: Cascade)
-
-  @@unique([facultyId, courseId, sectionId])
-  @@index([courseId])
-  @@index([sectionId])
-  @@map("faculty_course_section_map")
+  @@map("semester_config")
 }
 
-model StudentCourseSectionMap {
+// Allow-list of batch -> physical isr_reg_<batch>_tbl table names, so
+// dynamic-table queries never build a table name from unvalidated input.
+model BatchTableRegistry {
   id        Int      @id @default(autoincrement())
-  studentId Int      @map("student_id")
-  courseId  Int      @map("course_id")
-  sectionId Int      @map("section_id")
+  batchName String   @unique @map("batch_name")
+  tableName String   @map("table_name")
+  isActive  Boolean  @default(true) @map("is_active")
   createdAt DateTime @default(now()) @map("created_at")
 
-  student Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
-  course  Course  @relation(fields: [courseId], references: [id], onDelete: Cascade)
-  section Section @relation(fields: [sectionId], references: [id], onDelete: Cascade)
-
-  @@unique([studentId, courseId, sectionId])
-  @@index([courseId])
-  @@index([sectionId])
-  @@map("student_course_section_map")
+  @@map("batch_table_registry")
 }
 
 // ---------------------------------------------------------------------------
@@ -251,8 +237,8 @@ model Quiz {
   id                Int        @id @default(autoincrement())
   title             String
   courseId          Int        @map("course_id")
-  sectionId         Int        @map("section_id")
-  facultyId         Int        @map("faculty_id")
+  sectionId         Int?       @map("section_id") // TODO: section source pending confirmation
+  facultyRoll       String     @map("faculty_roll") // legacy isr_faculty_tbl.roll — not a Prisma FK
   buildingId        Int        @map("building_id")
   startTime         DateTime   @map("start_time")
   endTime           DateTime   @map("end_time")
@@ -268,8 +254,7 @@ model Quiz {
   updatedAt         DateTime   @updatedAt @map("updated_at")
 
   course   Course   @relation(fields: [courseId], references: [id])
-  section  Section  @relation(fields: [sectionId], references: [id])
-  faculty  Faculty  @relation(fields: [facultyId], references: [id])
+  section  Section? @relation(fields: [sectionId], references: [id])
   building Building @relation(fields: [buildingId], references: [id])
 
   questions   Question[]
@@ -280,7 +265,7 @@ model Quiz {
 
   @@index([courseId])
   @@index([sectionId])
-  @@index([facultyId])
+  @@index([facultyRoll])
   @@index([buildingId])
   @@index([status])
   @@map("quizzes")
@@ -331,18 +316,17 @@ model QuestionFormula {
 }
 
 model QuizAllotment {
-  id        Int             @id @default(autoincrement())
-  quizId    Int             @map("quiz_id")
-  studentId Int             @map("student_id")
-  status    AllotmentStatus @default(allotted)
-  createdAt DateTime        @default(now()) @map("created_at")
-  updatedAt DateTime        @updatedAt @map("updated_at")
+  id          Int             @id @default(autoincrement())
+  quizId      Int             @map("quiz_id")
+  studentRoll String          @map("student_roll") // legacy isr_stu_data_tbl.stu_roll — not a Prisma FK
+  status      AllotmentStatus @default(allotted)
+  createdAt   DateTime        @default(now()) @map("created_at")
+  updatedAt   DateTime        @updatedAt @map("updated_at")
 
-  quiz    Quiz    @relation(fields: [quizId], references: [id], onDelete: Cascade)
-  student Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  quiz Quiz @relation(fields: [quizId], references: [id], onDelete: Cascade)
 
-  @@unique([quizId, studentId])
-  @@index([studentId])
+  @@unique([quizId, studentRoll])
+  @@index([studentRoll])
   @@index([status])
   @@map("quiz_allotments")
 }
@@ -350,7 +334,7 @@ model QuizAllotment {
 model QuizAttempt {
   id              Int           @id @default(autoincrement())
   quizId          Int           @map("quiz_id")
-  studentId       Int           @map("student_id")
+  studentRoll     String        @map("student_roll") // legacy isr_stu_data_tbl.stu_roll — not a Prisma FK
   startTime       DateTime      @default(now()) @map("start_time")
   endTime         DateTime?     @map("end_time")
   status          AttemptStatus @default(in_progress)
@@ -362,15 +346,14 @@ model QuizAttempt {
   createdAt       DateTime      @default(now()) @map("created_at")
   updatedAt       DateTime      @updatedAt @map("updated_at")
 
-  quiz    Quiz    @relation(fields: [quizId], references: [id], onDelete: Cascade)
-  student Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  quiz Quiz @relation(fields: [quizId], references: [id], onDelete: Cascade)
 
   answers          StudentAnswer[]
   antiCheatEvents  AntiCheatEvent[]
   geofenceLogs     GeofenceLog[]
 
-  @@unique([quizId, studentId])
-  @@index([studentId])
+  @@unique([quizId, studentRoll])
+  @@index([studentRoll])
   @@index([status])
   @@map("quiz_attempts")
 }
@@ -399,21 +382,21 @@ model StudentAnswer {
 }
 
 model Attendance {
-  id        Int               @id @default(autoincrement())
-  studentId Int               @map("student_id")
-  courseId  Int               @map("course_id")
-  quizId    Int               @map("quiz_id")
-  date      DateTime          @db.Date
-  status    AttendanceStatus
-  createdAt DateTime          @default(now()) @map("created_at")
-  updatedAt DateTime          @updatedAt @map("updated_at")
+  id          Int               @id @default(autoincrement())
+  studentRoll String            @map("student_roll") // legacy isr_stu_data_tbl.stu_roll — not a Prisma FK
+  courseId    Int               @map("course_id")
+  quizId      Int               @map("quiz_id")
+  date        DateTime          @db.Date
+  status      AttendanceStatus
+  createdAt   DateTime          @default(now()) @map("created_at")
+  updatedAt   DateTime          @updatedAt @map("updated_at")
 
-  student Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
-  course  Course  @relation(fields: [courseId], references: [id], onDelete: Cascade)
-  quiz    Quiz    @relation(fields: [quizId], references: [id], onDelete: Cascade)
+  course Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  quiz   Quiz   @relation(fields: [quizId], references: [id], onDelete: Cascade)
 
-  @@unique([studentId, quizId])
+  @@unique([studentRoll, quizId])
   @@index([courseId])
+  @@index([studentRoll])
   @@index([date])
   @@index([status])
   @@map("attendance")
@@ -422,7 +405,7 @@ model Attendance {
 model Result {
   id            Int          @id @default(autoincrement())
   quizId        Int          @map("quiz_id")
-  studentId     Int          @map("student_id")
+  studentRoll   String       @map("student_roll") // legacy isr_stu_data_tbl.stu_roll — not a Prisma FK
   marksObtained Float        @default(0) @map("marks_obtained")
   percentage    Float        @default(0)
   status        ResultStatus @default(pending)
@@ -431,11 +414,10 @@ model Result {
   createdAt     DateTime     @default(now()) @map("created_at")
   updatedAt     DateTime     @updatedAt @map("updated_at")
 
-  quiz    Quiz    @relation(fields: [quizId], references: [id], onDelete: Cascade)
-  student Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  quiz Quiz @relation(fields: [quizId], references: [id], onDelete: Cascade)
 
-  @@unique([quizId, studentId])
-  @@index([studentId])
+  @@unique([quizId, studentRoll])
+  @@index([studentRoll])
   @@index([status])
   @@map("results")
 }
@@ -457,7 +439,7 @@ model GeofenceLog {
   id              Int      @id @default(autoincrement())
   attemptId       Int?     @map("attempt_id")
   quizId          Int      @map("quiz_id")
-  studentId       Int      @map("student_id")
+  studentRoll     String   @map("student_roll") // legacy isr_stu_data_tbl.stu_roll — not a Prisma FK
   latitude        Decimal  @db.Decimal(10, 7)
   longitude       Decimal  @db.Decimal(10, 7)
   distanceMeters  Float    @map("distance_meters")
@@ -468,6 +450,6 @@ model GeofenceLog {
 
   @@index([attemptId])
   @@index([quizId])
-  @@index([studentId])
+  @@index([studentRoll])
   @@map("geofence_logs")
 }

@@ -1,87 +1,34 @@
 import { NextRequest } from "next/server";
-import { prisma } from "@/lib/db";
-import { ok, created, handleApiError, ApiError } from "@/lib/api-response";
+import { ok, fail, handleApiError } from "@/lib/api-response";
 import { getAuthUser, requireRole } from "@/lib/auth";
-import { studentMappingCreateSchema, mappingQuerySchema, mappingDeleteSchema } from "@/lib/validators/mapping";
-import { paginationMeta } from "@/lib/validators/common";
+import { studentCourseMappingQuerySchema } from "@/lib/validators/mapping";
+import { getStudentByRoll, getStudentCourses, getCourseRegistrations } from "@/lib/legacy-db";
 
+// Read-only: sourced live from the legacy per-batch isr_reg_<batch>_tbl
+// tables. Never returns an unfiltered dump - a roll or course code is
+// required so this can't fan out across all ~60 batch tables at once.
 export async function GET(req: NextRequest) {
   try {
     const user = getAuthUser(req);
     requireRole(user, "admin");
 
-    const { studentId, courseId, sectionId, page, pageSize } = mappingQuerySchema.parse(
-      Object.fromEntries(req.nextUrl.searchParams)
-    );
+    const parsed = studentCourseMappingQuerySchema.safeParse(Object.fromEntries(req.nextUrl.searchParams));
+    if (!parsed.success) {
+      return fail(400, "Provide either roll or courseCode to search");
+    }
+    const { roll, courseCode } = parsed.data;
 
-    const where = {
-      ...(studentId ? { studentId } : {}),
-      ...(courseId ? { courseId } : {}),
-      ...(sectionId ? { sectionId } : {}),
-    };
+    if (roll) {
+      const student = await getStudentByRoll(roll);
+      if (!student || !student.batch) {
+        return ok({ items: [] });
+      }
+      const courses = await getStudentCourses(roll, student.batch);
+      return ok({ items: courses.map((c) => ({ roll: c.roll, subCode: c.subCode, batch: student.batch })) });
+    }
 
-    const [items, total] = await Promise.all([
-      prisma.studentCourseSectionMap.findMany({
-        where,
-        skip: (page - 1) * pageSize,
-        take: pageSize,
-        orderBy: { createdAt: "desc" },
-        include: {
-          student: { select: { id: true, name: true, rollNo: true } },
-          course: { select: { id: true, name: true, code: true } },
-          section: { select: { id: true, name: true } },
-        },
-      }),
-      prisma.studentCourseSectionMap.count({ where }),
-    ]);
-
-    return ok({ items, meta: paginationMeta(total, page, pageSize) });
-  } catch (error) {
-    return handleApiError(error);
-  }
-}
-
-export async function POST(req: NextRequest) {
-  try {
-    const user = getAuthUser(req);
-    requireRole(user, "admin");
-
-    const body = studentMappingCreateSchema.parse(await req.json());
-
-    const created_ = await prisma.$transaction(
-      body.mappings.map((m) =>
-        prisma.studentCourseSectionMap.upsert({
-          where: {
-            studentId_courseId_sectionId: {
-              studentId: body.studentId,
-              courseId: m.courseId,
-              sectionId: m.sectionId,
-            },
-          },
-          update: {},
-          create: { studentId: body.studentId, courseId: m.courseId, sectionId: m.sectionId },
-        })
-      )
-    );
-
-    return created(created_);
-  } catch (error) {
-    return handleApiError(error);
-  }
-}
-
-export async function DELETE(req: NextRequest) {
-  try {
-    const user = getAuthUser(req);
-    requireRole(user, "admin");
-
-    const { id } = mappingDeleteSchema.parse(Object.fromEntries(req.nextUrl.searchParams));
-
-    const mapping = await prisma.studentCourseSectionMap.findUnique({ where: { id } });
-    if (!mapping) throw new ApiError(404, "Mapping not found");
-
-    await prisma.studentCourseSectionMap.delete({ where: { id } });
-    return ok({ message: "Mapping removed" });
+    const items = await getCourseRegistrations(courseCode!);
+    return ok({ items });
   } catch (error) {
     return handleApiError(error);
   }

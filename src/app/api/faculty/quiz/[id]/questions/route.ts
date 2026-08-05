@@ -12,7 +12,7 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
 
     const { id } = idParamSchema.parse(params);
     const quiz = await prisma.quiz.findUnique({ where: { id } });
-    if (!quiz || quiz.facultyId !== user.sub) throw new ApiError(404, "Quiz not found");
+    if (!quiz || quiz.facultyRoll !== String(user.sub)) throw new ApiError(404, "Quiz not found");
 
     const questions = await prisma.question.findMany({
       where: { quizId: id },
@@ -33,7 +33,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
 
     const { id: quizId } = idParamSchema.parse(params);
     const quiz = await prisma.quiz.findUnique({ where: { id: quizId } });
-    if (!quiz || quiz.facultyId !== user.sub) throw new ApiError(404, "Quiz not found");
+    if (!quiz || quiz.facultyRoll !== String(user.sub)) throw new ApiError(404, "Quiz not found");
     if (quiz.status === "live" || quiz.status === "completed") {
       throw new ApiError(400, "Cannot edit questions on a live or completed quiz");
     }

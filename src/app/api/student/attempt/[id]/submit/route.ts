@@ -12,7 +12,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
 
     const { id: attemptId } = idParamSchema.parse(params);
     const attempt = await prisma.quizAttempt.findUnique({ where: { id: attemptId } });
-    if (!attempt || attempt.studentId !== user.sub) throw new ApiError(404, "Attempt not found");
+    if (!attempt || attempt.studentRoll !== String(user.sub)) throw new ApiError(404, "Attempt not found");
     if (attempt.status !== "in_progress") throw new ApiError(400, "This attempt has already been submitted");
 
     const body = submitAttemptSchema.parse(await req.json());
@@ -132,15 +132,15 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       });
 
       await tx.quizAllotment.update({
-        where: { quizId_studentId: { quizId: attempt.quizId, studentId: user.sub } },
+        where: { quizId_studentRoll: { quizId: attempt.quizId, studentRoll: String(user.sub) } },
         data: { status: "attempted" },
       });
 
       await tx.attendance.upsert({
-        where: { studentId_quizId: { studentId: user.sub, quizId: attempt.quizId } },
+        where: { studentRoll_quizId: { studentRoll: String(user.sub), quizId: attempt.quizId } },
         update: { status: "present" },
         create: {
-          studentId: user.sub,
+          studentRoll: String(user.sub),
           courseId: quiz.courseId,
           quizId: attempt.quizId,
           date: quiz.startTime,
@@ -149,11 +149,11 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       });
 
       await tx.result.upsert({
-        where: { quizId_studentId: { quizId: attempt.quizId, studentId: user.sub } },
+        where: { quizId_studentRoll: { quizId: attempt.quizId, studentRoll: String(user.sub) } },
         update: { marksObtained: totalMarksObtained, percentage },
         create: {
           quizId: attempt.quizId,
-          studentId: user.sub,
+          studentRoll: String(user.sub),
           marksObtained: totalMarksObtained,
           percentage,
           status: "pending",

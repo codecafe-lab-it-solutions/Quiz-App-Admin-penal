@@ -29,9 +29,10 @@ interface AttendanceRow {
   id: number;
   date: string;
   status: "present" | "absent";
-  student: { id: number; name: string; rollNo: string };
+  studentRoll: string;
+  studentName: string;
   course: { id: number; name: string; code: string };
-  quiz: { id: number; title: string; section: { id: number; name: string } };
+  quiz: { id: number; title: string; section: { id: number; name: string } | null };
 }
 interface ListResponse<T> {
   items: T[];
@@ -72,9 +73,9 @@ export default function AttendanceReportPage() {
   };
 
   const columns: DataTableColumn<AttendanceRow>[] = [
-    { key: "student", header: "Student", render: (r) => `${r.student.name} (${r.student.rollNo})` },
+    { key: "student", header: "Student", render: (r) => `${r.studentName} (${r.studentRoll})` },
     { key: "course", header: "Course", render: (r) => `${r.course.name} (${r.course.code})` },
-    { key: "section", header: "Section", render: (r) => r.quiz.section.name },
+    { key: "section", header: "Section", render: (r) => r.quiz.section?.name ?? "—" },
     { key: "quiz", header: "Quiz", render: (r) => r.quiz.title },
     { key: "date", header: "Date", render: (r) => format(r.date) },
     {

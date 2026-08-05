@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { prisma } from "@/lib/db";
 import { ok, handleApiError } from "@/lib/api-response";
 import { getAuthUser, requireRole } from "@/lib/auth";
+import { countFaculty, countStudents } from "@/lib/legacy-db";
 
 export async function GET(req: NextRequest) {
   try {
@@ -14,8 +15,8 @@ export async function GET(req: NextRequest) {
     endOfDay.setHours(23, 59, 59, 999);
 
     const [totalFaculty, totalStudents, liveQuizCount, todayAttendance] = await Promise.all([
-      prisma.faculty.count({ where: { status: "active" } }),
-      prisma.student.count({ where: { status: "active" } }),
+      countFaculty(),
+      countStudents(),
       prisma.quiz.count({ where: { status: "live" } }),
       prisma.attendance.groupBy({
         by: ["status"],

@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { prisma } from "@/lib/db";
 import { ok, handleApiError } from "@/lib/api-response";
 import { getAuthUser, requireRole } from "@/lib/auth";
+import { getFacultyNamesByRolls } from "@/lib/legacy-db";
 
 export async function GET(req: NextRequest) {
   try {
@@ -14,12 +15,12 @@ export async function GET(req: NextRequest) {
       include: {
         course: { select: { id: true, name: true, code: true } },
         section: { select: { id: true, name: true } },
-        faculty: { select: { id: true, name: true } },
         building: { select: { id: true, name: true } },
         _count: { select: { allotments: true } },
       },
     });
 
+    const facultyNames = await getFacultyNamesByRolls(liveQuizzes.map((q) => q.facultyRoll));
     const now = Date.now();
 
     const items = await Promise.all(
@@ -38,7 +39,7 @@ export async function GET(req: NextRequest) {
           title: quiz.title,
           course: quiz.course,
           section: quiz.section,
-          faculty: quiz.faculty,
+          faculty: { roll: quiz.facultyRoll, name: facultyNames.get(quiz.facultyRoll) ?? quiz.facultyRoll },
           building: quiz.building,
           startTime: quiz.startTime,
           actualStartTime: quiz.actualStartTime,

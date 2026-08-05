@@ -4,7 +4,8 @@ export const quizCreateSchema = z
   .object({
     title: z.string().trim().min(3, "Title must be at least 3 characters"),
     courseId: z.coerce.number().int().positive("Select a course"),
-    sectionId: z.coerce.number().int().positive("Select a section"),
+    // TODO: section source pending confirmation - no legacy source yet, optional until then
+    sectionId: z.coerce.number().int().positive().optional(),
     buildingId: z.coerce.number().int().positive("Select a building"),
     startTime: z.coerce.date(),
     endTime: z.coerce.date(),
@@ -80,7 +81,9 @@ export const questionsBulkSchema = z.object({
 });
 
 export const allotSchema = z.object({
-  mode: z.enum(["section", "custom"]),
-  studentIds: z.array(z.number().int().positive()).optional(),
+  // "course": allot every student registered for the quiz's course (from the
+  // legacy per-batch registration tables). "custom": allot specific rolls.
+  mode: z.enum(["course", "custom"]),
+  studentRolls: z.array(z.string().trim().min(1)).optional(),
 });
 export type AllotInput = z.infer<typeof allotSchema>;

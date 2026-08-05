@@ -5,9 +5,9 @@ import { getAuthUser, requireRole } from "@/lib/auth";
 import { quizUpdateSchema } from "@/lib/validators/quiz";
 import { idParamSchema } from "@/lib/validators/common";
 
-async function loadOwnedQuiz(quizId: number, facultyId: number) {
+async function loadOwnedQuiz(quizId: number, facultyRoll: string) {
   const quiz = await prisma.quiz.findUnique({ where: { id: quizId } });
-  if (!quiz || quiz.facultyId !== facultyId) throw new ApiError(404, "Quiz not found");
+  if (!quiz || quiz.facultyRoll !== facultyRoll) throw new ApiError(404, "Quiz not found");
   return quiz;
 }
 
@@ -17,7 +17,7 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
     requireRole(user, "faculty");
 
     const { id } = idParamSchema.parse(params);
-    await loadOwnedQuiz(id, user.sub);
+    await loadOwnedQuiz(id, String(user.sub));
 
     const quiz = await prisma.quiz.findUnique({
       where: { id },
@@ -45,7 +45,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     requireRole(user, "faculty");
 
     const { id } = idParamSchema.parse(params);
-    const existing = await loadOwnedQuiz(id, user.sub);
+    const existing = await loadOwnedQuiz(id, String(user.sub));
 
     if (existing.status === "completed") {
       throw new ApiError(400, "A completed quiz cannot be edited");
@@ -66,7 +66,7 @@ export async function DELETE(req: NextRequest, { params }: { params: { id: strin
     requireRole(user, "faculty");
 
     const { id } = idParamSchema.parse(params);
-    const existing = await loadOwnedQuiz(id, user.sub);
+    const existing = await loadOwnedQuiz(id, String(user.sub));
 
     if (existing.status === "live") {
       throw new ApiError(400, "A live quiz cannot be deleted. Stop it first.");

@@ -27,7 +27,7 @@ import { Plus, Pencil, Trash2 } from "lucide-react";
 interface Department {
   id: number;
   name: string;
-  _count: { courses: number; faculties: number };
+  _count: { courses: number };
 }
 interface ListResponse<T> {
   items: T[];
@@ -97,7 +97,6 @@ export default function DepartmentsPage() {
   const columns: DataTableColumn<Department>[] = [
     { key: "name", header: "Name", render: (r) => <span className="font-medium">{r.name}</span> },
     { key: "courses", header: "Courses", render: (r) => r._count?.courses ?? 0 },
-    { key: "faculties", header: "Faculty", render: (r) => r._count?.faculties ?? 0 },
     {
       key: "actions",
       header: "",

@@ -6,7 +6,7 @@ import { ApiError } from "@/lib/api-response";
 export type UserRole = "admin" | "faculty" | "student";
 
 export interface AuthTokenPayload {
-  sub: number;
+  sub: number | string; // admin: numeric id; faculty/student: legacy roll string
   role: UserRole;
   email: string;
   name: string;
@@ -88,7 +88,7 @@ export function requireSuperAdmin(user: AuthTokenPayload): void {
 }
 
 export function tokenPayloadFromUser(user: {
-  id: number;
+  id: number | string;
   email: string;
   name: string;
   role?: string;

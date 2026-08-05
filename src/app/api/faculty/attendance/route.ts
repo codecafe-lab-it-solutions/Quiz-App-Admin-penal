@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { ok, handleApiError } from "@/lib/api-response";
 import { getAuthUser, requireRole } from "@/lib/auth";
 import { paginationMeta } from "@/lib/validators/common";
+import { getStudentNamesByRolls } from "@/lib/legacy-db";
 import { z } from "zod";
 
 const querySchema = z.object({
@@ -24,7 +25,7 @@ export async function GET(req: NextRequest) {
 
     const where = {
       quiz: {
-        facultyId: user.sub,
+        facultyRoll: String(user.sub),
         ...(sectionId ? { sectionId } : {}),
       },
       ...(courseId ? { courseId } : {}),
@@ -38,7 +39,6 @@ export async function GET(req: NextRequest) {
         take: pageSize,
         orderBy: { date: "desc" },
         include: {
-          student: { select: { id: true, name: true, rollNo: true } },
           course: { select: { id: true, name: true, code: true } },
           quiz: { select: { id: true, title: true, section: { select: { id: true, name: true } } } },
         },
@@ -46,7 +46,10 @@ export async function GET(req: NextRequest) {
       prisma.attendance.count({ where }),
     ]);
 
-    return ok({ items, meta: paginationMeta(total, page, pageSize) });
+    const names = await getStudentNamesByRolls(items.map((r) => r.studentRoll));
+    const itemsWithNames = items.map((r) => ({ ...r, studentName: names.get(r.studentRoll) ?? r.studentRoll }));
+
+    return ok({ items: itemsWithNames, meta: paginationMeta(total, page, pageSize) });
   } catch (error) {
     return handleApiError(error);
   }

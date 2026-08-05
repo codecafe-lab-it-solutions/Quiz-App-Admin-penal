@@ -16,6 +16,7 @@ import {
   Radio,
   FileBarChart,
   ShieldCheck,
+  CalendarClock,
 } from "lucide-react";
 
 interface NavItem {
@@ -67,7 +68,10 @@ const NAV_GROUPS: NavGroup[] = [
   },
   {
     title: "Settings",
-    items: [{ label: "Admin Users", href: "/admin/settings/admin-users", icon: ShieldCheck }],
+    items: [
+      { label: "Admin Users", href: "/admin/settings/admin-users", icon: ShieldCheck },
+      { label: "Semester Config", href: "/admin/settings/semester-config", icon: CalendarClock },
+    ],
   },
 ];
 

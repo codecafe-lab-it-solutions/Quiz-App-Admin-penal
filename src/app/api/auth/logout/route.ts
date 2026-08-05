@@ -15,12 +15,11 @@ export async function POST(req: NextRequest) {
 
     try {
       const decoded = verifyRefreshToken(refreshToken);
+      // Only admin sessions have a server-side refresh-token hash to clear -
+      // faculty/student identity lives in the read-only legacy tables, so
+      // their logout is purely a client-side cookie clear (relies on JWT expiry).
       if (decoded.role === "admin") {
-        await prisma.admin.update({ where: { id: decoded.sub }, data: { refreshTokenHash: null } });
-      } else if (decoded.role === "faculty") {
-        await prisma.faculty.update({ where: { id: decoded.sub }, data: { refreshTokenHash: null } });
-      } else {
-        await prisma.student.update({ where: { id: decoded.sub }, data: { refreshTokenHash: null } });
+        await prisma.admin.update({ where: { id: Number(decoded.sub) }, data: { refreshTokenHash: null } });
       }
     } catch {
       // token already invalid/expired - nothing to invalidate, still clear cookies below

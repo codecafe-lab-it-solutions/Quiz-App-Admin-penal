@@ -12,7 +12,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
 
     const { id: attemptId } = idParamSchema.parse(params);
     const attempt = await prisma.quizAttempt.findUnique({ where: { id: attemptId } });
-    if (!attempt || attempt.studentId !== user.sub) throw new ApiError(404, "Attempt not found");
+    if (!attempt || attempt.studentRoll !== String(user.sub)) throw new ApiError(404, "Attempt not found");
     if (attempt.status !== "in_progress") throw new ApiError(400, "This attempt has already been submitted");
 
     const body = answerSchema.parse(await req.json());
