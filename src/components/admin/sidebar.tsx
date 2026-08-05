@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useEffect, useRef } from "react";
 import { cn } from "@/lib/utils";
 import {
   LayoutDashboard,
@@ -83,9 +84,14 @@ interface SidebarProps {
 
 export function Sidebar({ mobileOpen, onClose }: SidebarProps) {
   const pathname = usePathname();
+  const navRef = useRef<HTMLElement>(null);
+
+  useEffect(() => {
+    navRef.current?.scrollTo({ top: 0 });
+  }, [pathname]);
 
   const nav = (
-    <nav className="flex-1 space-y-6 overflow-y-auto p-4">
+    <nav ref={navRef} className="flex-1 space-y-6 overflow-y-auto p-4">
       {NAV_GROUPS.map((group) => (
         <div key={group.title}>
           <p className="mb-2 px-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
