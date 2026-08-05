@@ -1,24 +1,28 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { verifyAccessToken } from "@/lib/auth";
-import { PortalComingSoon } from "@/components/portal-coming-soon";
+import { getStudentByRoll } from "@/lib/legacy-db";
+import { StudentDashboard } from "@/components/student/student-dashboard";
 
-export default function StudentPortalPage() {
+export default async function StudentPortalPage() {
   const token = cookies().get("accessToken")?.value;
 
-  let user: { name: string; email: string } | null = null;
+  let roll: string | null = null;
   if (token) {
     try {
       const payload = verifyAccessToken(token);
       if (payload.role === "student") {
-        user = { name: payload.name, email: payload.email };
+        roll = String(payload.sub);
       }
     } catch {
-      user = null;
+      roll = null;
     }
   }
 
-  if (!user) redirect("/login?redirect=/student");
+  if (!roll) redirect("/login?redirect=/student");
 
-  return <PortalComingSoon roleLabel="Student" name={user.name} email={user.email} />;
+  const student = await getStudentByRoll(roll);
+  if (!student) redirect("/login?redirect=/student");
+
+  return <StudentDashboard user={student} />;
 }

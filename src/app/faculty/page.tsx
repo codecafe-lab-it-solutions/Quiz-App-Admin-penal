@@ -1,24 +1,28 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { verifyAccessToken } from "@/lib/auth";
-import { PortalComingSoon } from "@/components/portal-coming-soon";
+import { getFacultyByRoll } from "@/lib/legacy-db";
+import { FacultyDashboard } from "@/components/faculty/faculty-dashboard";
 
-export default function FacultyPortalPage() {
+export default async function FacultyPortalPage() {
   const token = cookies().get("accessToken")?.value;
 
-  let user: { name: string; email: string } | null = null;
+  let roll: string | null = null;
   if (token) {
     try {
       const payload = verifyAccessToken(token);
       if (payload.role === "faculty") {
-        user = { name: payload.name, email: payload.email };
+        roll = String(payload.sub);
       }
     } catch {
-      user = null;
+      roll = null;
     }
   }
 
-  if (!user) redirect("/login?redirect=/faculty");
+  if (!roll) redirect("/login?redirect=/faculty");
 
-  return <PortalComingSoon roleLabel="Faculty" name={user.name} email={user.email} />;
+  const faculty = await getFacultyByRoll(roll);
+  if (!faculty) redirect("/login?redirect=/faculty");
+
+  return <FacultyDashboard user={faculty} />;
 }
