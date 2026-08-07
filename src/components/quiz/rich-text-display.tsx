@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import renderMathInElement from "katex/contrib/auto-render";
+import { renderKatexSafely } from "@/lib/katex-render";
 import { cn } from "@/lib/utils";
 
 interface RichTextDisplayProps {
@@ -9,17 +9,20 @@ interface RichTextDisplayProps {
   className?: string;
 }
 
-// Renders saved question/option/reference-answer HTML read-only, converting
-// any $...$ LaTeX segments to KaTeX markup in place. `html` is expected to
-// already be sanitized server-side (see sanitizeQuestionHtml) before storage.
+// Renders saved question/option/reference-answer HTML read-only, rendering
+// any `<span data-type="math-inline" data-latex="...">` equations with KaTeX
+// in place (see math-inline-extension.ts - the saved HTML never contains
+// pre-rendered KaTeX markup, only the compact source span). `html` is
+// expected to already be sanitized server-side before storage.
 export function RichTextDisplay({ html, className }: RichTextDisplayProps) {
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!ref.current) return;
-    renderMathInElement(ref.current, {
-      delimiters: [{ left: "$", right: "$", display: false }],
-      throwOnError: false,
+    const mathSpans = ref.current.querySelectorAll<HTMLElement>('span[data-type="math-inline"]');
+    mathSpans.forEach((span) => {
+      const latex = span.getAttribute("data-latex") ?? "";
+      span.innerHTML = renderKatexSafely(latex);
     });
   }, [html]);
 

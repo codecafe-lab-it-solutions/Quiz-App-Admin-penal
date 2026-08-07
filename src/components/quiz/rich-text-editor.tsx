@@ -6,6 +6,7 @@ import { useEditor, EditorContent, type Editor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import TextAlign from "@tiptap/extension-text-align";
 import Placeholder from "@tiptap/extension-placeholder";
+import { MathInline } from "@/components/quiz/math-inline-extension";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
@@ -90,6 +91,7 @@ export function RichTextEditor({ value, onChange, placeholder, minHeight = "110p
       StarterKit.configure({ heading: false }),
       TextAlign.configure({ types: ["paragraph"] }),
       Placeholder.configure({ placeholder: placeholder ?? "" }),
+      MathInline,
     ],
     content: value,
     editorProps: {
@@ -112,10 +114,12 @@ export function RichTextEditor({ value, onChange, placeholder, minHeight = "110p
 
   const insertEquation = () => {
     if (!equationLatex.trim()) return;
-    // Stored as plain-text $...$ delimiters (not pre-rendered markup) so the
-    // sanitizer only ever has to allow plain text - RichTextDisplay renders
-    // it with KaTeX's auto-render wherever the question is shown.
-    editor.chain().focus().insertContent(`$${equationLatex}$ `).run();
+    // Inserted as an atomic mathInline node - renders live via KaTeX right
+    // here in the editor (its NodeView), and serializes to a compact
+    // `<span data-type="math-inline" data-latex="...">` (no rendered markup
+    // in the saved HTML - RichTextDisplay re-renders it wherever the
+    // question is shown, see math-inline-extension.ts).
+    editor.chain().focus().insertMath(equationLatex).insertContent(" ").run();
     setEquationLatex("");
     setEquationOpen(false);
   };

@@ -6,20 +6,24 @@ import DOMPurify from "isomorphic-dompurify";
  * validators/quiz.ts) so every write path - the dialog, bulk import, a
  * future mobile client - is covered regardless of which UI produced the HTML.
  */
-// Equations are stored as plain $...$ LaTeX text (see RichTextEditor /
-// RichTextDisplay), never as pre-rendered markup, so the allow-list only
-// needs to cover Bold/Italic/alignment - no need to special-case KaTeX's
-// own (much larger) HTML/MathML/SVG output here.
+// Equations are stored as a compact `<span data-type="math-inline"
+// data-latex="...">` (see math-inline-extension.ts) - never as KaTeX's own
+// (much larger, harder-to-safely-allow-list) rendered HTML/MathML/SVG
+// output, which is only ever generated transiently client-side for display.
 export function sanitizeQuestionHtml(html: string): string {
   return DOMPurify.sanitize(html, {
-    ALLOWED_TAGS: ["p", "br", "strong", "em", "b", "i", "u"],
-    ALLOWED_ATTR: ["style"],
+    ALLOWED_TAGS: ["p", "br", "strong", "em", "b", "i", "u", "span"],
+    ALLOWED_ATTR: ["style", "data-type", "data-latex"],
   }).trim();
 }
 
-/** Strips tags for "is this rich-text field actually empty" checks (e.g. TipTap's empty doc serializes to `<p></p>`, not `""`). */
+/** Strips tags for "is this rich-text field actually empty" checks (e.g. TipTap's empty doc serializes to `<p></p>`, not `""`). Equation nodes count as content even though they carry no visible text. */
 export function stripHtml(html: string): string {
-  return html.replace(/<[^>]*>/g, "").replace(/&nbsp;/g, " ").trim();
+  return html
+    .replace(/<span[^>]*data-type="math-inline"[^>]*>.*?<\/span>/g, " ∫ ")
+    .replace(/<[^>]*>/g, "")
+    .replace(/&nbsp;/g, " ")
+    .trim();
 }
 
 const HTML_ESCAPES: Record<string, string> = {
