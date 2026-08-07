@@ -6,9 +6,10 @@ import { apiClient, ApiClientError } from "@/lib/api-client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { RichTextEditor } from "@/components/quiz/rich-text-editor";
+import { stripHtml } from "@/lib/sanitize-html";
 import {
   Dialog,
   DialogContent,
@@ -108,7 +109,7 @@ export function QuestionEditorDialog({
   };
 
   const handleSubmit = async () => {
-    if (!questionText.trim()) {
+    if (!stripHtml(questionText)) {
       toast.error("Question text is required");
       return;
     }
@@ -124,13 +125,13 @@ export function QuestionEditorDialog({
       payload = {
         id: editing?.id,
         questionType: "subjective",
-        questionText: questionText.trim(),
+        questionText,
         marks: marksNum,
         orderIndex: editing?.orderIndex ?? nextOrderIndex,
-        referenceAnswer: referenceAnswer.trim() || undefined,
+        referenceAnswer: stripHtml(referenceAnswer) ? referenceAnswer : undefined,
       };
     } else {
-      const filled = options.filter((o) => o.optionText.trim());
+      const filled = options.filter((o) => stripHtml(o.optionText));
       if (filled.length < 2) {
         toast.error("Provide at least two options");
         return;
@@ -147,11 +148,11 @@ export function QuestionEditorDialog({
       payload = {
         id: editing?.id,
         questionType: "mcq",
-        questionText: questionText.trim(),
+        questionText,
         marks: marksNum,
         negativeMarks: negNum,
         orderIndex: editing?.orderIndex ?? nextOrderIndex,
-        options: filled.map((o) => ({ optionText: o.optionText.trim(), isCorrect: o.isCorrect })),
+        options: filled.map((o) => ({ optionText: o.optionText, isCorrect: o.isCorrect })),
       };
     }
 
@@ -187,20 +188,18 @@ export function QuestionEditorDialog({
           </Tabs>
 
           <div className="space-y-1.5">
-            <Label htmlFor="questionText">Question</Label>
-            <Textarea
-              id="questionText"
+            <Label>Question</Label>
+            <RichTextEditor
               value={questionText}
-              onChange={(e) => setQuestionText(e.target.value)}
-              placeholder="Supports plain text and formulas/equations"
-              rows={3}
+              onChange={setQuestionText}
+              placeholder="Supports bold/italic, alignment, and $LaTeX$ equations"
             />
           </div>
 
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
               <Label htmlFor="marks">Marks</Label>
-              <Input id="marks" type="number" min={0} step="0.5" value={marks} onChange={(e) => setMarks(e.target.value)} />
+              <Input id="marks" type="number" min={1} step="1" value={marks} onChange={(e) => setMarks(e.target.value)} />
             </div>
             {type === "mcq" && (
               <div className="space-y-1.5">
@@ -209,7 +208,7 @@ export function QuestionEditorDialog({
                   id="negativeMarks"
                   type="number"
                   min={0}
-                  step="0.5"
+                  step="1"
                   value={negativeMarks}
                   onChange={(e) => setNegativeMarks(e.target.value)}
                 />
@@ -221,23 +220,28 @@ export function QuestionEditorDialog({
             <div className="space-y-2">
               <Label>Options (mark the correct one)</Label>
               {options.map((option, index) => (
-                <div key={index} className="flex items-center gap-2">
+                <div key={index} className="flex items-start gap-2">
                   <Checkbox
                     checked={option.isCorrect}
                     onCheckedChange={() => setCorrectOption(index)}
                     aria-label={`Mark option ${index + 1} correct`}
+                    className="mt-3"
                   />
-                  <Input
-                    value={option.optionText}
-                    onChange={(e) => updateOption(index, { optionText: e.target.value })}
-                    placeholder={`Option ${String.fromCharCode(65 + index)}`}
-                  />
+                  <div className="flex-1">
+                    <RichTextEditor
+                      value={option.optionText}
+                      onChange={(html) => updateOption(index, { optionText: html })}
+                      placeholder={`Option ${String.fromCharCode(65 + index)}`}
+                      minHeight="60px"
+                    />
+                  </div>
                   <Button
                     type="button"
                     variant="ghost"
                     size="icon"
                     disabled={options.length <= 2}
                     onClick={() => removeOption(index)}
+                    className="mt-1"
                   >
                     <Trash2 className="h-4 w-4 text-destructive" />
                   </Button>
@@ -252,13 +256,11 @@ export function QuestionEditorDialog({
             </div>
           ) : (
             <div className="space-y-1.5">
-              <Label htmlFor="referenceAnswer">Reference Answer (optional)</Label>
-              <Textarea
-                id="referenceAnswer"
+              <Label>Reference Answer (optional)</Label>
+              <RichTextEditor
                 value={referenceAnswer}
-                onChange={(e) => setReferenceAnswer(e.target.value)}
+                onChange={setReferenceAnswer}
                 placeholder="Grading guide for whoever grades this manually - leave blank if there's no single correct answer"
-                rows={3}
               />
             </div>
           )}

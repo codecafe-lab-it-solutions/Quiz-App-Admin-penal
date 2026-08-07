@@ -22,6 +22,7 @@ import {
 import { DataTable, DataTableColumn } from "@/components/admin/data-table";
 import { ConfirmDialog } from "@/components/admin/confirm-dialog";
 import { QuestionEditorDialog, QuestionRow } from "@/components/quiz/question-editor-dialog";
+import { RichTextDisplay } from "@/components/quiz/rich-text-display";
 import { Copy, Pencil, Play, Plus, Square, Trash2, Upload } from "lucide-react";
 
 interface QuizDetail {
@@ -224,7 +225,7 @@ export function QuizManagement({ quizId, role }: { quizId: number; role: "facult
     {
       key: "questionText",
       header: "Question",
-      render: (r) => <span className="line-clamp-2 max-w-md">{r.questionText}</span>,
+      render: (r) => <RichTextDisplay html={r.questionText} className="line-clamp-2 max-w-md" />,
     },
     {
       key: "type",
@@ -449,12 +450,14 @@ function SubjectiveAnswerRow({
         {answer.manuallyGraded && <Badge variant="success">Graded</Badge>}
         {answer.isSkipped && <Badge variant="secondary">Skipped</Badge>}
       </div>
-      <p className="mt-1 text-sm text-muted-foreground">{answer.questionText}</p>
+      <RichTextDisplay html={answer.questionText} className="mt-1 text-muted-foreground" />
       <p className="mt-2 whitespace-pre-wrap rounded bg-muted p-2 text-sm">
         {answer.writtenAnswer || <span className="italic text-muted-foreground">No answer written</span>}
       </p>
       {answer.referenceAnswer && (
-        <p className="mt-1 text-xs text-muted-foreground">Reference: {answer.referenceAnswer}</p>
+        <div className="mt-1 text-xs text-muted-foreground">
+          Reference: <RichTextDisplay html={answer.referenceAnswer} className="inline" />
+        </div>
       )}
       <div className="mt-2 flex items-center gap-2">
         <Input

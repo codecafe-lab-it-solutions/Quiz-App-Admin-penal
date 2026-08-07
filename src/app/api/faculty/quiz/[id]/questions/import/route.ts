@@ -4,6 +4,7 @@ import { ok, handleApiError, ApiError } from "@/lib/api-response";
 import { getAuthUser, requireRole } from "@/lib/auth";
 import { idParamSchema } from "@/lib/validators/common";
 import { parseWorkbookRows } from "@/lib/excel";
+import { escapePlainText } from "@/lib/sanitize-html";
 
 interface ImportRow {
   Type?: string;
@@ -78,8 +79,8 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       }
 
       const marks = Number(r.Marks);
-      if (!Number.isFinite(marks) || marks <= 0) {
-        results.push({ row: rowNum, question: questionText, status: "skipped", reason: "Marks must be a positive number" });
+      if (!Number.isInteger(marks) || marks <= 0) {
+        results.push({ row: rowNum, question: questionText, status: "skipped", reason: "Marks must be a positive whole number" });
         continue;
       }
 
@@ -90,14 +91,15 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       }
 
       if (rawType === "SUBJECTIVE") {
+        const referenceAnswerRaw = (r.ReferenceAnswer ?? "").trim();
         await prisma.question.create({
           data: {
             quizId,
-            questionText,
+            questionText: escapePlainText(questionText),
             questionType: "subjective",
             marks,
             negativeMarks: 0,
-            referenceAnswer: (r.ReferenceAnswer ?? "").trim() || null,
+            referenceAnswer: referenceAnswerRaw ? escapePlainText(referenceAnswerRaw) : null,
             orderIndex: nextOrder++,
           },
         });
@@ -121,22 +123,22 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       }
 
       const negativeMarks = Number(r.NegativeMarks ?? 0);
-      if (!Number.isFinite(negativeMarks) || negativeMarks < 0) {
-        results.push({ row: rowNum, question: questionText, status: "skipped", reason: "Negative marks must be zero or a positive number" });
+      if (!Number.isInteger(negativeMarks) || negativeMarks < 0) {
+        results.push({ row: rowNum, question: questionText, status: "skipped", reason: "Negative marks must be zero or a positive whole number" });
         continue;
       }
 
       await prisma.question.create({
         data: {
           quizId,
-          questionText,
+          questionText: escapePlainText(questionText),
           questionType: "mcq",
           marks,
           negativeMarks,
           orderIndex: nextOrder++,
           options: {
             create: options.map((optionText, idx) => ({
-              optionText,
+              optionText: escapePlainText(optionText),
               isCorrect: idx === ANSWER_TO_INDEX[answer],
             })),
           },

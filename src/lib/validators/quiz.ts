@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { sanitizeQuestionHtml } from "@/lib/sanitize-html";
 
 export const quizCreateSchema = z
   .object({
@@ -41,18 +42,26 @@ export const quizUpdateSchema = z.object({
 });
 export type QuizUpdateInput = z.infer<typeof quizUpdateSchema>;
 
+// questionText/optionText/referenceAnswer carry rich-text HTML from the
+// question editor (Bold/Italic/alignment + $...$ LaTeX equations) - sanitized
+// here so every write path (the dialog, bulk import, a future mobile client)
+// is covered regardless of which UI produced the HTML.
+const richText = (message: string) => z.string().trim().min(1, message).transform(sanitizeQuestionHtml);
+const richTextOptional = () => z.string().trim().transform(sanitizeQuestionHtml).optional();
+
 const mcqQuestionSchema = z.object({
   id: z.number().int().positive().optional(),
   questionType: z.literal("mcq"),
-  questionText: z.string().trim().min(1, "Question text is required"),
-  marks: z.coerce.number().min(0),
-  negativeMarks: z.coerce.number().min(0).default(0),
+  questionText: richText("Question text is required"),
+  // Question.marks/negativeMarks are Int columns - Prisma throws if given a float.
+  marks: z.coerce.number().int().min(0),
+  negativeMarks: z.coerce.number().int().min(0).default(0),
   orderIndex: z.coerce.number().int().min(0).default(0),
   options: z
     .array(
       z.object({
         id: z.number().int().positive().optional(),
-        optionText: z.string().trim().min(1, "Option text is required"),
+        optionText: richText("Option text is required"),
         isCorrect: z.boolean().default(false),
       })
     )
@@ -65,9 +74,9 @@ const mcqQuestionSchema = z.object({
 const formulaQuestionSchema = z.object({
   id: z.number().int().positive().optional(),
   questionType: z.literal("formula"),
-  questionText: z.string().trim().min(1, "Question text is required"),
-  marks: z.coerce.number().min(0),
-  negativeMarks: z.coerce.number().min(0).default(0),
+  questionText: richText("Question text is required"),
+  marks: z.coerce.number().int().min(0),
+  negativeMarks: z.coerce.number().int().min(0).default(0),
   orderIndex: z.coerce.number().int().min(0).default(0),
   correctValue: z.coerce.number(),
   tolerance: z.coerce.number().min(0),
@@ -79,10 +88,10 @@ const formulaQuestionSchema = z.object({
 const subjectiveQuestionSchema = z.object({
   id: z.number().int().positive().optional(),
   questionType: z.literal("subjective"),
-  questionText: z.string().trim().min(1, "Question text is required"),
-  marks: z.coerce.number().positive("Marks must be greater than 0"),
+  questionText: richText("Question text is required"),
+  marks: z.coerce.number().int().positive("Marks must be greater than 0"),
   orderIndex: z.coerce.number().int().min(0).default(0),
-  referenceAnswer: z.string().trim().optional(),
+  referenceAnswer: richTextOptional(),
 });
 
 export const questionSchema = z.discriminatedUnion("questionType", [
