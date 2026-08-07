@@ -32,12 +32,18 @@ const MathFieldInput = dynamic(
   { ssr: false, loading: () => <div className="h-12 animate-pulse rounded-md border bg-muted/30" /> }
 );
 
-// Any element mathlive renders outside this component's own DOM (its virtual
-// on-screen keyboard is portaled to document.body) - clicks there must not
-// count as "outside" the equation Popover/Dialog they were opened from.
+// Any element mathlive renders outside this component's own DOM - its virtual
+// on-screen keyboard AND its symbol/context menu (the "Insert" panel with
+// derivatives, matrices, etc.) are both portaled straight to document.body,
+// wrapped in an unstyled `[role="presentation"]` scrim - clicks there must
+// not count as "outside" the equation Popover/Dialog they were opened from,
+// or Radix closes the popover before mathlive can register the click as a
+// menu selection (symbol never gets inserted, Insert button stays disabled).
 export function isMathliveElement(target: EventTarget | null): boolean {
   if (!(target instanceof Element)) return false;
-  return !!target.closest('.ML__keyboard, [id^="mathlive-"], math-field');
+  return !!target.closest(
+    '.ML__keyboard, [id^="mathlive-"], math-field, .ui-menu-container, [role="menu"], [role="menuitem"], [role="presentation"]'
+  );
 }
 
 function ToolbarButton({
