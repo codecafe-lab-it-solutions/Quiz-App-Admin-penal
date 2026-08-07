@@ -99,14 +99,15 @@ async function ensureFacultyCourseMapping(data: { sem: string; subList: string; 
 
 // isr_reg_<batch>_tbl is a dynamic, per-batch table (see BatchTableRegistry /
 // src/lib/legacy-db.ts) - not a Prisma model, so it's created with raw SQL.
-// Column names (`roll`, `sub_code`) match the same assumption legacy-db.ts
-// makes everywhere else it touches this table.
+// Column names (`stu_roll`, `sub_code`, `sub_list`) match the confirmed
+// real legacy schema legacy-db.ts reads/writes everywhere it touches this table.
 async function ensureBatchRegistrationTable(batchName: string, tableName: string) {
   await prisma.$executeRawUnsafe(`
     CREATE TABLE IF NOT EXISTS \`${tableName}\` (
       id INT AUTO_INCREMENT PRIMARY KEY,
-      roll VARCHAR(50) NOT NULL,
-      sub_code VARCHAR(50) NOT NULL
+      stu_roll VARCHAR(50) NOT NULL,
+      sub_code VARCHAR(50) NOT NULL,
+      sub_list VARCHAR(20) NOT NULL
     )
   `);
   await prisma.batchTableRegistry.upsert({
@@ -116,14 +117,20 @@ async function ensureBatchRegistrationTable(batchName: string, tableName: string
   });
 }
 
-async function ensureStudentCourseRegistration(tableName: string, roll: string, subCode: string) {
+async function ensureStudentCourseRegistration(tableName: string, roll: string, subCode: string, subList: string) {
   const existing = await prisma.$queryRawUnsafe<{ cnt: bigint }[]>(
-    `SELECT COUNT(*) AS cnt FROM \`${tableName}\` WHERE \`roll\` = ? AND \`sub_code\` = ?`,
+    `SELECT COUNT(*) AS cnt FROM \`${tableName}\` WHERE \`stu_roll\` = ? AND \`sub_code\` = ? AND \`sub_list\` = ?`,
     roll,
-    subCode
+    subCode,
+    subList
   );
   if (Number(existing[0]?.cnt ?? 0) > 0) return;
-  await prisma.$executeRawUnsafe(`INSERT INTO \`${tableName}\` (\`roll\`, \`sub_code\`) VALUES (?, ?)`, roll, subCode);
+  await prisma.$executeRawUnsafe(
+    `INSERT INTO \`${tableName}\` (\`stu_roll\`, \`sub_code\`, \`sub_list\`) VALUES (?, ?, ?)`,
+    roll,
+    subCode,
+    subList
+  );
 }
 
 // --- Demo quiz (populates Attendance report / Dashboard stats) -------------
@@ -263,11 +270,11 @@ async function main() {
 
   const batchTable = "isr_reg_2025_tbl";
   await ensureBatchRegistrationTable("2025", batchTable);
-  await ensureStudentCourseRegistration(batchTable, "STU2025001", "CS201");
-  await ensureStudentCourseRegistration(batchTable, "STU2025002", "CS201");
-  await ensureStudentCourseRegistration(batchTable, "STU2025003", "CS301");
-  await ensureStudentCourseRegistration(batchTable, "STU2025004", "EC201");
-  await ensureStudentCourseRegistration(batchTable, "STU2025005", "ME201");
+  await ensureStudentCourseRegistration(batchTable, "STU2025001", "CS201", currentSubList);
+  await ensureStudentCourseRegistration(batchTable, "STU2025002", "CS201", currentSubList);
+  await ensureStudentCourseRegistration(batchTable, "STU2025003", "CS301", currentSubList);
+  await ensureStudentCourseRegistration(batchTable, "STU2025004", "EC201", currentSubList);
+  await ensureStudentCourseRegistration(batchTable, "STU2025005", "ME201", currentSubList);
 
   console.log("Seeding a demo completed quiz (attendance + results)...");
   await ensureDemoQuiz({ courseId: cs201.id, sectionId: cs201SectionA.id, facultyRoll: "FAC2025001", buildingId: mainBlock.id });

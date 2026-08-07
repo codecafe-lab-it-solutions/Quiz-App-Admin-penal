@@ -6,6 +6,7 @@ import { useEditor, EditorContent, type Editor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import TextAlign from "@tiptap/extension-text-align";
 import Placeholder from "@tiptap/extension-placeholder";
+import { toast } from "sonner";
 import { MathInline } from "@/components/quiz/math-inline-extension";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -114,6 +115,10 @@ export function RichTextEditor({ value, onChange, placeholder, minHeight = "110p
 
   const insertEquation = () => {
     if (!equationLatex.trim()) return;
+    if (/\\placeholder\s*\{/.test(equationLatex)) {
+      toast.error("Fill in every blank in the equation (the small boxes) before inserting it.");
+      return;
+    }
     // Inserted as an atomic mathInline node - renders live via KaTeX right
     // here in the editor (its NodeView), and serializes to a compact
     // `<span data-type="math-inline" data-latex="...">` (no rendered markup
@@ -202,7 +207,17 @@ export function RichTextEditor({ value, onChange, placeholder, minHeight = "110p
               keyboard icon for symbols, fractions, integrals, Greek letters and more.
             </p>
             <MathFieldInput value={equationLatex} onChange={setEquationLatex} />
-            <Button type="button" size="sm" onClick={insertEquation} disabled={!equationLatex.trim()}>
+            {/\\placeholder\s*\{/.test(equationLatex) && (
+              <p className="text-xs text-warning-foreground">
+                Fill in the blanks (the small boxes) in the template before inserting.
+              </p>
+            )}
+            <Button
+              type="button"
+              size="sm"
+              onClick={insertEquation}
+              disabled={!equationLatex.trim() || /\\placeholder\s*\{/.test(equationLatex)}
+            >
               Insert
             </Button>
           </PopoverContent>
