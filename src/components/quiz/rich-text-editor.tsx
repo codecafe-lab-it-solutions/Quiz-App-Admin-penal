@@ -1,13 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import dynamic from "next/dynamic";
 import { useEditor, EditorContent, type Editor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import TextAlign from "@tiptap/extension-text-align";
 import Placeholder from "@tiptap/extension-placeholder";
-import katex from "katex";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 import {
@@ -22,12 +21,21 @@ import {
   Code2,
 } from "lucide-react";
 
-function renderKatexSafely(latex: string): string {
-  try {
-    return katex.renderToString(latex, { throwOnError: false, output: "html" });
-  } catch {
-    return `<span class="text-destructive text-xs">Invalid equation</span>`;
-  }
+// MathLive touches `document`/`customElements` at import time, so it's loaded
+// client-only. ssr:false is required here (a bare dynamic import inside
+// useEffect isn't enough for the *component* itself, since MathFieldInput's
+// own module graph must never be evaluated during the server render pass).
+const MathFieldInput = dynamic(
+  () => import("@/components/quiz/math-field-input").then((m) => m.MathFieldInput),
+  { ssr: false, loading: () => <div className="h-12 animate-pulse rounded-md border bg-muted/30" /> }
+);
+
+// Any element mathlive renders outside this component's own DOM (its virtual
+// on-screen keyboard is portaled to document.body) - clicks there must not
+// count as "outside" the equation Popover/Dialog they were opened from.
+export function isMathliveElement(target: EventTarget | null): boolean {
+  if (!(target instanceof Element)) return false;
+  return !!target.closest('.ML__keyboard, [id^="mathlive-"], math-field');
 }
 
 function ToolbarButton({
@@ -112,6 +120,11 @@ export function RichTextEditor({ value, onChange, placeholder, minHeight = "110p
     setEquationOpen(false);
   };
 
+  const closeEquationPopover = (open: boolean) => {
+    setEquationOpen(open);
+    if (!open) setEquationLatex("");
+  };
+
   const toggleSource = () => {
     if (sourceMode) {
       editor.commands.setContent(sourceHtml || "");
@@ -165,33 +178,27 @@ export function RichTextEditor({ value, onChange, placeholder, minHeight = "110p
           disabled={sourceMode}
         />
         <div className="mx-1 h-5 w-px bg-border" />
-        <Popover open={equationOpen} onOpenChange={setEquationOpen}>
+        <Popover open={equationOpen} onOpenChange={closeEquationPopover}>
           <PopoverTrigger asChild>
             <span>
               <ToolbarButton onClick={() => setEquationOpen(true)} icon={Sigma} label="Equation" disabled={sourceMode} />
             </span>
           </PopoverTrigger>
-          <PopoverContent className="w-80 space-y-2">
-            <p className="text-xs font-medium text-muted-foreground">Insert equation (LaTeX)</p>
-            <Input
-              autoFocus
-              value={equationLatex}
-              onChange={(e) => setEquationLatex(e.target.value)}
-              placeholder={String.raw`e.g. x = \frac{-b \pm \sqrt{b^2-4ac}}{2a}`}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  e.preventDefault();
-                  insertEquation();
-                }
-              }}
-            />
-            {equationLatex.trim() && (
-              <div
-                className="overflow-x-auto rounded border bg-muted/30 p-2"
-                dangerouslySetInnerHTML={{ __html: renderKatexSafely(equationLatex) }}
-              />
-            )}
-            <Button type="button" size="sm" onClick={insertEquation}>
+          <PopoverContent
+            className="w-[26rem] space-y-2"
+            onPointerDownOutside={(e) => {
+              if (isMathliveElement(e.target)) e.preventDefault();
+            }}
+            onInteractOutside={(e) => {
+              if (isMathliveElement(e.target)) e.preventDefault();
+            }}
+          >
+            <p className="text-xs font-medium text-muted-foreground">
+              Insert an equation - type naturally (e.g. &quot;int&quot;, &quot;alpha&quot;, &quot;sqrt&quot;) or click the
+              keyboard icon for symbols, fractions, integrals, Greek letters and more.
+            </p>
+            <MathFieldInput value={equationLatex} onChange={setEquationLatex} />
+            <Button type="button" size="sm" onClick={insertEquation} disabled={!equationLatex.trim()}>
               Insert
             </Button>
           </PopoverContent>

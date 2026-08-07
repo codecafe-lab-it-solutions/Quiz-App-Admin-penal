@@ -1,6 +1,5 @@
 "use client";
 
-import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -13,15 +12,17 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { ChangePasswordDialog } from "@/components/admin/change-password-dialog";
-import { GraduationCap, KeyRound, LogOut, Menu, User } from "lucide-react";
+import { GraduationCap, LogOut, Menu, User } from "lucide-react";
 import { apiClient } from "@/lib/api-client";
 
-interface TopbarProps {
+interface PortalTopbarProps {
   name: string;
   email: string;
-  role: string;
+  roleLabel: string;
+  brandLines: [string, string];
   onMenuClick: () => void;
+  /** Extra dropdown items rendered above "Log out" (e.g. admin's "Change password"). */
+  extraMenuItems?: React.ReactNode;
 }
 
 function initials(name: string) {
@@ -33,9 +34,11 @@ function initials(name: string) {
     .toUpperCase();
 }
 
-export function Topbar({ name, email, role, onMenuClick }: TopbarProps) {
+// Shared top bar for the Admin, Faculty and Student portals - same layout and
+// behavior everywhere, only the brand text/role label and (for admin) the
+// change-password menu item differ per portal.
+export function PortalTopbar({ name, email, roleLabel, brandLines, onMenuClick, extraMenuItems }: PortalTopbarProps) {
   const router = useRouter();
-  const [changePasswordOpen, setChangePasswordOpen] = useState(false);
 
   const handleLogout = async () => {
     try {
@@ -51,13 +54,7 @@ export function Topbar({ name, email, role, onMenuClick }: TopbarProps) {
 
   return (
     <header className="flex h-16 shrink-0 items-center gap-3 border-b bg-card px-4 lg:px-6">
-      <Button
-        variant="ghost"
-        size="icon"
-        className="lg:hidden"
-        onClick={onMenuClick}
-        aria-label="Open menu"
-      >
+      <Button variant="ghost" size="icon" className="lg:hidden" onClick={onMenuClick} aria-label="Open menu">
         <Menu className="h-5 w-5" />
       </Button>
 
@@ -66,9 +63,9 @@ export function Topbar({ name, email, role, onMenuClick }: TopbarProps) {
           <GraduationCap className="h-4 w-4" />
         </div>
         <span className="hidden text-sm font-semibold leading-tight sm:block">
-          Quiz &amp; Attendance
+          {brandLines[0]}
           <br />
-          Admin Panel
+          {brandLines[1]}
         </span>
       </div>
 
@@ -78,13 +75,11 @@ export function Topbar({ name, email, role, onMenuClick }: TopbarProps) {
         <DropdownMenuTrigger asChild>
           <Button variant="ghost" className="flex items-center gap-2 px-2">
             <Avatar className="h-8 w-8">
-              <AvatarFallback className="bg-primary text-primary-foreground text-xs">
-                {initials(name)}
-              </AvatarFallback>
+              <AvatarFallback className="bg-primary text-primary-foreground text-xs">{initials(name)}</AvatarFallback>
             </Avatar>
             <div className="hidden text-left sm:block">
               <p className="text-sm font-medium leading-tight">{name}</p>
-              <p className="text-xs capitalize leading-tight text-muted-foreground">{role.replace("_", " ")}</p>
+              <p className="text-xs capitalize leading-tight text-muted-foreground">{roleLabel}</p>
             </div>
           </Button>
         </DropdownMenuTrigger>
@@ -99,18 +94,13 @@ export function Topbar({ name, email, role, onMenuClick }: TopbarProps) {
             </div>
           </DropdownMenuLabel>
           <DropdownMenuSeparator />
-          <DropdownMenuItem onClick={() => setChangePasswordOpen(true)}>
-            <KeyRound className="mr-2 h-4 w-4" />
-            Change password
-          </DropdownMenuItem>
+          {extraMenuItems}
           <DropdownMenuItem onClick={handleLogout} className="text-destructive focus:text-destructive">
             <LogOut className="mr-2 h-4 w-4" />
             Log out
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
-
-      <ChangePasswordDialog open={changePasswordOpen} onOpenChange={setChangePasswordOpen} />
     </header>
   );
 }

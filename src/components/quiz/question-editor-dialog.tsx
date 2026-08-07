@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { RichTextEditor } from "@/components/quiz/rich-text-editor";
+import { RichTextEditor, isMathliveElement } from "@/components/quiz/rich-text-editor";
 import { stripHtml } from "@/lib/sanitize-html";
 import {
   Dialog,
@@ -171,7 +171,15 @@ export function QuestionEditorDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-xl">
+      <DialogContent
+        className="max-w-xl"
+        onPointerDownOutside={(e) => {
+          if (isMathliveElement(e.target)) e.preventDefault();
+        }}
+        onInteractOutside={(e) => {
+          if (isMathliveElement(e.target)) e.preventDefault();
+        }}
+      >
         <DialogHeader>
           <DialogTitle>{editing ? "Edit Question" : "Add Question"}</DialogTitle>
           <DialogDescription>

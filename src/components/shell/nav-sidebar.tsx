@@ -4,112 +4,53 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef } from "react";
 import { cn } from "@/lib/utils";
-import {
-  LayoutDashboard,
-  Users,
-  GraduationCap,
-  Link2,
-  Building2,
-  BookOpen,
-  CalendarRange,
-  LayoutGrid,
-  MapPin,
-  Radio,
-  FileBarChart,
-  ShieldCheck,
-  CalendarClock,
-  ClipboardList,
-  X,
-} from "lucide-react";
+import { X } from "lucide-react";
 
-interface NavItem {
+export interface NavItem {
   label: string;
   href: string;
   icon: React.ComponentType<{ className?: string }>;
+  /** Only this exact path counts as active - use for a landing page that would otherwise also match every sub-route (e.g. "/faculty" vs "/faculty/quizzes/new"). */
+  exact?: boolean;
 }
 
-interface NavGroup {
+export interface NavGroup {
   title: string;
   items: NavItem[];
 }
 
-const NAV_GROUPS: NavGroup[] = [
-  {
-    title: "Overview",
-    items: [{ label: "Dashboard", href: "/admin/dashboard", icon: LayoutDashboard }],
-  },
-  {
-    title: "People",
-    items: [
-      { label: "Faculty", href: "/admin/faculty", icon: GraduationCap },
-      { label: "Students", href: "/admin/students", icon: Users },
-    ],
-  },
-  {
-    title: "Tests",
-    items: [{ label: "Tests", href: "/admin/tests", icon: ClipboardList }],
-  },
-  {
-    title: "Mapping",
-    items: [
-      { label: "Faculty ↔ Course/Section", href: "/admin/mapping/faculty-course-section", icon: Link2 },
-      { label: "Student ↔ Course/Section", href: "/admin/mapping/student-course-section", icon: Link2 },
-    ],
-  },
-  {
-    title: "Master Data",
-    items: [
-      { label: "Departments", href: "/admin/master-data/departments", icon: Building2 },
-      { label: "Courses", href: "/admin/master-data/courses", icon: BookOpen },
-      { label: "Sessions", href: "/admin/master-data/sessions", icon: CalendarRange },
-      { label: "Sections", href: "/admin/master-data/sections", icon: LayoutGrid },
-      { label: "Buildings", href: "/admin/master-data/buildings", icon: MapPin },
-    ],
-  },
-  {
-    title: "Reports",
-    items: [
-      { label: "Live Tracking", href: "/admin/reports/live-tracking", icon: Radio },
-      { label: "Attendance", href: "/admin/reports/attendance", icon: FileBarChart },
-    ],
-  },
-  {
-    title: "Settings",
-    items: [
-      { label: "Admin Users", href: "/admin/settings/admin-users", icon: ShieldCheck },
-      { label: "Semester Config", href: "/admin/settings/semester-config", icon: CalendarClock },
-    ],
-  },
-];
-
-interface SidebarProps {
+interface NavSidebarProps {
+  navGroups: NavGroup[];
   mobileOpen: boolean;
   onClose: () => void;
 }
 
-export function Sidebar({ mobileOpen, onClose }: SidebarProps) {
+// Shared left-nav shell used by the Admin, Faculty and Student portals - same
+// look everywhere, each portal just supplies its own `navGroups`. What a user
+// can reach is still enforced server-side (middleware + role guards on every
+// API route); this only decides what's *shown* to them.
+export function NavSidebar({ navGroups, mobileOpen, onClose }: NavSidebarProps) {
   const pathname = usePathname();
   const navRef = useRef<HTMLElement>(null);
   const activeLinkRef = useRef<HTMLAnchorElement>(null);
 
   useEffect(() => {
-    // Only nudges the scroll position when the active item isn't already
-    // visible (e.g. a deep link, or a fresh page load) - if it's already in
-    // view (the common case: user scrolled the nav themselves and clicked
-    // something visible), this is a no-op and the scroll position is left alone.
     activeLinkRef.current?.scrollIntoView({ block: "nearest" });
   }, [pathname]);
 
+  const isActive = (item: NavItem) =>
+    item.exact ? pathname === item.href : pathname === item.href || pathname?.startsWith(item.href + "/");
+
   const nav = (
     <nav ref={navRef} className="flex-1 space-y-6 overflow-y-auto p-4">
-      {NAV_GROUPS.map((group) => (
+      {navGroups.map((group) => (
         <div key={group.title}>
           <p className="mb-2 px-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
             {group.title}
           </p>
           <div className="space-y-1">
             {group.items.map((item) => {
-              const active = pathname === item.href || pathname?.startsWith(item.href + "/");
+              const active = isActive(item);
               const Icon = item.icon;
               return (
                 <Link
@@ -137,7 +78,6 @@ export function Sidebar({ mobileOpen, onClose }: SidebarProps) {
 
   return (
     <>
-      {/* Mobile overlay */}
       {mobileOpen && (
         <div
           className="fixed inset-0 z-40 bg-black/50 lg:hidden"

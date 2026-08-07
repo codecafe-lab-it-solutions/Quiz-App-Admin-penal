@@ -1,8 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import { Sidebar } from "@/components/admin/sidebar";
-import { Topbar } from "@/components/admin/topbar";
+import { PortalShell } from "@/components/shell/portal-shell";
+import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
+import { ChangePasswordDialog } from "@/components/admin/change-password-dialog";
+import { ADMIN_NAV_GROUPS } from "@/components/admin/admin-nav";
+import { KeyRound } from "lucide-react";
 
 interface AdminShellProps {
   name: string;
@@ -12,15 +15,26 @@ interface AdminShellProps {
 }
 
 export function AdminShell({ name, email, role, children }: AdminShellProps) {
-  const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const [changePasswordOpen, setChangePasswordOpen] = useState(false);
 
   return (
-    <div className="flex h-screen w-screen flex-col overflow-hidden">
-      <Topbar name={name} email={email} role={role} onMenuClick={() => setMobileNavOpen(true)} />
-      <div className="flex flex-1 overflow-hidden">
-        <Sidebar mobileOpen={mobileNavOpen} onClose={() => setMobileNavOpen(false)} />
-        <main className="flex-1 overflow-y-auto bg-muted/20 p-4 md:p-6">{children}</main>
-      </div>
-    </div>
+    <>
+      <PortalShell
+        name={name}
+        email={email}
+        roleLabel={role.replace("_", " ")}
+        brandLines={["Quiz & Attendance", "Admin Panel"]}
+        navGroups={ADMIN_NAV_GROUPS}
+        extraMenuItems={
+          <DropdownMenuItem onClick={() => setChangePasswordOpen(true)}>
+            <KeyRound className="mr-2 h-4 w-4" />
+            Change password
+          </DropdownMenuItem>
+        }
+      >
+        {children}
+      </PortalShell>
+      <ChangePasswordDialog open={changePasswordOpen} onOpenChange={setChangePasswordOpen} />
+    </>
   );
 }

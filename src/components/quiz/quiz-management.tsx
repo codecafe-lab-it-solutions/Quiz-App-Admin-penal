@@ -72,7 +72,7 @@ const fetcher = <T,>(url: string) => apiClient.get<T>(url);
 export function QuizManagement({ quizId, role }: { quizId: number; role: "faculty" | "admin" }) {
   const router = useRouter();
   const basePath = role === "faculty" ? "/faculty/quizzes" : "/admin/tests";
-  const listPath = role === "faculty" ? "/faculty" : "/admin/tests";
+  const listPath = role === "faculty" ? "/faculty/quizzes" : "/admin/tests";
   const [questionDialogOpen, setQuestionDialogOpen] = useState(false);
   const [editingQuestion, setEditingQuestion] = useState<QuestionRow | null>(null);
   const [allotMode, setAllotMode] = useState<"course" | "custom">("course");

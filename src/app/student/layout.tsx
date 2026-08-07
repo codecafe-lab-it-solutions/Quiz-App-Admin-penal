@@ -1,16 +1,16 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { verifyAccessToken } from "@/lib/auth";
-import { FacultyShell } from "@/components/faculty/faculty-shell";
+import { StudentShell } from "@/components/student/student-shell";
 
-export default function FacultyLayout({ children }: { children: React.ReactNode }) {
+export default function StudentLayout({ children }: { children: React.ReactNode }) {
   const token = cookies().get("accessToken")?.value;
 
   let user: { name: string; email: string } | null = null;
   if (token) {
     try {
       const payload = verifyAccessToken(token);
-      if (payload.role === "faculty") {
+      if (payload.role === "student") {
         user = { name: payload.name, email: payload.email };
       }
     } catch {
@@ -18,11 +18,11 @@ export default function FacultyLayout({ children }: { children: React.ReactNode 
     }
   }
 
-  if (!user) redirect("/login?redirect=/faculty");
+  if (!user) redirect("/login?redirect=/student");
 
   return (
-    <FacultyShell name={user.name} email={user.email}>
+    <StudentShell name={user.name} email={user.email}>
       {children}
-    </FacultyShell>
+    </StudentShell>
   );
 }
