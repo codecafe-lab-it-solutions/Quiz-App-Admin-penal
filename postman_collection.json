@@ -178,7 +178,8 @@
         { "name": "Save Answer (Subjective)", "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "url": "{{baseUrl}}/api/student/attempt/{{attemptId}}/answer", "body": { "mode": "raw", "raw": "{\n  \"questionId\": 2,\n  \"writtenAnswer\": \"Force equals mass times acceleration.\",\n  \"isSkipped\": false\n}" } } },
         { "name": "Submit Attempt", "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "url": "{{baseUrl}}/api/student/attempt/{{attemptId}}/submit", "body": { "mode": "raw", "raw": "{\n  \"autoSubmitted\": false\n}" } } },
         { "name": "Anti-Cheat Event", "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "url": "{{baseUrl}}/api/student/attempt/{{attemptId}}/anti-cheat-event", "body": { "mode": "raw", "raw": "{\n  \"eventType\": \"screen_switch\"\n}" } } },
-        { "name": "My Results", "request": { "method": "GET", "url": "{{baseUrl}}/api/student/results" } }
+        { "name": "My Results", "request": { "method": "GET", "url": "{{baseUrl}}/api/student/results" } },
+        { "name": "Get Attempt Result Detail (correct answers, once published)", "request": { "method": "GET", "url": "{{baseUrl}}/api/student/attempt/{{attemptId}}/result" } }
       ]
     }
   ]

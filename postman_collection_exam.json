@@ -1,0 +1,281 @@
+{
+  "info": {
+    "name": "Quiz Exam App API (Faculty + Student)",
+    "description": "Trimmed-down REST API collection for a standalone examination app: faculty login + their quiz list, and the complete student exam flow (list allotted quizzes, geofence check, start attempt, fetch questions, save answers, anti-cheat, submit, view published results). Set `baseUrl` to your running server. Login requests auto-save accessToken/refreshToken; Start Attempt auto-saves attemptId - run requests top to bottom inside a folder and you shouldn't need to copy anything by hand.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:3000" },
+    { "key": "accessToken", "value": "" },
+    { "key": "refreshToken", "value": "" },
+    { "key": "quizId", "value": "1" },
+    { "key": "attemptId", "value": "1" },
+    { "key": "questionId", "value": "1" },
+    { "key": "optionId", "value": "1" },
+    { "key": "latitude", "value": "28.6139" },
+    { "key": "longitude", "value": "77.2090" }
+  ],
+  "auth": {
+    "type": "bearer",
+    "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }]
+  },
+  "item": [
+    {
+      "name": "1. Auth",
+      "item": [
+        {
+          "name": "Faculty Login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const data = pm.response.json();",
+                  "if (data && data.data && data.data.accessToken) {",
+                  "  pm.collectionVariables.set('accessToken', data.data.accessToken);",
+                  "  pm.collectionVariables.set('refreshToken', data.data.refreshToken);",
+                  "  console.log('Saved faculty accessToken/refreshToken');",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "auth": { "type": "noauth" },
+            "url": "{{baseUrl}}/api/auth/faculty/login",
+            "body": { "mode": "raw", "raw": "{\n  \"email\": \"faculty@example.edu\",\n  \"password\": \"password\"\n}" }
+          }
+        },
+        {
+          "name": "Student Login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const data = pm.response.json();",
+                  "if (data && data.data && data.data.accessToken) {",
+                  "  pm.collectionVariables.set('accessToken', data.data.accessToken);",
+                  "  pm.collectionVariables.set('refreshToken', data.data.refreshToken);",
+                  "  console.log('Saved student accessToken/refreshToken');",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "auth": { "type": "noauth" },
+            "url": "{{baseUrl}}/api/auth/student/login",
+            "body": { "mode": "raw", "raw": "{\n  \"email\": \"student@example.edu\",\n  \"password\": \"password\"\n}" }
+          }
+        },
+        {
+          "name": "Refresh Token",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const data = pm.response.json();",
+                  "if (data && data.data && data.data.accessToken) {",
+                  "  pm.collectionVariables.set('accessToken', data.data.accessToken);",
+                  "  pm.collectionVariables.set('refreshToken', data.data.refreshToken);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "auth": { "type": "noauth" },
+            "url": "{{baseUrl}}/api/auth/refresh",
+            "body": { "mode": "raw", "raw": "{\n  \"refreshToken\": \"{{refreshToken}}\"\n}" }
+          }
+        },
+        {
+          "name": "Logout",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "auth": { "type": "noauth" },
+            "url": "{{baseUrl}}/api/auth/logout",
+            "body": { "mode": "raw", "raw": "{\n  \"refreshToken\": \"{{refreshToken}}\"\n}" }
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. Faculty",
+      "item": [
+        {
+          "name": "List My Quizzes",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/faculty/quizzes?page=1&pageSize=10"
+          }
+        },
+        {
+          "name": "Get Quiz Details",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/faculty/quiz/{{quizId}}"
+          }
+        },
+        {
+          "name": "Get Attempts (who has taken it)",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/faculty/quiz/{{quizId}}/attempts"
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. Student - Exam Flow",
+      "item": [
+        {
+          "name": "1. List My Quizzes",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/student/quizzes?page=1&pageSize=10",
+            "description": "Quizzes allotted to the logged-in student. Copy an `id` from a quiz with status \"live\" into the `quizId` collection variable before starting the exam flow below."
+          }
+        },
+        {
+          "name": "2. Geofence Check (optional pre-check)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/api/student/quiz/{{quizId}}/geofence-check",
+            "body": { "mode": "raw", "raw": "{\n  \"latitude\": {{latitude}},\n  \"longitude\": {{longitude}}\n}" },
+            "description": "Lets the app warn the student before they commit to starting - the server re-checks location again on Start Attempt regardless."
+          }
+        },
+        {
+          "name": "3. Start Attempt",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const data = pm.response.json();",
+                  "if (data && data.data && data.data.attemptId) {",
+                  "  pm.collectionVariables.set('attemptId', data.data.attemptId);",
+                  "  console.log('Saved attemptId =', data.data.attemptId);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/api/student/quiz/{{quizId}}/start-attempt",
+            "body": { "mode": "raw", "raw": "{\n  \"latitude\": {{latitude}},\n  \"longitude\": {{longitude}}\n}" },
+            "description": "Fails with 403 if outside the quiz building's geofence radius, 400 if the quiz isn't live, 409 if already attempted. On success, returns attemptId, durationMinutes and totalQuestions - start a countdown timer client-side from durationMinutes."
+          }
+        },
+        {
+          "name": "4. Get Attempt Questions",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/student/attempt/{{attemptId}}/questions",
+            "description": "Returns questions in the randomized/fixed order fixed at Start Attempt, with MCQ options but never the correct answer or reference answer. Also returns myAnswer if this question was already saved (so a resumed/refreshed exam restores state)."
+          }
+        },
+        {
+          "name": "5a. Save Answer (Objective / MCQ)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/api/student/attempt/{{attemptId}}/answer",
+            "body": { "mode": "raw", "raw": "{\n  \"questionId\": {{questionId}},\n  \"selectedOptionId\": {{optionId}},\n  \"isSkipped\": false\n}" },
+            "description": "Call once per answer/change - it upserts, so re-sending the same questionId overwrites the previous choice. Works while the attempt is in_progress only."
+          }
+        },
+        {
+          "name": "5b. Save Answer (Numeric / Formula)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/api/student/attempt/{{attemptId}}/answer",
+            "body": { "mode": "raw", "raw": "{\n  \"questionId\": {{questionId}},\n  \"answerValue\": 42,\n  \"isSkipped\": false\n}" }
+          }
+        },
+        {
+          "name": "5c. Save Answer (Subjective / written)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/api/student/attempt/{{attemptId}}/answer",
+            "body": { "mode": "raw", "raw": "{\n  \"questionId\": {{questionId}},\n  \"writtenAnswer\": \"Force equals mass times acceleration.\",\n  \"isSkipped\": false\n}" },
+            "description": "Subjective answers are never auto-scored - marksObtained stays 0 until a faculty member grades it after submission."
+          }
+        },
+        {
+          "name": "5d. Skip Question",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/api/student/attempt/{{attemptId}}/answer",
+            "body": { "mode": "raw", "raw": "{\n  \"questionId\": {{questionId}},\n  \"isSkipped\": true\n}" }
+          }
+        },
+        {
+          "name": "6. Report Anti-Cheat Event",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/api/student/attempt/{{attemptId}}/anti-cheat-event",
+            "body": { "mode": "raw", "raw": "{\n  \"eventType\": \"screen_switch\"\n}" },
+            "description": "eventType is one of screen_switch | overlay_detected | background. The response always instructs the client to immediately call Submit Attempt with autoSubmitted=true and the same reason - the server does not auto-submit for you."
+          }
+        },
+        {
+          "name": "7. Submit Attempt",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/api/student/attempt/{{attemptId}}/submit",
+            "body": { "mode": "raw", "raw": "{\n  \"autoSubmitted\": false\n}" },
+            "description": "Scores every MCQ/numeric answer immediately (marksObtained, isCorrect) and returns the total - but the Result row is created with status \"pending\" and is NOT visible to the student yet. It only appears under My Results once the faculty calls Declare Result then Publish Result on their side. For an auto-submit (timer ran out / anti-cheat), send {\"autoSubmitted\": true, \"reason\": \"time_up\"}."
+          }
+        },
+        {
+          "name": "7b. Submit Attempt (auto-submit example)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/api/student/attempt/{{attemptId}}/submit",
+            "body": { "mode": "raw", "raw": "{\n  \"autoSubmitted\": true,\n  \"reason\": \"time_up\"\n}" }
+          }
+        },
+        {
+          "name": "8. My Results (after faculty publishes)",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/student/results?page=1&pageSize=10",
+            "description": "Only ever returns results with status \"published\". Summary only (marksObtained/percentage per quiz) - use Get Attempt Result Detail below for the per-question breakdown."
+          }
+        },
+        {
+          "name": "9. Get Attempt Result Detail (correct answers)",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/student/attempt/{{attemptId}}/result",
+            "description": "Per-question breakdown for a submitted attempt: your answer, whether it was correct, the correct option(s)/value, and marks obtained. Returns 403 until the faculty has run Declare Result then Publish Result for this quiz (declared alone is not enough - matches My Results' visibility rule). Subjective questions show manuallyGraded: false and marksObtained: 0 until a faculty member grades them."
+          }
+        }
+      ]
+    }
+  ]
+}
