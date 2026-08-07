@@ -102,6 +102,23 @@ async function ensureFacultyCourseMapping(data: { sem: string; subList: string; 
 // Column names (`stu_roll`, `sub_code`, `sub_list`) match the confirmed
 // real legacy schema legacy-db.ts reads/writes everywhere it touches this table.
 async function ensureBatchRegistrationTable(batchName: string, tableName: string) {
+  // Self-healing: this exact table is entirely owned/created by this seed
+  // script (never real legacy data - a real isr_reg_<batch>_tbl in
+  // production is never named "isr_reg_2025_tbl" and is never touched here).
+  // An environment that ran an older version of this script already has the
+  // table with the old `roll`/no-`sub_list` schema, and `CREATE TABLE IF NOT
+  // EXISTS` below would silently skip it forever - so rebuild it if it's
+  // missing either column, instead of leaving every later query 500ing.
+  const columns = await prisma.$queryRawUnsafe<{ COLUMN_NAME: string }[]>(
+    `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?`,
+    tableName
+  );
+  const columnNames = new Set(columns.map((c) => c.COLUMN_NAME));
+  const isStaleSchema = columnNames.size > 0 && (!columnNames.has("stu_roll") || !columnNames.has("sub_list"));
+  if (isStaleSchema) {
+    await prisma.$executeRawUnsafe(`DROP TABLE \`${tableName}\``);
+  }
+
   await prisma.$executeRawUnsafe(`
     CREATE TABLE IF NOT EXISTS \`${tableName}\` (
       id INT AUTO_INCREMENT PRIMARY KEY,
