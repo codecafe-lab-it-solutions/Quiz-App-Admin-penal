@@ -38,11 +38,13 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
           marks: q.marks,
           negativeMarks: q.negativeMarks,
           orderIndex: index,
+          // referenceAnswer is a grading guide - never sent to the student.
           options: q.questionType === "mcq" ? q.options : undefined,
           myAnswer: existing
             ? {
                 selectedOptionId: existing.selectedOptionId,
                 answerValue: existing.answerValue,
+                writtenAnswer: existing.writtenAnswer,
                 isSkipped: existing.isSkipped,
               }
             : null,

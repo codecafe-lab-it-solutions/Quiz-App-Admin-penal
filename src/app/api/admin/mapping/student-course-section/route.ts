@@ -9,6 +9,7 @@ import {
   getCourseRegistrations,
   createStudentCourseMapping,
 } from "@/lib/legacy-db";
+import { getCurrentSubList } from "@/lib/config";
 
 // Sourced live from the legacy per-batch isr_reg_<batch>_tbl tables. GET
 // never returns an unfiltered dump - a roll or course code is required so
@@ -24,17 +25,18 @@ export async function GET(req: NextRequest) {
       return fail(400, "Provide either roll or courseCode to search");
     }
     const { roll, courseCode } = parsed.data;
+    const subList = await getCurrentSubList();
 
     if (roll) {
       const student = await getStudentByRoll(roll);
       if (!student || !student.batch) {
         return ok({ items: [] });
       }
-      const courses = await getStudentCourses(roll, student.batch);
+      const courses = await getStudentCourses(roll, student.batch, subList);
       return ok({ items: courses.map((c) => ({ roll: c.roll, subCode: c.subCode, batch: student.batch })) });
     }
 
-    const items = await getCourseRegistrations(courseCode!);
+    const items = await getCourseRegistrations(courseCode!, subList);
     return ok({ items });
   } catch (error) {
     return handleApiError(error);
@@ -47,7 +49,7 @@ export async function POST(req: NextRequest) {
     requireRole(user, "admin");
 
     const body = studentCourseMappingCreateSchema.parse(await req.json());
-    const mapping = await createStudentCourseMapping(body);
+    const mapping = await createStudentCourseMapping({ ...body, subList: await getCurrentSubList() });
 
     return created(mapping);
   } catch (error) {

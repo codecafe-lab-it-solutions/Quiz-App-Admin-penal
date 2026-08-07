@@ -31,6 +31,7 @@ enum QuizStatus {
 enum QuestionType {
   mcq
   formula
+  subjective
 }
 
 enum AllotmentStatus {
@@ -161,34 +162,48 @@ model Building {
 // ---------------------------------------------------------------------------
 
 model IsrLoginTbl {
-  userRoll     String @id @map("user_roll")
-  userEmail    String @map("user_email")
-  userPassword String @map("user_password")
-  userType     String @map("user_type") // 'FAC' | 'STU'
+  userRoll     String  @id @map("user_roll")
+  userEmail    String  @map("user_email")
+  userPassword String  @map("user_password")
+  userType     String  @map("user_type") // 'FAC' | 'STU'
+  // 1-Active, 2-Inactive (isr_login_tbl.status per confirmed legacy column list).
+  status       Int     @default(1)
 
   @@map("isr_login_tbl")
 }
 
 model IsrFacultyTbl {
-  roll String @id
-  name String
+  roll     String  @id
+  name     String
+  // Confirmed columns from the legacy schema, added for admin-panel profile
+  // display only — never written to by this app except via updateFaculty()'s
+  // existing name/email/password fields.
+  dept     String?
+  empCode  String? @map("emp_code")
+  facStatus String? @map("fac_status") // R-Regular, V-Visiting, P-PFD, T-Temporary
+  address  String? @db.Text
 
   @@map("isr_faculty_tbl")
 }
 
 model IsrStuDataTbl {
-  stuRoll String @id @map("stu_roll")
-  stuName String @map("stu_name")
+  stuRoll String  @id @map("stu_roll")
+  stuName String  @map("stu_name")
+  mobile  String?
 
   @@map("isr_stu_data_tbl")
 }
 
 model IsrStuMainTbl {
-  roll   String @id
-  major  String
-  name   String
-  batch  String
-  semNow String @map("sem_now")
+  roll         String  @id
+  major        String
+  name         String
+  batch        String
+  semNow       String  @map("sem_now")
+  // Confirmed academic-status columns, surfaced read-only in admin/student views.
+  regStatus    String? @map("reg_status")
+  attnOk       String? @map("attn_ok")
+  stuStatus    String? @map("stu_status")
 
   @@map("isr_stu_main_tbl")
 }
@@ -203,6 +218,26 @@ model IsrSubAvailableTbl {
   branch  String
 
   @@map("isr_sub_available_tbl")
+}
+
+// Full curriculum/course catalog — read-only. Resolves a bare sub_code (from
+// isr_sub_available_tbl / isr_reg_<batch>_tbl) into a human-readable title,
+// credits and branch for course-list screens (§4.6 of the integration spec).
+// PK assumed autoincrement surrogate, matching the isr_sub_available_tbl pattern.
+model IsrCurriculumTbl {
+  id         Int     @id @default(autoincrement())
+  subList    String  @map("sub_list")
+  bsmsBranch String  @map("bsms_branch")
+  bsmsCode   String  @map("bsms_code") // course code, joins to sub_code elsewhere
+  title      String  @db.Text
+  l          Int     @default(0)
+  t          Int     @default(0)
+  p          Int     @default(0)
+  bsmsCredit Int     @default(0) @map("bsms_credit")
+  sem        String?
+
+  @@index([bsmsCode])
+  @@map("isr_curriculum_tbl")
 }
 
 // ---------------------------------------------------------------------------
@@ -278,6 +313,9 @@ model Question {
   questionType    QuestionType @map("question_type")
   marks           Int
   negativeMarks   Int          @default(0) @map("negative_marks")
+  // Subjective-only, always optional even when questionType = subjective -
+  // a manual-grading guide the faculty may leave blank. Never sent to students.
+  referenceAnswer String?      @db.Text @map("reference_answer")
   orderIndex      Int          @map("order_index")
   createdAt       DateTime     @default(now()) @map("created_at")
   updatedAt       DateTime     @updatedAt @map("updated_at")
@@ -364,6 +402,10 @@ model StudentAnswer {
   questionId       Int      @map("question_id")
   selectedOptionId Int?     @map("selected_option_id")
   answerValue      Float?   @map("answer_value")
+  // Subjective-only: student's free-text response, and whether a faculty
+  // member has manually scored it yet (marksObtained stays 0 until then).
+  writtenAnswer    String?  @db.Text @map("written_answer")
+  manuallyGraded   Boolean  @default(false) @map("manually_graded")
   isCorrect        Boolean? @map("is_correct")
   marksObtained    Float    @default(0) @map("marks_obtained")
   orderIndex       Int      @map("order_index")

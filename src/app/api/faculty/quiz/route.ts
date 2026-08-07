@@ -5,21 +5,23 @@ import { getAuthUser, requireRole } from "@/lib/auth";
 import { quizCreateSchema } from "@/lib/validators/quiz";
 import { isFacultyMappedToCourse } from "@/lib/legacy-db";
 import { getCurrentSubList } from "@/lib/config";
+import { resolveFacultyRoll } from "@/lib/quiz-access";
 
 export async function POST(req: NextRequest) {
   try {
     const user = getAuthUser(req);
-    requireRole(user, "faculty");
+    requireRole(user, "faculty", "admin");
 
     const body = quizCreateSchema.parse(await req.json());
+    const facultyRoll = resolveFacultyRoll(user, body.facultyRoll);
 
     const course = await prisma.course.findUnique({ where: { id: body.courseId } });
     if (!course) throw new ApiError(404, "Course not found");
 
     const currentSubList = await getCurrentSubList();
-    const mapped = await isFacultyMappedToCourse(String(user.sub), course.code, currentSubList);
+    const mapped = await isFacultyMappedToCourse(facultyRoll, course.code, currentSubList);
     if (!mapped) {
-      throw new ApiError(403, "You are not mapped to teach this course");
+      throw new ApiError(403, "This faculty member is not mapped to teach this course");
     }
 
     const quiz = await prisma.quiz.create({
@@ -28,7 +30,7 @@ export async function POST(req: NextRequest) {
         courseId: body.courseId,
         sectionId: body.sectionId ?? null,
         buildingId: body.buildingId,
-        facultyRoll: String(user.sub),
+        facultyRoll,
         startTime: body.startTime,
         endTime: body.endTime,
         durationMinutes: body.durationMinutes,

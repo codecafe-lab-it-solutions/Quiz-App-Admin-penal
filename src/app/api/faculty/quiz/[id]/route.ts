@@ -4,20 +4,15 @@ import { ok, handleApiError, ApiError } from "@/lib/api-response";
 import { getAuthUser, requireRole } from "@/lib/auth";
 import { quizUpdateSchema } from "@/lib/validators/quiz";
 import { idParamSchema } from "@/lib/validators/common";
-
-async function loadOwnedQuiz(quizId: number, facultyRoll: string) {
-  const quiz = await prisma.quiz.findUnique({ where: { id: quizId } });
-  if (!quiz || quiz.facultyRoll !== facultyRoll) throw new ApiError(404, "Quiz not found");
-  return quiz;
-}
+import { loadAccessibleQuiz } from "@/lib/quiz-access";
 
 export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
   try {
     const user = getAuthUser(req);
-    requireRole(user, "faculty");
+    requireRole(user, "faculty", "admin");
 
     const { id } = idParamSchema.parse(params);
-    await loadOwnedQuiz(id, String(user.sub));
+    await loadAccessibleQuiz(user, id);
 
     const quiz = await prisma.quiz.findUnique({
       where: { id },
@@ -42,10 +37,10 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
 export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
   try {
     const user = getAuthUser(req);
-    requireRole(user, "faculty");
+    requireRole(user, "faculty", "admin");
 
     const { id } = idParamSchema.parse(params);
-    const existing = await loadOwnedQuiz(id, String(user.sub));
+    const existing = await loadAccessibleQuiz(user, id);
 
     if (existing.status === "completed") {
       throw new ApiError(400, "A completed quiz cannot be edited");
@@ -63,10 +58,10 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
 export async function DELETE(req: NextRequest, { params }: { params: { id: string } }) {
   try {
     const user = getAuthUser(req);
-    requireRole(user, "faculty");
+    requireRole(user, "faculty", "admin");
 
     const { id } = idParamSchema.parse(params);
-    const existing = await loadOwnedQuiz(id, String(user.sub));
+    const existing = await loadAccessibleQuiz(user, id);
 
     if (existing.status === "live") {
       throw new ApiError(400, "A live quiz cannot be deleted. Stop it first.");

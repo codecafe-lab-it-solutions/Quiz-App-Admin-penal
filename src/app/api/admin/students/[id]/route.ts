@@ -3,6 +3,7 @@ import { ok, handleApiError, ApiError } from "@/lib/api-response";
 import { getAuthUser, requireRole } from "@/lib/auth";
 import { studentUpdateSchema } from "@/lib/validators/directory";
 import { getStudentByRoll, getStudentCourses, updateStudent, deleteStudent } from "@/lib/legacy-db";
+import { getCurrentSubList } from "@/lib/config";
 
 // Student master data is sourced live from the legacy isr_* tables. The
 // [id] segment is the legacy roll number, not a numeric app-owned id -
@@ -16,7 +17,7 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
     const student = await getStudentByRoll(roll);
     if (!student) throw new ApiError(404, "Student not found");
 
-    const courses = student.batch ? await getStudentCourses(roll, student.batch) : [];
+    const courses = student.batch ? await getStudentCourses(roll, student.batch, await getCurrentSubList()) : [];
 
     return ok({ ...student, courses });
   } catch (error) {

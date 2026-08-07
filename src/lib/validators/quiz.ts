@@ -3,6 +3,9 @@ import { z } from "zod";
 export const quizCreateSchema = z
   .object({
     title: z.string().trim().min(3, "Title must be at least 3 characters"),
+    // Only used when an admin creates a quiz on a faculty member's behalf -
+    // ignored (the caller's own roll is used) when a faculty member creates it.
+    facultyRoll: z.string().trim().min(1).optional(),
     courseId: z.coerce.number().int().positive("Select a course"),
     // TODO: section source pending confirmation - no legacy source yet, optional until then
     sectionId: z.coerce.number().int().positive().optional(),
@@ -70,15 +73,33 @@ const formulaQuestionSchema = z.object({
   tolerance: z.coerce.number().min(0),
 });
 
+// Open-ended/manually-graded question. No options, no correct-option, no
+// negative marking - reference answer is a grading guide and may be left
+// blank when there's no single correct answer.
+const subjectiveQuestionSchema = z.object({
+  id: z.number().int().positive().optional(),
+  questionType: z.literal("subjective"),
+  questionText: z.string().trim().min(1, "Question text is required"),
+  marks: z.coerce.number().positive("Marks must be greater than 0"),
+  orderIndex: z.coerce.number().int().min(0).default(0),
+  referenceAnswer: z.string().trim().optional(),
+});
+
 export const questionSchema = z.discriminatedUnion("questionType", [
   mcqQuestionSchema,
   formulaQuestionSchema,
+  subjectiveQuestionSchema,
 ]);
 export type QuestionInput = z.infer<typeof questionSchema>;
 
 export const questionsBulkSchema = z.object({
   questions: z.array(questionSchema).min(1, "Add at least one question"),
 });
+
+export const gradeSubjectiveAnswerSchema = z.object({
+  marksAwarded: z.coerce.number().min(0, "Marks awarded cannot be negative"),
+});
+export type GradeSubjectiveAnswerInput = z.infer<typeof gradeSubjectiveAnswerSchema>;
 
 export const allotSchema = z.object({
   // "course": allot every student registered for the quiz's course (from the

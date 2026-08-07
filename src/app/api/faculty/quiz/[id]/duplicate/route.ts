@@ -7,14 +7,14 @@ import { idParamSchema } from "@/lib/validators/common";
 export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
   try {
     const user = getAuthUser(req);
-    requireRole(user, "faculty");
+    requireRole(user, "faculty", "admin");
 
     const { id } = idParamSchema.parse(params);
     const source = await prisma.quiz.findUnique({
       where: { id },
       include: { questions: { include: { options: true, formula: true } } },
     });
-    if (!source || source.facultyRoll !== String(user.sub)) throw new ApiError(404, "Quiz not found");
+    if (!source || (user.role === "faculty" && source.facultyRoll !== String(user.sub))) throw new ApiError(404, "Quiz not found");
 
     const duplicate = await prisma.$transaction(async (tx) => {
       const newQuiz = await tx.quiz.create({
@@ -43,6 +43,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
             questionType: q.questionType,
             marks: q.marks,
             negativeMarks: q.negativeMarks,
+            referenceAnswer: q.referenceAnswer,
             orderIndex: q.orderIndex,
           },
         });
@@ -55,7 +56,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
               isCorrect: o.isCorrect,
             })),
           });
-        } else if (q.formula) {
+        } else if (q.questionType === "formula" && q.formula) {
           await tx.questionFormula.create({
             data: {
               questionId: newQuestion.id,
@@ -64,6 +65,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
             },
           });
         }
+        // subjective: referenceAnswer already copied above, no child rows needed
       }
 
       return newQuiz;

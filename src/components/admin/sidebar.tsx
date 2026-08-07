@@ -18,6 +18,7 @@ import {
   FileBarChart,
   ShieldCheck,
   CalendarClock,
+  ClipboardList,
   X,
 } from "lucide-react";
 
@@ -43,6 +44,10 @@ const NAV_GROUPS: NavGroup[] = [
       { label: "Faculty", href: "/admin/faculty", icon: GraduationCap },
       { label: "Students", href: "/admin/students", icon: Users },
     ],
+  },
+  {
+    title: "Tests",
+    items: [{ label: "Tests", href: "/admin/tests", icon: ClipboardList }],
   },
   {
     title: "Mapping",

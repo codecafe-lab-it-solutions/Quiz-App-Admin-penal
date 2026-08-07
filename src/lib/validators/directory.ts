@@ -32,6 +32,10 @@ export const studentUpdateSchema = z.object({
   semNow: z.string().trim().min(1, "Semester is required").optional(),
 });
 
+export const loginStatusUpdateSchema = z.object({
+  active: z.boolean(),
+});
+
 export const facultyCourseMappingCreateSchema = z.object({
   facRoll: z.string().trim().min(1, "Faculty roll is required"),
   subCode: z.string().trim().min(1, "Course code is required"),

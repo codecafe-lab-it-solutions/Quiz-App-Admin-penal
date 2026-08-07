@@ -30,6 +30,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       update: {
         selectedOptionId: body.selectedOptionId ?? null,
         answerValue: body.answerValue ?? null,
+        writtenAnswer: body.writtenAnswer ?? null,
         isSkipped: body.isSkipped,
       },
       create: {
@@ -37,6 +38,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
         questionId: body.questionId,
         selectedOptionId: body.selectedOptionId ?? null,
         answerValue: body.answerValue ?? null,
+        writtenAnswer: body.writtenAnswer ?? null,
         isSkipped: body.isSkipped,
         orderIndex: orderIndex >= 0 ? orderIndex : 0,
       },

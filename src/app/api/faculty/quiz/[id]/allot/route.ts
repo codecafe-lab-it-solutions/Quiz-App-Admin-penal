@@ -5,15 +5,16 @@ import { getAuthUser, requireRole } from "@/lib/auth";
 import { allotSchema } from "@/lib/validators/quiz";
 import { idParamSchema } from "@/lib/validators/common";
 import { getCourseRegistrations } from "@/lib/legacy-db";
+import { getCurrentSubList } from "@/lib/config";
 
 export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
   try {
     const user = getAuthUser(req);
-    requireRole(user, "faculty");
+    requireRole(user, "faculty", "admin");
 
     const { id: quizId } = idParamSchema.parse(params);
     const quiz = await prisma.quiz.findUnique({ where: { id: quizId }, include: { course: true } });
-    if (!quiz || quiz.facultyRoll !== String(user.sub)) throw new ApiError(404, "Quiz not found");
+    if (!quiz || (user.role === "faculty" && quiz.facultyRoll !== String(user.sub))) throw new ApiError(404, "Quiz not found");
     if (quiz.status === "completed") throw new ApiError(400, "Cannot allot a completed quiz");
 
     const body = allotSchema.parse(await req.json());
@@ -21,7 +22,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     let studentRolls: string[];
 
     if (body.mode === "course") {
-      const registrations = await getCourseRegistrations(quiz.course.code);
+      const registrations = await getCourseRegistrations(quiz.course.code, await getCurrentSubList());
       studentRolls = [...new Set(registrations.map((r) => r.roll))];
     } else {
       if (!body.studentRolls || body.studentRolls.length === 0) {

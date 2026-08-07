@@ -15,6 +15,7 @@ export const answerSchema = z.object({
   questionId: z.coerce.number().int().positive(),
   selectedOptionId: z.coerce.number().int().positive().nullable().optional(),
   answerValue: z.coerce.number().nullable().optional(),
+  writtenAnswer: z.string().nullable().optional(),
   isSkipped: z.boolean().default(false),
 });
 export type AnswerInput = z.infer<typeof answerSchema>;

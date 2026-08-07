@@ -46,7 +46,11 @@ export async function middleware(req: NextRequest) {
     const { payload } = await jwtVerify(token, ACCESS_SECRET);
     const role = payload.role as string;
 
-    if (role !== group) {
+    // Admins may also drive the faculty quiz-management API (create/manage
+    // quizzes on any faculty's behalf, per the dual Admin+Faculty "Create
+    // Quiz" requirement) - student remains strictly student-only.
+    const allowed = role === group || (group === "faculty" && role === "admin");
+    if (!allowed) {
       return unauthorized("You do not have permission to access this resource", 403);
     }
 

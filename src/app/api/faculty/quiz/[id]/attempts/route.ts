@@ -8,11 +8,11 @@ import { getStudentNamesByRolls } from "@/lib/legacy-db";
 export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
   try {
     const user = getAuthUser(req);
-    requireRole(user, "faculty");
+    requireRole(user, "faculty", "admin");
 
     const { id: quizId } = idParamSchema.parse(params);
     const quiz = await prisma.quiz.findUnique({ where: { id: quizId } });
-    if (!quiz || quiz.facultyRoll !== String(user.sub)) throw new ApiError(404, "Quiz not found");
+    if (!quiz || (user.role === "faculty" && quiz.facultyRoll !== String(user.sub))) throw new ApiError(404, "Quiz not found");
 
     const allotments = await prisma.quizAllotment.findMany({
       where: { quizId },

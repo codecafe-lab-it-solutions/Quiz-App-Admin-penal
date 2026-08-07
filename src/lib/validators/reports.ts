@@ -10,3 +10,11 @@ export const attendanceReportQuerySchema = z.object({
   export: z.enum(["excel", "pdf"]).optional(),
 });
 export type AttendanceReportQuery = z.infer<typeof attendanceReportQuerySchema>;
+
+export const violationsQuerySchema = z.object({
+  quizId: z.coerce.number().int().positive().optional(),
+  studentRoll: z.string().trim().min(1).optional(),
+  page: z.coerce.number().int().min(1).default(1),
+  pageSize: z.coerce.number().int().min(1).max(200).default(20),
+});
+export type ViolationsQuery = z.infer<typeof violationsQuerySchema>;

@@ -7,11 +7,11 @@ import { idParamSchema } from "@/lib/validators/common";
 export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
   try {
     const user = getAuthUser(req);
-    requireRole(user, "faculty");
+    requireRole(user, "faculty", "admin");
 
     const { id } = idParamSchema.parse(params);
     const quiz = await prisma.quiz.findUnique({ where: { id }, include: { _count: { select: { questions: true } } } });
-    if (!quiz || quiz.facultyRoll !== String(user.sub)) throw new ApiError(404, "Quiz not found");
+    if (!quiz || (user.role === "faculty" && quiz.facultyRoll !== String(user.sub))) throw new ApiError(404, "Quiz not found");
 
     if (quiz.status === "live") throw new ApiError(400, "Quiz is already live");
     if (quiz.status === "completed") throw new ApiError(400, "A completed quiz cannot be restarted");

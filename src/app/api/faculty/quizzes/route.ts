@@ -7,14 +7,16 @@ import { paginationSchema, paginationMeta } from "@/lib/validators/common";
 export async function GET(req: NextRequest) {
   try {
     const user = getAuthUser(req);
-    requireRole(user, "faculty");
+    requireRole(user, "faculty", "admin");
 
     const params = Object.fromEntries(req.nextUrl.searchParams);
     const { page, pageSize, search } = paginationSchema.parse(params);
     const status = params.status as "draft" | "scheduled" | "live" | "completed" | undefined;
 
+    // Faculty always see only their own quizzes. An admin sees every quiz
+    // system-wide unless they narrow it down with ?facultyRoll= (oversight).
     const where = {
-      facultyRoll: String(user.sub),
+      ...(user.role === "faculty" ? { facultyRoll: String(user.sub) } : params.facultyRoll ? { facultyRoll: params.facultyRoll } : {}),
       ...(status ? { status } : {}),
       ...(search ? { title: { contains: search } } : {}),
     };

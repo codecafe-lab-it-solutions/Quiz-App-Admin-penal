@@ -46,10 +46,15 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       const existing = answerByQuestion.get(questionId);
 
       if (!question) {
-        return { questionId, orderIndex, isSkipped: true, isCorrect: null, marksObtained: 0, selectedOptionId: null, answerValue: null };
+        return { questionId, orderIndex, isSkipped: true, isCorrect: null, marksObtained: 0, selectedOptionId: null, answerValue: null, writtenAnswer: null };
       }
 
-      const isSkipped = !existing || existing.isSkipped || (existing.selectedOptionId == null && existing.answerValue == null);
+      const isSkipped =
+        !existing ||
+        existing.isSkipped ||
+        (question.questionType === "subjective"
+          ? !existing.writtenAnswer || existing.writtenAnswer.trim() === ""
+          : existing.selectedOptionId == null && existing.answerValue == null);
 
       if (isSkipped) {
         return {
@@ -60,6 +65,22 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
           marksObtained: 0,
           selectedOptionId: existing?.selectedOptionId ?? null,
           answerValue: existing?.answerValue ?? null,
+          writtenAnswer: existing?.writtenAnswer ?? null,
+        };
+      }
+
+      // Subjective answers are never auto-scored - a faculty member grades
+      // them manually after submission (marksObtained stays 0 until then).
+      if (question.questionType === "subjective") {
+        return {
+          questionId,
+          orderIndex,
+          isSkipped: false,
+          isCorrect: null,
+          marksObtained: 0,
+          selectedOptionId: null,
+          answerValue: null,
+          writtenAnswer: existing!.writtenAnswer,
         };
       }
 
@@ -91,6 +112,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
         marksObtained,
         selectedOptionId: existing!.selectedOptionId,
         answerValue: existing!.answerValue,
+        writtenAnswer: null,
       };
     });
 
@@ -113,6 +135,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
             questionId: answer.questionId,
             selectedOptionId: answer.selectedOptionId,
             answerValue: answer.answerValue,
+            writtenAnswer: answer.writtenAnswer,
             isCorrect: answer.isCorrect,
             marksObtained: answer.marksObtained,
             isSkipped: answer.isSkipped,

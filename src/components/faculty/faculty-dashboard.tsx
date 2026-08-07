@@ -8,11 +8,13 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { DataTable, DataTableColumn } from "@/components/admin/data-table";
 import { PaginationBar } from "@/components/admin/pagination-bar";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
-import { GraduationCap, LogOut } from "lucide-react";
+import Link from "next/link";
+import { GraduationCap, LogOut, Plus, Users } from "lucide-react";
 
 interface FacultyUser {
   roll: string;
@@ -36,6 +38,22 @@ interface FacultyQuiz {
   section: { name: string } | null;
   building: { name: string };
   _count: { questions: number; allotments: number };
+}
+
+interface FacultyCourse {
+  subCode: string;
+  title: string | null;
+  branch: string | null;
+  credits: number | null;
+  facRoll: string;
+  facultyName: string | null;
+}
+
+interface RosterRow {
+  roll: string;
+  name: string;
+  attendancePercent: number | null;
+  lastScore: number | null;
 }
 
 interface AttendanceRow {
@@ -63,6 +81,7 @@ export function FacultyDashboard({ user }: { user: FacultyUser }) {
   const router = useRouter();
   const [quizPage, setQuizPage] = useState(1);
   const [attendancePage, setAttendancePage] = useState(1);
+  const [rosterCourse, setRosterCourse] = useState<FacultyCourse | null>(null);
 
   const { data: quizData, isLoading: quizLoading } = useSWR(
     `/api/faculty/quizzes?page=${quizPage}&pageSize=10`,
@@ -72,9 +91,19 @@ export function FacultyDashboard({ user }: { user: FacultyUser }) {
     `/api/faculty/attendance?page=${attendancePage}&pageSize=10`,
     fetcher
   );
+  const { data: coursesData, isLoading: coursesLoading } = useSWR(
+    `/api/faculty/courses`,
+    (url: string) => apiClient.get<{ items: FacultyCourse[] }>(url)
+  );
+  const { data: rosterData, isLoading: rosterLoading } = useSWR(
+    rosterCourse ? `/api/faculty/courses/${encodeURIComponent(rosterCourse.subCode)}/students` : null,
+    (url: string) => apiClient.get<{ items: RosterRow[] }>(url)
+  );
 
   const quizzes = (quizData?.items ?? []) as FacultyQuiz[];
   const attendance = (attendanceData?.items ?? []) as AttendanceRow[];
+  const courses = coursesData?.items ?? [];
+  const roster = rosterData?.items ?? [];
 
   const handleLogout = async () => {
     try {
@@ -89,7 +118,15 @@ export function FacultyDashboard({ user }: { user: FacultyUser }) {
   };
 
   const quizColumns: DataTableColumn<FacultyQuiz>[] = [
-    { key: "title", header: "Quiz", render: (r) => <span className="font-medium">{r.title}</span> },
+    {
+      key: "title",
+      header: "Quiz",
+      render: (r) => (
+        <Link href={`/faculty/quizzes/${r.id}`} className="font-medium text-primary hover:underline">
+          {r.title}
+        </Link>
+      ),
+    },
     { key: "course", header: "Course", render: (r) => `${r.course.name} (${r.course.code})` },
     { key: "section", header: "Section", render: (r) => r.section?.name ?? "—" },
     { key: "building", header: "Building", render: (r) => r.building.name },
@@ -101,6 +138,30 @@ export function FacultyDashboard({ user }: { user: FacultyUser }) {
       header: "Status",
       render: (r) => <Badge variant={statusVariant[r.status]}>{r.status}</Badge>,
     },
+  ];
+
+  const courseColumns: DataTableColumn<FacultyCourse>[] = [
+    { key: "subCode", header: "Code", render: (r) => <span className="font-medium">{r.subCode}</span> },
+    { key: "title", header: "Course Name", render: (r) => r.title ?? "—" },
+    { key: "branch", header: "Dept", render: (r) => r.branch ?? "—" },
+    { key: "credits", header: "Credits", render: (r) => r.credits ?? "—" },
+    {
+      key: "actions",
+      header: "",
+      render: (r) => (
+        <Button variant="outline" size="sm" onClick={() => setRosterCourse(r)}>
+          <Users className="mr-2 h-4 w-4" />
+          View Students
+        </Button>
+      ),
+    },
+  ];
+
+  const rosterColumns: DataTableColumn<RosterRow>[] = [
+    { key: "roll", header: "Roll", render: (r) => r.roll },
+    { key: "name", header: "Name", render: (r) => r.name },
+    { key: "attendance", header: "Attendance", render: (r) => (r.attendancePercent === null ? "—" : `${r.attendancePercent}%`) },
+    { key: "lastScore", header: "Last Score", render: (r) => (r.lastScore === null ? "—" : r.lastScore) },
   ];
 
   const attendanceColumns: DataTableColumn<AttendanceRow>[] = [
@@ -137,12 +198,30 @@ export function FacultyDashboard({ user }: { user: FacultyUser }) {
         </CardHeader>
       </Card>
 
-      <Tabs defaultValue="quizzes">
+      <Tabs defaultValue="courses">
         <TabsList>
+          <TabsTrigger value="courses">My Courses</TabsTrigger>
           <TabsTrigger value="quizzes">My Quizzes</TabsTrigger>
           <TabsTrigger value="attendance">Attendance</TabsTrigger>
         </TabsList>
+        <TabsContent value="courses" className="space-y-3">
+          <DataTable
+            columns={courseColumns}
+            rows={courses}
+            rowKey={(r) => r.subCode}
+            loading={coursesLoading}
+            emptyMessage="You aren't mapped to any courses for the current semester cycle."
+          />
+        </TabsContent>
         <TabsContent value="quizzes" className="space-y-3">
+          <div className="flex justify-end">
+            <Button asChild size="sm">
+              <Link href="/faculty/quizzes/new">
+                <Plus className="mr-2 h-4 w-4" />
+                Create Quiz
+              </Link>
+            </Button>
+          </div>
           <DataTable
             columns={quizColumns}
             rows={quizzes}
@@ -179,6 +258,23 @@ export function FacultyDashboard({ user }: { user: FacultyUser }) {
           )}
         </TabsContent>
       </Tabs>
+
+      <Dialog open={rosterCourse !== null} onOpenChange={(open) => !open && setRosterCourse(null)}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>
+              {rosterCourse ? `${rosterCourse.title ?? rosterCourse.subCode} (${rosterCourse.subCode})` : "Students"}
+            </DialogTitle>
+          </DialogHeader>
+          <DataTable
+            columns={rosterColumns}
+            rows={roster}
+            rowKey={(r) => r.roll}
+            loading={rosterLoading}
+            emptyMessage="No students registered for this course yet."
+          />
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

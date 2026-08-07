@@ -21,6 +21,10 @@ export interface LegacyFaculty {
   roll: string;
   name: string;
   email: string;
+  status: number;
+  dept: string | null;
+  empCode: string | null;
+  facStatus: string | null;
 }
 
 export interface LegacyStudent {
@@ -30,6 +34,10 @@ export interface LegacyStudent {
   major: string;
   batch: string;
   semNow: string;
+  status: number;
+  regStatus: string | null;
+  attnOk: string | null;
+  stuStatus: string | null;
 }
 
 export interface FacultyCourseMapping {
@@ -45,6 +53,24 @@ export interface FacultyCourseMapping {
 export interface StudentCourseRow {
   roll: string;
   subCode: string;
+}
+
+export interface CourseCatalogEntry {
+  subCode: string;
+  title: string | null;
+  branch: string | null;
+  credits: number | null;
+  facRoll: string;
+  facultyName: string | null;
+  // The app-owned Course.id this legacy code resolves to, if the admin has
+  // added it to the local course catalog yet (Quiz.courseId needs this FK -
+  // null means "ask admin to add this course under Master Data > Courses").
+  courseId: number | null;
+}
+
+export interface CourseRosterEntry {
+  roll: string;
+  name: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -68,8 +94,11 @@ export async function verifyLegacyPassword(plainPassword: string, storedHash: st
 // ---------------------------------------------------------------------------
 
 export async function getFacultyByRoll(roll: string): Promise<LegacyFaculty | null> {
-  const rows = await prisma.$queryRaw<{ roll: string; name: string; user_email: string }[]>`
-    SELECT f.roll AS roll, f.name AS name, l.user_email AS user_email
+  const rows = await prisma.$queryRaw<
+    { roll: string; name: string; user_email: string; status: number; dept: string | null; emp_code: string | null; fac_status: string | null }[]
+  >`
+    SELECT f.roll AS roll, f.name AS name, l.user_email AS user_email, l.status AS status,
+           f.dept AS dept, f.emp_code AS emp_code, f.fac_status AS fac_status
     FROM isr_faculty_tbl f
     JOIN isr_login_tbl l ON l.user_roll = f.roll
     WHERE f.roll = ${roll} AND l.user_type = 'FAC'
@@ -77,15 +106,27 @@ export async function getFacultyByRoll(roll: string): Promise<LegacyFaculty | nu
   `;
   const row = rows[0];
   if (!row) return null;
-  return { roll: row.roll, name: row.name, email: row.user_email };
+  return {
+    roll: row.roll,
+    name: row.name,
+    email: row.user_email,
+    status: row.status,
+    dept: row.dept,
+    empCode: row.emp_code,
+    facStatus: row.fac_status,
+  };
 }
 
 export async function getStudentByRoll(roll: string): Promise<LegacyStudent | null> {
   const rows = await prisma.$queryRaw<
-    { roll: string; stu_name: string; user_email: string; major: string; batch: string; sem_now: string }[]
+    {
+      roll: string; stu_name: string; user_email: string; major: string; batch: string; sem_now: string;
+      status: number; reg_status: string | null; attn_ok: string | null; stu_status: string | null;
+    }[]
   >`
-    SELECT d.stu_roll AS roll, d.stu_name AS stu_name, l.user_email AS user_email,
-           m.major AS major, m.batch AS batch, m.sem_now AS sem_now
+    SELECT d.stu_roll AS roll, d.stu_name AS stu_name, l.user_email AS user_email, l.status AS status,
+           m.major AS major, m.batch AS batch, m.sem_now AS sem_now,
+           m.reg_status AS reg_status, m.attn_ok AS attn_ok, m.stu_status AS stu_status
     FROM isr_stu_data_tbl d
     JOIN isr_login_tbl l ON l.user_roll = d.stu_roll
     LEFT JOIN isr_stu_main_tbl m ON m.roll = d.stu_roll
@@ -101,7 +142,23 @@ export async function getStudentByRoll(roll: string): Promise<LegacyStudent | nu
     major: row.major ?? "",
     batch: row.batch ?? "",
     semNow: row.sem_now ?? "",
+    status: row.status,
+    regStatus: row.reg_status,
+    attnOk: row.attn_ok,
+    stuStatus: row.stu_status,
   };
+}
+
+// ---------------------------------------------------------------------------
+// Login activation (isr_login_tbl.status: 1-Active, 2-Inactive)
+// ---------------------------------------------------------------------------
+
+export async function setLoginStatus(roll: string, userType: LegacyUserType, active: boolean): Promise<void> {
+  const login = await prisma.isrLoginTbl.findUnique({ where: { userRoll: roll } });
+  if (!login || login.userType !== userType) {
+    throw new ApiError(404, userType === "FAC" ? "Faculty not found" : "Student not found");
+  }
+  await prisma.isrLoginTbl.update({ where: { userRoll: roll }, data: { status: active ? 1 : 2 } });
 }
 
 export async function countFaculty(): Promise<number> {
@@ -140,8 +197,8 @@ export async function listFaculty(params: { search?: string; page: number; pageS
     : Prisma.empty;
 
   const [items, countRows] = await Promise.all([
-    prisma.$queryRaw<{ roll: string; name: string; user_email: string }[]>(Prisma.sql`
-      SELECT f.roll AS roll, f.name AS name, l.user_email AS user_email
+    prisma.$queryRaw<{ roll: string; name: string; user_email: string; status: number; dept: string | null }[]>(Prisma.sql`
+      SELECT f.roll AS roll, f.name AS name, l.user_email AS user_email, l.status AS status, f.dept AS dept
       FROM isr_faculty_tbl f
       JOIN isr_login_tbl l ON l.user_roll = f.roll AND l.user_type = 'FAC'
       ${whereClause}
@@ -157,7 +214,7 @@ export async function listFaculty(params: { search?: string; page: number; pageS
   ]);
 
   return {
-    items: items.map((r) => ({ roll: r.roll, name: r.name, email: r.user_email })),
+    items: items.map((r) => ({ roll: r.roll, name: r.name, email: r.user_email, status: r.status, dept: r.dept })),
     total: Number(countRows[0]?.total ?? 0),
   };
 }
@@ -189,9 +246,9 @@ export async function listStudents(params: {
 
   const [items, countRows] = await Promise.all([
     prisma.$queryRaw<
-      { roll: string; stu_name: string; user_email: string; major: string; batch: string; sem_now: string }[]
+      { roll: string; stu_name: string; user_email: string; major: string; batch: string; sem_now: string; status: number }[]
     >(Prisma.sql`
-      SELECT d.stu_roll AS roll, d.stu_name AS stu_name, l.user_email AS user_email,
+      SELECT d.stu_roll AS roll, d.stu_name AS stu_name, l.user_email AS user_email, l.status AS status,
              m.major AS major, m.batch AS batch, m.sem_now AS sem_now
       FROM isr_stu_data_tbl d
       JOIN isr_login_tbl l ON l.user_roll = d.stu_roll AND l.user_type = 'STU'
@@ -217,6 +274,7 @@ export async function listStudents(params: {
       major: r.major ?? "",
       batch: r.batch ?? "",
       semNow: r.sem_now ?? "",
+      status: r.status,
     })),
     total: Number(countRows[0]?.total ?? 0),
   };
@@ -250,7 +308,7 @@ export async function createFaculty(data: {
     prisma.isrFacultyTbl.create({ data: { roll: data.roll, name: data.name } }),
   ]);
 
-  return { roll: data.roll, name: data.name, email: data.email };
+  return { roll: data.roll, name: data.name, email: data.email, status: 1, dept: null, empCode: null, facStatus: null };
 }
 
 export async function updateFaculty(
@@ -322,7 +380,10 @@ export async function createStudent(data: {
     }),
   ]);
 
-  return { roll: data.roll, name: data.name, email: data.email, major: data.major, batch: data.batch, semNow: data.semNow };
+  return {
+    roll: data.roll, name: data.name, email: data.email, major: data.major, batch: data.batch, semNow: data.semNow,
+    status: 1, regStatus: null, attnOk: null, stuStatus: null,
+  };
 }
 
 export async function updateStudent(
@@ -474,20 +535,24 @@ async function resolveBatchTable(batch: string): Promise<string | null> {
   return entry.tableName;
 }
 
-// TODO: column names inside isr_reg_<batch>_tbl are unconfirmed - assumed
-// `roll` and `sub_code` to match the naming pattern of the other isr_* tables.
-// Adjust the two column identifiers below once confirmed.
-const REG_ROLL_COLUMN = "roll";
+// Confirmed from the integration spec's real isr_reg_<batch>_tbl export: the
+// roll column is `stu_roll` (not `roll` - every other isr_* table uses `roll`
+// or `stu_roll` inconsistently, this one is `stu_roll`), and every row also
+// carries `sub_list`, so registrations must be scoped to the current cycle
+// the same way isr_sub_available_tbl reads are.
+const REG_ROLL_COLUMN = "stu_roll";
 const REG_SUB_CODE_COLUMN = "sub_code";
+const REG_SUB_LIST_COLUMN = "sub_list";
 
-export async function getStudentCourses(roll: string, batch: string): Promise<StudentCourseRow[]> {
+export async function getStudentCourses(roll: string, batch: string, subList: string): Promise<StudentCourseRow[]> {
   const tableName = await resolveBatchTable(batch);
   if (!tableName) return [];
 
   try {
     const rows = await prisma.$queryRawUnsafe<Record<string, string>[]>(
-      `SELECT \`${REG_ROLL_COLUMN}\` AS roll, \`${REG_SUB_CODE_COLUMN}\` AS sub_code FROM \`${tableName}\` WHERE \`${REG_ROLL_COLUMN}\` = ?`,
-      roll
+      `SELECT \`${REG_ROLL_COLUMN}\` AS roll, \`${REG_SUB_CODE_COLUMN}\` AS sub_code FROM \`${tableName}\` WHERE \`${REG_ROLL_COLUMN}\` = ? AND \`${REG_SUB_LIST_COLUMN}\` = ?`,
+      roll,
+      subList
     );
     return rows.map((r) => ({ roll: r.roll, subCode: r.sub_code }));
   } catch (error) {
@@ -496,7 +561,7 @@ export async function getStudentCourses(roll: string, batch: string): Promise<St
   }
 }
 
-export async function getCourseRegistrations(courseCode: string): Promise<(StudentCourseRow & { batch: string })[]> {
+export async function getCourseRegistrations(courseCode: string, subList: string): Promise<(StudentCourseRow & { batch: string })[]> {
   const registry = (await listBatchRegistry()).filter((r) => r.isActive);
   const results: (StudentCourseRow & { batch: string })[] = [];
 
@@ -504,8 +569,9 @@ export async function getCourseRegistrations(courseCode: string): Promise<(Stude
     if (!SAFE_TABLE_NAME.test(entry.tableName)) continue;
     try {
       const rows = await prisma.$queryRawUnsafe<Record<string, string>[]>(
-        `SELECT \`${REG_ROLL_COLUMN}\` AS roll, \`${REG_SUB_CODE_COLUMN}\` AS sub_code FROM \`${entry.tableName}\` WHERE \`${REG_SUB_CODE_COLUMN}\` = ?`,
-        courseCode
+        `SELECT \`${REG_ROLL_COLUMN}\` AS roll, \`${REG_SUB_CODE_COLUMN}\` AS sub_code FROM \`${entry.tableName}\` WHERE \`${REG_SUB_CODE_COLUMN}\` = ? AND \`${REG_SUB_LIST_COLUMN}\` = ?`,
+        courseCode,
+        subList
       );
       results.push(...rows.map((r) => ({ roll: r.roll, subCode: r.sub_code, batch: entry.batchName })));
     } catch (error) {
@@ -519,6 +585,7 @@ export async function getCourseRegistrations(courseCode: string): Promise<(Stude
 export async function createStudentCourseMapping(data: {
   roll: string;
   subCode: string;
+  subList: string;
 }): Promise<StudentCourseRow & { batch: string }> {
   const student = await getStudentByRoll(data.roll);
   if (!student || !student.batch) throw new ApiError(404, "No student found for this roll number, or the student has no batch on record");
@@ -527,19 +594,69 @@ export async function createStudentCourseMapping(data: {
   if (!tableName) throw new ApiError(400, `No registration table is configured for batch "${student.batch}"`);
 
   const existing = await prisma.$queryRawUnsafe<{ cnt: bigint }[]>(
-    `SELECT COUNT(*) AS cnt FROM \`${tableName}\` WHERE \`${REG_ROLL_COLUMN}\` = ? AND \`${REG_SUB_CODE_COLUMN}\` = ?`,
+    `SELECT COUNT(*) AS cnt FROM \`${tableName}\` WHERE \`${REG_ROLL_COLUMN}\` = ? AND \`${REG_SUB_CODE_COLUMN}\` = ? AND \`${REG_SUB_LIST_COLUMN}\` = ?`,
     data.roll,
-    data.subCode
+    data.subCode,
+    data.subList
   );
   if (Number(existing[0]?.cnt ?? 0) > 0) {
     throw new ApiError(409, "Student is already registered for this course");
   }
 
   await prisma.$executeRawUnsafe(
-    `INSERT INTO \`${tableName}\` (\`${REG_ROLL_COLUMN}\`, \`${REG_SUB_CODE_COLUMN}\`) VALUES (?, ?)`,
+    `INSERT INTO \`${tableName}\` (\`${REG_ROLL_COLUMN}\`, \`${REG_SUB_CODE_COLUMN}\`, \`${REG_SUB_LIST_COLUMN}\`) VALUES (?, ?, ?)`,
     data.roll,
-    data.subCode
+    data.subCode,
+    data.subList
   );
 
   return { roll: data.roll, subCode: data.subCode, batch: student.batch };
+}
+
+// ---------------------------------------------------------------------------
+// Curriculum catalog (isr_curriculum_tbl) - resolves a bare course code into
+// title/credits/branch, and builds the faculty course-list + roster views
+// the spec calls out as the literal "Prog/Dept always blank" fix (§5, §8).
+// ---------------------------------------------------------------------------
+
+export async function getFacultyCourseCatalog(facultyRoll: string, subList: string): Promise<CourseCatalogEntry[]> {
+  const mappings = await prisma.isrSubAvailableTbl.findMany({
+    where: { facRoll: facultyRoll, subList },
+    orderBy: { subCode: "asc" },
+  });
+  if (mappings.length === 0) return [];
+
+  const codes = [...new Set(mappings.map((m) => m.subCode))];
+  const [curriculum, appCourses] = await Promise.all([
+    prisma.isrCurriculumTbl.findMany({ where: { bsmsCode: { in: codes }, subList } }),
+    prisma.course.findMany({ where: { code: { in: codes } }, select: { id: true, code: true } }),
+  ]);
+  const byCode = new Map(curriculum.map((c) => [c.bsmsCode, c]));
+  const courseIdByCode = new Map(appCourses.map((c) => [c.code, c.id]));
+  const faculty = await getFacultyByRoll(facultyRoll);
+
+  return mappings.map((m) => {
+    const c = byCode.get(m.subCode);
+    return {
+      subCode: m.subCode,
+      title: c?.title ?? null,
+      branch: c?.bsmsBranch ?? m.branch ?? null,
+      credits: c?.bsmsCredit ?? null,
+      facRoll: m.facRoll,
+      facultyName: faculty?.name ?? null,
+      courseId: courseIdByCode.get(m.subCode) ?? null,
+    };
+  });
+}
+
+export async function getCourseRoster(courseCode: string, subList: string): Promise<CourseRosterEntry[]> {
+  const registrations = await getCourseRegistrations(courseCode, subList);
+  if (registrations.length === 0) return [];
+
+  const rolls = [...new Set(registrations.map((r) => r.roll))];
+  const names = await getStudentNamesByRolls(rolls);
+
+  return rolls
+    .map((roll) => ({ roll, name: names.get(roll) ?? roll }))
+    .sort((a, b) => a.name.localeCompare(b.name));
 }

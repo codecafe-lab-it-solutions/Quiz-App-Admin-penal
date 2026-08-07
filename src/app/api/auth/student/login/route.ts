@@ -15,6 +15,8 @@ export async function POST(req: NextRequest) {
     const validPassword = await verifyLegacyPassword(body.password, login.userPassword);
     if (!validPassword) throw new ApiError(401, "Invalid email or password");
 
+    if (login.status !== 1) throw new ApiError(403, "This account has been deactivated. Contact the admin office.");
+
     const student = await getStudentByRoll(login.userRoll);
     if (!student) throw new ApiError(401, "Invalid email or password");
 

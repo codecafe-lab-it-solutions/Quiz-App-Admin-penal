@@ -79,9 +79,11 @@
       "item": [
         { "name": "List Faculty (read-only, legacy DB)", "request": { "method": "GET", "url": "{{baseUrl}}/api/admin/faculty?page=1&pageSize=10&search=" } },
         { "name": "Get Faculty (read-only, legacy DB)", "request": { "method": "GET", "url": "{{baseUrl}}/api/admin/faculty/{{facultyRoll}}" } },
+        { "name": "Faculty: Activate/Deactivate login", "request": { "method": "PATCH", "header": [{ "key": "Content-Type", "value": "application/json" }], "url": "{{baseUrl}}/api/admin/faculty/{{facultyRoll}}/status", "body": { "mode": "raw", "raw": "{\n  \"active\": false\n}" } } },
 
         { "name": "List Students (read-only, legacy DB)", "request": { "method": "GET", "url": "{{baseUrl}}/api/admin/students?page=1&pageSize=10&search=" } },
         { "name": "Get Student (read-only, legacy DB)", "request": { "method": "GET", "url": "{{baseUrl}}/api/admin/students/{{studentRoll}}" } },
+        { "name": "Student: Activate/Deactivate login", "request": { "method": "PATCH", "header": [{ "key": "Content-Type", "value": "application/json" }], "url": "{{baseUrl}}/api/admin/students/{{studentRoll}}/status", "body": { "mode": "raw", "raw": "{\n  \"active\": false\n}" } } },
 
         { "name": "Faculty-Course Mapping: List (read-only, filtered by current sub_list)", "request": { "method": "GET", "url": "{{baseUrl}}/api/admin/mapping/faculty-course-section?facultyRoll=" } },
         { "name": "Student-Course Mapping: Search by roll (read-only)", "request": { "method": "GET", "url": "{{baseUrl}}/api/admin/mapping/student-course-section?roll={{studentRoll}}" } },
@@ -133,27 +135,36 @@
         { "name": "Reports: Live Tracking", "request": { "method": "GET", "url": "{{baseUrl}}/api/admin/reports/live-tracking" } },
         { "name": "Reports: Attendance (JSON)", "request": { "method": "GET", "url": "{{baseUrl}}/api/admin/reports/attendance?page=1&pageSize=20" } },
         { "name": "Reports: Attendance (Excel export)", "request": { "method": "GET", "url": "{{baseUrl}}/api/admin/reports/attendance?export=excel" } },
-        { "name": "Reports: Attendance (PDF export)", "request": { "method": "GET", "url": "{{baseUrl}}/api/admin/reports/attendance?export=pdf" } }
+        { "name": "Reports: Attendance (PDF export)", "request": { "method": "GET", "url": "{{baseUrl}}/api/admin/reports/attendance?export=pdf" } },
+        { "name": "Violations: List (anti-cheat + geofence)", "request": { "method": "GET", "url": "{{baseUrl}}/api/admin/violations?page=1&pageSize=20" } }
       ]
     },
     {
       "name": "Faculty",
       "item": [
+        { "name": "My Courses (legacy-sourced, real Prog/Dept)", "request": { "method": "GET", "url": "{{baseUrl}}/api/faculty/courses" } },
+        { "name": "Course Roster (legacy-sourced)", "request": { "method": "GET", "url": "{{baseUrl}}/api/faculty/courses/CS201/students" } },
         { "name": "List My Quizzes", "request": { "method": "GET", "url": "{{baseUrl}}/api/faculty/quizzes" } },
         { "name": "Create Quiz", "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "url": "{{baseUrl}}/api/faculty/quiz", "body": { "mode": "raw", "raw": "{\n  \"title\": \"Unit 1 Quiz\",\n  \"courseId\": 1,\n  \"sectionId\": 1,\n  \"buildingId\": 1,\n  \"startTime\": \"2026-08-10T09:00:00.000Z\",\n  \"endTime\": \"2026-08-10T09:30:00.000Z\",\n  \"durationMinutes\": 20,\n  \"totalMarks\": 10,\n  \"randomize\": true,\n  \"negativeMarking\": false,\n  \"allowSkipSwitch\": true,\n  \"status\": \"draft\"\n}" } } },
+        { "name": "Create Quiz (as Admin, on a faculty's behalf)", "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "url": "{{baseUrl}}/api/faculty/quiz", "body": { "mode": "raw", "raw": "{\n  \"facultyRoll\": \"{{facultyRoll}}\",\n  \"title\": \"Unit 1 Quiz\",\n  \"courseId\": 1,\n  \"buildingId\": 1,\n  \"startTime\": \"2026-08-10T09:00:00.000Z\",\n  \"endTime\": \"2026-08-10T09:30:00.000Z\",\n  \"durationMinutes\": 20,\n  \"totalMarks\": 1,\n  \"randomize\": true,\n  \"negativeMarking\": false,\n  \"allowSkipSwitch\": true,\n  \"status\": \"draft\"\n}" } } },
         { "name": "Get Quiz", "request": { "method": "GET", "url": "{{baseUrl}}/api/faculty/quiz/{{quizId}}" } },
         { "name": "Update Quiz", "request": { "method": "PATCH", "header": [{ "key": "Content-Type", "value": "application/json" }], "url": "{{baseUrl}}/api/faculty/quiz/{{quizId}}", "body": { "mode": "raw", "raw": "{\n  \"title\": \"Unit 1 Quiz (Revised)\"\n}" } } },
         { "name": "Delete Quiz", "request": { "method": "DELETE", "url": "{{baseUrl}}/api/faculty/quiz/{{quizId}}" } },
         { "name": "Duplicate Quiz", "request": { "method": "POST", "url": "{{baseUrl}}/api/faculty/quiz/{{quizId}}/duplicate" } },
         { "name": "Get Questions", "request": { "method": "GET", "url": "{{baseUrl}}/api/faculty/quiz/{{quizId}}/questions" } },
-        { "name": "Add/Update Questions", "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "url": "{{baseUrl}}/api/faculty/quiz/{{quizId}}/questions", "body": { "mode": "raw", "raw": "{\n  \"questions\": [\n    {\n      \"questionType\": \"mcq\",\n      \"questionText\": \"2 + 2 = ?\",\n      \"marks\": 1,\n      \"negativeMarks\": 0,\n      \"orderIndex\": 0,\n      \"options\": [\n        { \"optionText\": \"3\", \"isCorrect\": false },\n        { \"optionText\": \"4\", \"isCorrect\": true }\n      ]\n    },\n    {\n      \"questionType\": \"formula\",\n      \"questionText\": \"Value of pi to 2 decimals?\",\n      \"marks\": 2,\n      \"negativeMarks\": 0,\n      \"orderIndex\": 1,\n      \"correctValue\": 3.14,\n      \"tolerance\": 0.01\n    }\n  ]\n}" } } },
+        { "name": "Add/Update Questions (Objective + Subjective)", "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "url": "{{baseUrl}}/api/faculty/quiz/{{quizId}}/questions", "body": { "mode": "raw", "raw": "{\n  \"questions\": [\n    {\n      \"questionType\": \"mcq\",\n      \"questionText\": \"2 + 2 = ?\",\n      \"marks\": 1,\n      \"negativeMarks\": 0,\n      \"orderIndex\": 0,\n      \"options\": [\n        { \"optionText\": \"3\", \"isCorrect\": false },\n        { \"optionText\": \"4\", \"isCorrect\": true }\n      ]\n    },\n    {\n      \"questionType\": \"subjective\",\n      \"questionText\": \"Explain Newton's second law of motion.\",\n      \"marks\": 5,\n      \"orderIndex\": 1,\n      \"referenceAnswer\": \"Force equals mass times acceleration (F = ma) - optional grading guide.\"\n    }\n  ]\n}" } } },
+        { "name": "Download Bulk Import Template (.xlsx, includes Type column)", "request": { "method": "GET", "url": "{{baseUrl}}/api/faculty/questions/import-template" } },
+        { "name": "Bulk Import Questions (.xlsx upload, OBJECTIVE/SUBJECTIVE)", "request": { "method": "POST", "url": "{{baseUrl}}/api/faculty/quiz/{{quizId}}/questions/import", "body": { "mode": "formdata", "formdata": [{ "key": "file", "type": "file", "src": [] }] } } },
         { "name": "Allot Quiz", "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "url": "{{baseUrl}}/api/faculty/quiz/{{quizId}}/allot", "body": { "mode": "raw", "raw": "{\n  \"mode\": \"course\"\n}" } } },
         { "name": "Start Quiz", "request": { "method": "POST", "url": "{{baseUrl}}/api/faculty/quiz/{{quizId}}/start" } },
         { "name": "Stop Quiz", "request": { "method": "POST", "url": "{{baseUrl}}/api/faculty/quiz/{{quizId}}/stop" } },
         { "name": "Get Attempts", "request": { "method": "GET", "url": "{{baseUrl}}/api/faculty/quiz/{{quizId}}/attempts" } },
+        { "name": "List Subjective Answers (needs grading)", "request": { "method": "GET", "url": "{{baseUrl}}/api/faculty/quiz/{{quizId}}/subjective-answers" } },
+        { "name": "Grade Subjective Answer", "request": { "method": "PATCH", "header": [{ "key": "Content-Type", "value": "application/json" }], "url": "{{baseUrl}}/api/faculty/quiz/{{quizId}}/subjective-answers/1", "body": { "mode": "raw", "raw": "{\n  \"marksAwarded\": 4\n}" } } },
         { "name": "Declare Result", "request": { "method": "POST", "url": "{{baseUrl}}/api/faculty/quiz/{{quizId}}/declare-result" } },
         { "name": "Publish Result", "request": { "method": "POST", "url": "{{baseUrl}}/api/faculty/quiz/{{quizId}}/publish-result" } },
-        { "name": "My Attendance", "request": { "method": "GET", "url": "{{baseUrl}}/api/faculty/attendance" } }
+        { "name": "My Attendance", "request": { "method": "GET", "url": "{{baseUrl}}/api/faculty/attendance" } },
+        { "name": "Buildings (read-only, for quiz creation)", "request": { "method": "GET", "url": "{{baseUrl}}/api/faculty/buildings" } }
       ]
     },
     {
@@ -163,7 +174,8 @@
         { "name": "Geofence Check", "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "url": "{{baseUrl}}/api/student/quiz/{{quizId}}/geofence-check", "body": { "mode": "raw", "raw": "{\n  \"latitude\": 28.6139,\n  \"longitude\": 77.2090\n}" } } },
         { "name": "Start Attempt", "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "url": "{{baseUrl}}/api/student/quiz/{{quizId}}/start-attempt", "body": { "mode": "raw", "raw": "{\n  \"latitude\": 28.6139,\n  \"longitude\": 77.2090\n}" } } },
         { "name": "Get Attempt Questions", "request": { "method": "GET", "url": "{{baseUrl}}/api/student/attempt/{{attemptId}}/questions" } },
-        { "name": "Save Answer", "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "url": "{{baseUrl}}/api/student/attempt/{{attemptId}}/answer", "body": { "mode": "raw", "raw": "{\n  \"questionId\": 1,\n  \"selectedOptionId\": 2,\n  \"isSkipped\": false\n}" } } },
+        { "name": "Save Answer (Objective)", "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "url": "{{baseUrl}}/api/student/attempt/{{attemptId}}/answer", "body": { "mode": "raw", "raw": "{\n  \"questionId\": 1,\n  \"selectedOptionId\": 2,\n  \"isSkipped\": false\n}" } } },
+        { "name": "Save Answer (Subjective)", "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "url": "{{baseUrl}}/api/student/attempt/{{attemptId}}/answer", "body": { "mode": "raw", "raw": "{\n  \"questionId\": 2,\n  \"writtenAnswer\": \"Force equals mass times acceleration.\",\n  \"isSkipped\": false\n}" } } },
         { "name": "Submit Attempt", "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "url": "{{baseUrl}}/api/student/attempt/{{attemptId}}/submit", "body": { "mode": "raw", "raw": "{\n  \"autoSubmitted\": false\n}" } } },
         { "name": "Anti-Cheat Event", "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "url": "{{baseUrl}}/api/student/attempt/{{attemptId}}/anti-cheat-event", "body": { "mode": "raw", "raw": "{\n  \"eventType\": \"screen_switch\"\n}" } } },
         { "name": "My Results", "request": { "method": "GET", "url": "{{baseUrl}}/api/student/results" } }

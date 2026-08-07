@@ -23,7 +23,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { ChevronRight, Pencil, Plus, Trash2 } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { ChevronRight, Pencil, Plus, Power, PowerOff, Trash2 } from "lucide-react";
 
 interface Student {
   roll: string;
@@ -32,6 +33,7 @@ interface Student {
   major: string;
   batch: string;
   semNow: string;
+  status: number; // 1-Active, 2-Inactive
 }
 
 interface ListResponse<T> {
@@ -131,6 +133,17 @@ export default function StudentListPage() {
     }
   };
 
+  const handleToggleStatus = async (student: Student) => {
+    const active = student.status !== 1;
+    try {
+      await apiClient.patch(`/api/admin/students/${student.roll}/status`, { active });
+      toast.success(active ? "Student activated" : "Student deactivated");
+      mutate();
+    } catch (error) {
+      toast.error(error instanceof ApiClientError ? error.message : "Status update failed");
+    }
+  };
+
   const columns: DataTableColumn<Student>[] = [
     { key: "name", header: "Name", render: (r) => <span className="font-medium">{r.name}</span> },
     { key: "email", header: "Email", render: (r) => r.email },
@@ -139,11 +152,26 @@ export default function StudentListPage() {
     { key: "batch", header: "Batch", render: (r) => r.batch || "—" },
     { key: "semNow", header: "Semester", render: (r) => r.semNow || "—" },
     {
+      key: "status",
+      header: "Status",
+      render: (r) => (
+        <Badge variant={r.status === 1 ? "success" : "destructive"}>{r.status === 1 ? "Active" : "Inactive"}</Badge>
+      ),
+    },
+    {
       key: "actions",
       header: "",
       className: "text-right",
       render: (r) => (
         <div className="flex justify-end gap-1">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => handleToggleStatus(r)}
+            title={r.status === 1 ? "Deactivate login" : "Activate login"}
+          >
+            {r.status === 1 ? <PowerOff className="h-4 w-4 text-destructive" /> : <Power className="h-4 w-4 text-green-600" />}
+          </Button>
           <Button variant="ghost" size="icon" onClick={() => openEdit(r)}>
             <Pencil className="h-4 w-4" />
           </Button>
