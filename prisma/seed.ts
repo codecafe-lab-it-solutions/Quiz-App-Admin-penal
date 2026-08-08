@@ -1,5 +1,6 @@
 import { PrismaClient } from "@prisma/client";
 import bcrypt from "bcryptjs";
+import { syncSection } from "@/lib/section-sync";
 
 const prisma = new PrismaClient();
 
@@ -38,10 +39,19 @@ async function ensureSession(name: string, startDate: Date, endDate: Date) {
   return prisma.academicSession.create({ data: { name, startDate, endDate } });
 }
 
-async function ensureSection(name: string, courseId: number, sessionId: number) {
-  const existing = await prisma.section.findFirst({ where: { name, courseId, sessionId } });
+// A section is keyed by (name, exact set of linked courses) so re-running the
+// seed doesn't create duplicates, but a single section can span multiple
+// courses/batches (e.g. a merged section combining two courses' rosters).
+async function ensureSection(name: string, courseIds: number[]) {
+  const candidates = await prisma.section.findMany({
+    where: { name, courses: { some: { courseId: { in: courseIds } } } },
+    include: { courses: true },
+  });
+  const existing = candidates.find(
+    (s) => s.courses.length === courseIds.length && courseIds.every((cid) => s.courses.some((c) => c.courseId === cid))
+  );
   if (existing) return existing;
-  return prisma.section.create({ data: { name, courseId, sessionId } });
+  return prisma.section.create({ data: { name, courses: { create: courseIds.map((courseId) => ({ courseId })) } } });
 }
 
 async function ensureBuilding(data: { name: string; latitude: number; longitude: number; radiusMeters: number }) {
@@ -152,7 +162,7 @@ async function ensureStudentCourseRegistration(tableName: string, roll: string, 
 
 // --- Demo quiz (populates Attendance report / Dashboard stats) -------------
 
-async function ensureDemoQuiz(params: { courseId: number; sectionId: number; facultyRoll: string; buildingId: number }) {
+async function ensureCompletedDemoQuiz(params: { courseId: number; sectionId: number; sessionId: number; facultyRoll: string; buildingId: number }) {
   const existing = await prisma.quiz.findFirst({ where: { title: "Data Structures Midterm" } });
   if (existing) return existing;
 
@@ -164,7 +174,8 @@ async function ensureDemoQuiz(params: { courseId: number; sectionId: number; fac
     data: {
       title: "Data Structures Midterm",
       courseId: params.courseId,
-      sectionId: params.sectionId,
+      sections: { create: [{ sectionId: params.sectionId }] },
+      sessionId: params.sessionId,
       facultyRoll: params.facultyRoll,
       buildingId: params.buildingId,
       startTime: start,
@@ -227,6 +238,87 @@ async function ensureDemoQuiz(params: { courseId: number; sectionId: number; fac
   return quiz;
 }
 
+// Draft/scheduled/live demo quizzes are meant to always look "current" no
+// matter when the seed is (re-)run, so their time fields are refreshed every
+// run; their questions/allotments are only created once (on first creation).
+async function ensureTimedDemoQuiz(params: {
+  title: string;
+  courseId: number;
+  sectionIds: number[];
+  facultyRoll: string;
+  buildingId: number;
+  status: "draft" | "scheduled" | "live";
+  startTime: Date;
+  endTime: Date;
+  durationMinutes: number;
+  totalMarks: number;
+  actualStartTime?: Date;
+}) {
+  const existing = await prisma.quiz.findFirst({ where: { title: params.title } });
+  if (existing) {
+    return prisma.quiz.update({
+      where: { id: existing.id },
+      data: {
+        startTime: params.startTime,
+        endTime: params.endTime,
+        status: params.status,
+        actualStartTime: params.actualStartTime ?? null,
+      },
+    });
+  }
+
+  return prisma.quiz.create({
+    data: {
+      title: params.title,
+      courseId: params.courseId,
+      sections: { create: params.sectionIds.map((sectionId) => ({ sectionId })) },
+      facultyRoll: params.facultyRoll,
+      buildingId: params.buildingId,
+      startTime: params.startTime,
+      endTime: params.endTime,
+      durationMinutes: params.durationMinutes,
+      totalMarks: params.totalMarks,
+      status: params.status,
+      actualStartTime: params.actualStartTime,
+    },
+  });
+}
+
+async function ensureQuestionAndAllotments(params: {
+  quizId: number;
+  questionText: string;
+  marks: number;
+  allotRolls: string[];
+  attemptedRoll?: string;
+}) {
+  const existingQuestions = await prisma.question.count({ where: { quizId: params.quizId } });
+  if (existingQuestions > 0) return;
+
+  const q = await prisma.question.create({
+    data: { quizId: params.quizId, questionText: params.questionText, questionType: "mcq", marks: params.marks, negativeMarks: 0, orderIndex: 1 },
+  });
+  const options = await Promise.all([
+    prisma.questionOption.create({ data: { questionId: q.id, optionText: "Option A", isCorrect: true } }),
+    prisma.questionOption.create({ data: { questionId: q.id, optionText: "Option B", isCorrect: false } }),
+    prisma.questionOption.create({ data: { questionId: q.id, optionText: "Option C", isCorrect: false } }),
+  ]);
+
+  for (const roll of params.allotRolls) {
+    const attempted = roll === params.attemptedRoll;
+    await prisma.quizAllotment.create({
+      data: { quizId: params.quizId, studentRoll: roll, status: attempted ? "attempted" : "allotted" },
+    });
+    if (attempted) {
+      const attempt = await prisma.quizAttempt.create({
+        data: { quizId: params.quizId, studentRoll: roll, status: "submitted", endTime: new Date() },
+      });
+      await prisma.studentAnswer.create({
+        data: { attemptId: attempt.id, questionId: q.id, selectedOptionId: options[0].id, isCorrect: true, marksObtained: params.marks, orderIndex: 1 },
+      });
+    }
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Main
 // ---------------------------------------------------------------------------
@@ -241,67 +333,182 @@ async function main() {
   await ensureAdminUser({ name: "Ops Admin", email: "ops.admin@example.com", password: DEMO_PASSWORD, role: "admin" });
   await ensureSemesterConfig();
 
-  console.log("Seeding master data...");
+  console.log("Seeding master data (departments, courses, sessions, buildings)...");
 
   const csDept = await ensureDepartment("Computer Science");
   const eceDept = await ensureDepartment("Electronics & Communication");
   const meDept = await ensureDepartment("Mechanical Engineering");
+  const eeeDept = await ensureDepartment("Electrical Engineering");
 
   await ensureCourse({ name: "Data Structures", code: "CS201", departmentId: csDept.id, credits: 4 });
   await ensureCourse({ name: "Database Systems", code: "CS301", departmentId: csDept.id, credits: 4 });
+  await ensureCourse({ name: "Computer Networks", code: "CS302", departmentId: csDept.id, credits: 3 });
   await ensureCourse({ name: "Digital Electronics", code: "EC201", departmentId: eceDept.id, credits: 3 });
   await ensureCourse({ name: "Thermodynamics", code: "ME201", departmentId: meDept.id, credits: 3 });
+  await ensureCourse({ name: "Control Systems", code: "EE201", departmentId: eeeDept.id, credits: 3 });
 
   const session = await ensureSession("2025-26 Odd Semester", new Date("2025-07-01"), new Date("2025-12-15"));
 
-  // Sections (kept for quiz scheduling metadata — no confirmed legacy source yet, see schema TODOs)
   const cs201 = await prisma.course.findUniqueOrThrow({ where: { code: "CS201" } });
   const cs301 = await prisma.course.findUniqueOrThrow({ where: { code: "CS301" } });
+  const cs302 = await prisma.course.findUniqueOrThrow({ where: { code: "CS302" } });
   const ec201 = await prisma.course.findUniqueOrThrow({ where: { code: "EC201" } });
   const me201 = await prisma.course.findUniqueOrThrow({ where: { code: "ME201" } });
-  const cs201SectionA = await ensureSection("A", cs201.id, session.id);
-  await ensureSection("B", cs201.id, session.id);
-  await ensureSection("A", cs301.id, session.id);
-  await ensureSection("A", ec201.id, session.id);
-  await ensureSection("A", me201.id, session.id);
+  const ee201 = await prisma.course.findUniqueOrThrow({ where: { code: "EE201" } });
+
+  console.log("Seeding sections (including one merged, multi-course section)...");
+
+  const cs201SectionA = await ensureSection("A", [cs201.id]);
+  await ensureSection("B", [cs201.id]);
+  const cs301SectionA = await ensureSection("A", [cs301.id]);
+  const cs302SectionA = await ensureSection("A", [cs302.id]);
+  const ec201SectionA = await ensureSection("A", [ec201.id]);
+  const me201SectionA = await ensureSection("A", [me201.id]);
+  const ee201SectionA = await ensureSection("A", [ee201.id]);
+  // Demonstrates the "merged section spanning multiple courses/batches"
+  // capability: one section whose membership is the union of both courses'
+  // rosters, mixing students who are registered in either (or both).
+  const mergedSection = await ensureSection("Combined A (CS201+CS302)", [cs201.id, cs302.id]);
 
   const mainBlock = await ensureBuilding({ name: "Main Academic Block", latitude: 28.6139, longitude: 77.209, radiusMeters: 40 });
-  await ensureBuilding({ name: "Engineering Block", latitude: 28.6145, longitude: 77.2101, radiusMeters: 50 });
+  const engBlock = await ensureBuilding({ name: "Engineering Block", latitude: 28.6145, longitude: 77.2101, radiusMeters: 50 });
 
-  console.log("Seeding legacy directory (faculty, students, mappings)...");
+  console.log("Seeding legacy directory (faculty, students across two batches)...");
 
   await ensureFaculty({ roll: "FAC2025001", name: "Dr. Ramesh Kumar", email: "ramesh.kumar@example.com" });
   await ensureFaculty({ roll: "FAC2025002", name: "Dr. Priya Sharma", email: "priya.sharma@example.com" });
   await ensureFaculty({ roll: "FAC2025003", name: "Dr. Arjun Mehta", email: "arjun.mehta@example.com" });
+  await ensureFaculty({ roll: "FAC2025004", name: "Dr. Sunita Rao", email: "sunita.rao@example.com" });
+  await ensureFaculty({ roll: "FAC2025005", name: "Dr. Vikram Nair", email: "vikram.nair@example.com" });
 
+  // Batch 2025 (current, semester 3)
   await ensureStudent({ roll: "STU2025001", name: "Aarav Singh", email: "aarav.singh@example.com", major: "CSE", batch: "2025", semNow: "3" });
   await ensureStudent({ roll: "STU2025002", name: "Diya Patel", email: "diya.patel@example.com", major: "CSE", batch: "2025", semNow: "3" });
   await ensureStudent({ roll: "STU2025003", name: "Kabir Verma", email: "kabir.verma@example.com", major: "CSE", batch: "2025", semNow: "3" });
   await ensureStudent({ roll: "STU2025004", name: "Ananya Reddy", email: "ananya.reddy@example.com", major: "ECE", batch: "2025", semNow: "3" });
   await ensureStudent({ roll: "STU2025005", name: "Vihaan Joshi", email: "vihaan.joshi@example.com", major: "ME", batch: "2025", semNow: "3" });
+  await ensureStudent({ roll: "STU2025006", name: "Ishaan Gupta", email: "ishaan.gupta@example.com", major: "ECE", batch: "2025", semNow: "3" });
+  await ensureStudent({ roll: "STU2025007", name: "Myra Kapoor", email: "myra.kapoor@example.com", major: "ECE", batch: "2025", semNow: "3" });
+  await ensureStudent({ roll: "STU2025008", name: "Reyansh Iyer", email: "reyansh.iyer@example.com", major: "ME", batch: "2025", semNow: "3" });
+  await ensureStudent({ roll: "STU2025009", name: "Saanvi Nair", email: "saanvi.nair@example.com", major: "EEE", batch: "2025", semNow: "3" });
+  await ensureStudent({ roll: "STU2025010", name: "Advait Rao", email: "advait.rao@example.com", major: "EEE", batch: "2025", semNow: "3" });
+
+  // Batch 2024 (senior batch, semester 5) - registered into higher-level
+  // courses, so CS301/CS302 rosters mix two batches, same as a real cohort.
+  await ensureStudent({ roll: "STU2024001", name: "Aditi Sharma", email: "aditi.sharma@example.com", major: "CSE", batch: "2024", semNow: "5" });
+  await ensureStudent({ roll: "STU2024002", name: "Kiaan Malhotra", email: "kiaan.malhotra@example.com", major: "CSE", batch: "2024", semNow: "5" });
+  await ensureStudent({ roll: "STU2024003", name: "Riya Chatterjee", email: "riya.chatterjee@example.com", major: "CSE", batch: "2024", semNow: "5" });
 
   const currentSubList = (await ensureSemesterConfig()).currentSubList;
   await ensureFacultyCourseMapping({ sem: "3", subList: currentSubList, subCode: "CS201", facRoll: "FAC2025001", branch: "CSE" });
-  await ensureFacultyCourseMapping({ sem: "3", subList: currentSubList, subCode: "CS301", facRoll: "FAC2025002", branch: "CSE" });
+  await ensureFacultyCourseMapping({ sem: "5", subList: currentSubList, subCode: "CS301", facRoll: "FAC2025002", branch: "CSE" });
+  await ensureFacultyCourseMapping({ sem: "5", subList: currentSubList, subCode: "CS302", facRoll: "FAC2025005", branch: "CSE" });
   await ensureFacultyCourseMapping({ sem: "3", subList: currentSubList, subCode: "EC201", facRoll: "FAC2025003", branch: "ECE" });
+  await ensureFacultyCourseMapping({ sem: "3", subList: currentSubList, subCode: "EE201", facRoll: "FAC2025004", branch: "EEE" });
 
-  const batchTable = "isr_reg_2025_tbl";
-  await ensureBatchRegistrationTable("2025", batchTable);
-  await ensureStudentCourseRegistration(batchTable, "STU2025001", "CS201", currentSubList);
-  await ensureStudentCourseRegistration(batchTable, "STU2025002", "CS201", currentSubList);
-  await ensureStudentCourseRegistration(batchTable, "STU2025003", "CS301", currentSubList);
-  await ensureStudentCourseRegistration(batchTable, "STU2025004", "EC201", currentSubList);
-  await ensureStudentCourseRegistration(batchTable, "STU2025005", "ME201", currentSubList);
+  console.log("Seeding course registrations across two batch tables...");
 
-  console.log("Seeding a demo completed quiz (attendance + results)...");
-  await ensureDemoQuiz({ courseId: cs201.id, sectionId: cs201SectionA.id, facultyRoll: "FAC2025001", buildingId: mainBlock.id });
+  const batch2025Table = "isr_reg_2025_tbl";
+  const batch2024Table = "isr_reg_2024_tbl";
+  await ensureBatchRegistrationTable("2025", batch2025Table);
+  await ensureBatchRegistrationTable("2024", batch2024Table);
+
+  await ensureStudentCourseRegistration(batch2025Table, "STU2025001", "CS201", currentSubList);
+  await ensureStudentCourseRegistration(batch2025Table, "STU2025002", "CS201", currentSubList);
+  await ensureStudentCourseRegistration(batch2025Table, "STU2025003", "CS201", currentSubList);
+  await ensureStudentCourseRegistration(batch2025Table, "STU2025003", "CS301", currentSubList);
+  await ensureStudentCourseRegistration(batch2025Table, "STU2025001", "CS302", currentSubList);
+  await ensureStudentCourseRegistration(batch2025Table, "STU2025002", "CS302", currentSubList);
+  await ensureStudentCourseRegistration(batch2025Table, "STU2025004", "EC201", currentSubList);
+  await ensureStudentCourseRegistration(batch2025Table, "STU2025006", "EC201", currentSubList);
+  await ensureStudentCourseRegistration(batch2025Table, "STU2025007", "EC201", currentSubList);
+  await ensureStudentCourseRegistration(batch2025Table, "STU2025005", "ME201", currentSubList);
+  await ensureStudentCourseRegistration(batch2025Table, "STU2025008", "ME201", currentSubList);
+  await ensureStudentCourseRegistration(batch2025Table, "STU2025009", "EE201", currentSubList);
+  await ensureStudentCourseRegistration(batch2025Table, "STU2025010", "EE201", currentSubList);
+
+  await ensureStudentCourseRegistration(batch2024Table, "STU2024001", "CS301", currentSubList);
+  await ensureStudentCourseRegistration(batch2024Table, "STU2024002", "CS301", currentSubList);
+  await ensureStudentCourseRegistration(batch2024Table, "STU2024001", "CS302", currentSubList);
+  await ensureStudentCourseRegistration(batch2024Table, "STU2024003", "CS302", currentSubList);
+
+  console.log("Syncing section membership from legacy rosters...");
+  for (const section of [cs201SectionA, cs301SectionA, cs302SectionA, ec201SectionA, me201SectionA, ee201SectionA, mergedSection]) {
+    await syncSection(section.id);
+  }
+
+  console.log("Seeding demo quizzes in every status (draft, scheduled, live, completed)...");
+
+  const now = new Date();
+
+  await ensureCompletedDemoQuiz({ courseId: cs201.id, sectionId: cs201SectionA.id, sessionId: session.id, facultyRoll: "FAC2025001", buildingId: mainBlock.id });
+
+  const draftQuiz = await ensureTimedDemoQuiz({
+    title: "Computer Networks Quiz 1 (Draft)",
+    courseId: cs302.id,
+    sectionIds: [cs302SectionA.id],
+    facultyRoll: "FAC2025005",
+    buildingId: engBlock.id,
+    status: "draft",
+    startTime: new Date(now.getTime() + 2 * 24 * 60 * 60 * 1000),
+    endTime: new Date(now.getTime() + 2 * 24 * 60 * 60 * 1000 + 45 * 60 * 1000),
+    durationMinutes: 45,
+    totalMarks: 10,
+  });
+  await ensureQuestionAndAllotments({
+    quizId: draftQuiz.id,
+    questionText: "Which layer of the OSI model handles routing?",
+    marks: 10,
+    allotRolls: [],
+  });
+
+  const scheduledQuiz = await ensureTimedDemoQuiz({
+    title: "Digital Electronics Pop Quiz (Scheduled)",
+    courseId: ec201.id,
+    sectionIds: [ec201SectionA.id],
+    facultyRoll: "FAC2025003",
+    buildingId: mainBlock.id,
+    status: "scheduled",
+    startTime: new Date(now.getTime() + 60 * 60 * 1000),
+    endTime: new Date(now.getTime() + 90 * 60 * 1000),
+    durationMinutes: 30,
+    totalMarks: 10,
+  });
+  await ensureQuestionAndAllotments({
+    quizId: scheduledQuiz.id,
+    questionText: "A NAND gate is a universal gate. True or False?",
+    marks: 10,
+    allotRolls: ["STU2025004", "STU2025006", "STU2025007"],
+  });
+
+  const liveQuiz = await ensureTimedDemoQuiz({
+    title: "Database Systems Live Test",
+    courseId: cs301.id,
+    sectionIds: [cs301SectionA.id],
+    facultyRoll: "FAC2025002",
+    buildingId: mainBlock.id,
+    status: "live",
+    startTime: now,
+    endTime: new Date(now.getTime() + 40 * 60 * 1000),
+    durationMinutes: 40,
+    totalMarks: 10,
+    actualStartTime: now,
+  });
+  await ensureQuestionAndAllotments({
+    quizId: liveQuiz.id,
+    questionText: "Which normal form eliminates transitive dependency?",
+    marks: 10,
+    allotRolls: ["STU2025003", "STU2024001", "STU2024002"],
+    attemptedRoll: "STU2024001",
+  });
 
   console.log("\nSeed complete.\n");
   console.log(`Super admin login: ${process.env.SEED_ADMIN_EMAIL ?? "admin@example.com"} / (see SEED_ADMIN_PASSWORD in .env)`);
   console.log(`Demo admin/faculty/student accounts password: ${DEMO_PASSWORD} (override with SEED_DEMO_PASSWORD in .env)`);
   console.log("  Admin:    ops.admin@example.com");
-  console.log("  Faculty:  FAC2025001 / ramesh.kumar@example.com  (and FAC2025002, FAC2025003)");
-  console.log("  Students: STU2025001 / aarav.singh@example.com   (and STU2025002-005)");
+  console.log("  Faculty:  FAC2025001 / ramesh.kumar@example.com  (and FAC2025002-005)");
+  console.log("  Students: STU2025001 / aarav.singh@example.com   (and STU2025002-010, STU2024001-003)");
+  console.log("  Live now: \"Database Systems Live Test\" - visible on Admin > Live Tracking");
 }
 
 main()

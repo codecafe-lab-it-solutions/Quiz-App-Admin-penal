@@ -28,7 +28,7 @@ export async function GET(req: NextRequest) {
         orderBy: { startTime: "desc" },
         include: {
           course: { select: { id: true, name: true, code: true } },
-          section: { select: { id: true, name: true } },
+          sections: { include: { section: { select: { id: true, name: true } } } },
           building: { select: { id: true, name: true, latitude: true, longitude: true, radiusMeters: true } },
           allotments: { where: { studentRoll }, select: { status: true } },
         },

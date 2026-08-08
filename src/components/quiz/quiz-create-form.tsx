@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Select,
   SelectContent,
@@ -35,6 +36,16 @@ interface FacultyOption {
   name: string;
 }
 
+interface SectionOption {
+  id: number;
+  name: string;
+}
+
+interface SessionOption {
+  id: number;
+  name: string;
+}
+
 const fetcher = <T,>(url: string) => apiClient.get<T>(url);
 
 function toLocalInputValue(date: Date): string {
@@ -47,6 +58,8 @@ export function QuizCreateForm({ role }: { role: "faculty" | "admin" }) {
   const [facultyRoll, setFacultyRoll] = useState("");
   const [title, setTitle] = useState("");
   const [courseCode, setCourseCode] = useState("");
+  const [sectionIds, setSectionIds] = useState<number[]>([]);
+  const [sessionId, setSessionId] = useState("");
   const [buildingId, setBuildingId] = useState("");
   const [startTime, setStartTime] = useState(toLocalInputValue(new Date(Date.now() + 60 * 60 * 1000)));
   const [endTime, setEndTime] = useState(toLocalInputValue(new Date(Date.now() + 90 * 60 * 1000)));
@@ -73,13 +86,31 @@ export function QuizCreateForm({ role }: { role: "faculty" | "admin" }) {
   const { data: buildingsData } = useSWR(`/api/faculty/buildings`, (url: string) =>
     fetcher<{ items: BuildingOption[] }>(url)
   );
+  const { data: sessionsData } = useSWR(`/api/faculty/sessions`, (url: string) =>
+    fetcher<{ items: SessionOption[] }>(url)
+  );
 
   const courses = (coursesData?.items ?? []).filter((c) => c.courseId !== null);
   const buildings = buildingsData?.items ?? [];
+  const selectedCourse = courses.find((c) => c.subCode === courseCode);
+
+  const { data: sectionsData } = useSWR(
+    selectedCourse?.courseId ? `/api/faculty/sections?courseId=${selectedCourse.courseId}` : null,
+    (url: string) => fetcher<{ items: SectionOption[] }>(url)
+  );
+  const sections = sectionsData?.items ?? [];
 
   useEffect(() => {
     setCourseCode("");
   }, [facultyRoll]);
+
+  useEffect(() => {
+    setSectionIds([]);
+  }, [courseCode]);
+
+  const toggleSection = (id: number, checked: boolean) => {
+    setSectionIds((prev) => (checked ? [...prev, id] : prev.filter((s) => s !== id)));
+  };
 
   const handleSubmit = async () => {
     if (role === "admin" && !facultyRoll) {
@@ -93,6 +124,10 @@ export function QuizCreateForm({ role }: { role: "faculty" | "admin" }) {
     const course = courses.find((c) => c.subCode === courseCode);
     if (!course || course.courseId === null) {
       toast.error("Select a course");
+      return;
+    }
+    if (sectionIds.length === 0) {
+      toast.error("Select at least one section");
       return;
     }
     if (!buildingId) {
@@ -111,6 +146,8 @@ export function QuizCreateForm({ role }: { role: "faculty" | "admin" }) {
         ...(role === "admin" ? { facultyRoll } : {}),
         title: title.trim(),
         courseId: course.courseId,
+        sectionIds,
+        ...(sessionId ? { sessionId: Number(sessionId) } : {}),
         buildingId: Number(buildingId),
         startTime: new Date(startTime).toISOString(),
         endTime: new Date(endTime).toISOString(),
@@ -189,7 +226,48 @@ export function QuizCreateForm({ role }: { role: "faculty" | "admin" }) {
               <SelectContent>
                 {buildings.map((b) => (
                   <SelectItem key={b.id} value={String(b.id)}>
-                    {b.name} (±{b.radiusMeters}m)
+                    {b.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <div className="space-y-1.5">
+            <Label>Sections</Label>
+            <div className="max-h-40 space-y-2 overflow-y-auto rounded-md border p-3">
+              {!courseCode && <p className="text-xs text-muted-foreground">Select a course first.</p>}
+              {courseCode && sections.length === 0 && (
+                <p className="text-xs text-muted-foreground">
+                  No sections linked to this course yet - ask an admin to add one under Master Data → Sections.
+                </p>
+              )}
+              {sections.map((s) => (
+                <div key={s.id} className="flex items-center gap-2">
+                  <Checkbox
+                    checked={sectionIds.includes(s.id)}
+                    onCheckedChange={(checked) => toggleSection(s.id, checked === true)}
+                    id={`section-${s.id}`}
+                  />
+                  <label htmlFor={`section-${s.id}`} className="text-sm">
+                    {s.name}
+                  </label>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className="space-y-1.5">
+            <Label>Session (optional)</Label>
+            <Select value={sessionId} onValueChange={setSessionId}>
+              <SelectTrigger>
+                <SelectValue placeholder="Map to an upcoming session" />
+              </SelectTrigger>
+              <SelectContent>
+                {(sessionsData?.items ?? []).map((s) => (
+                  <SelectItem key={s.id} value={String(s.id)}>
+                    {s.name}
                   </SelectItem>
                 ))}
               </SelectContent>

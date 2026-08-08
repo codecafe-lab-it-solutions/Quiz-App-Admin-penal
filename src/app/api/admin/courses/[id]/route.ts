@@ -13,7 +13,7 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
     const { id } = idParamSchema.parse(params);
     const course = await prisma.course.findUnique({
       where: { id },
-      include: { department: { select: { id: true, name: true } }, sections: true },
+      include: { department: { select: { id: true, name: true } }, sectionCourses: { include: { section: true } } },
     });
     if (!course) throw new ApiError(404, "Course not found");
 

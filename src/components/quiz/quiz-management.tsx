@@ -10,15 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { Checkbox } from "@/components/ui/checkbox";
 import { DataTable, DataTableColumn } from "@/components/admin/data-table";
 import { ConfirmDialog } from "@/components/admin/confirm-dialog";
 import { QuestionEditorDialog, QuestionRow } from "@/components/quiz/question-editor-dialog";
@@ -75,8 +67,7 @@ export function QuizManagement({ quizId, role }: { quizId: number; role: "facult
   const listPath = role === "faculty" ? "/faculty/quizzes" : "/admin/tests";
   const [questionDialogOpen, setQuestionDialogOpen] = useState(false);
   const [editingQuestion, setEditingQuestion] = useState<QuestionRow | null>(null);
-  const [allotMode, setAllotMode] = useState<"course" | "custom">("course");
-  const [customRolls, setCustomRolls] = useState("");
+  const [checkedRolls, setCheckedRolls] = useState<Set<string> | null>(null);
   const [allotting, setAllotting] = useState(false);
   const [importing, setImporting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -86,6 +77,14 @@ export function QuizManagement({ quizId, role }: { quizId: number; role: "facult
     quiz?.status === "completed" ? `/api/faculty/quiz/${quizId}/subjective-answers` : null,
     (url: string) => fetcher<{ items: SubjectiveAnswer[]; ungradedCount: number }>(url)
   );
+  const { data: candidatesData, mutate: mutateCandidates } = useSWR(
+    `/api/faculty/quiz/${quizId}/allot/candidates`,
+    (url: string) => fetcher<{ items: { roll: string; name: string; allotted: boolean }[] }>(url)
+  );
+  const candidates = candidatesData?.items ?? [];
+  // Default: everyone checked. Once the faculty/admin touches a box, their
+  // selection takes over instead of re-defaulting on every refetch.
+  const effectiveChecked = checkedRolls ?? new Set(candidates.map((c) => c.roll));
 
   if (isLoading || !quiz) {
     return <p className="text-sm text-muted-foreground">Loading quiz...</p>;
@@ -154,19 +153,29 @@ export function QuizManagement({ quizId, role }: { quizId: number; role: "facult
     }
   };
 
+  const toggleCandidate = (roll: string, checked: boolean) => {
+    const next = new Set(effectiveChecked);
+    if (checked) next.add(roll);
+    else next.delete(roll);
+    setCheckedRolls(next);
+  };
+
   const handleAllot = async () => {
+    const studentRolls = [...effectiveChecked];
+    if (studentRolls.length === 0) {
+      toast.error("Select at least one student");
+      return;
+    }
     setAllotting(true);
     try {
-      const body =
-        allotMode === "course"
-          ? { mode: "course" as const }
-          : { mode: "custom" as const, studentRolls: customRolls.split(/[,\n]/).map((r) => r.trim()).filter(Boolean) };
       const result = await apiClient.post<{ allottedCount: number; totalAllotted: number }>(
         `/api/faculty/quiz/${quizId}/allot`,
-        body
+        { studentRolls }
       );
       toast.success(`Allotted ${result.allottedCount} student(s) - ${result.totalAllotted} total`);
+      setCheckedRolls(null);
       mutate();
+      mutateCandidates();
     } catch (error) {
       toast.error(error instanceof ApiClientError ? error.message : "Failed to allot quiz");
     } finally {
@@ -365,25 +374,33 @@ export function QuizManagement({ quizId, role }: { quizId: number; role: "facult
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-lg">Allot Students ({quiz._count.allotments} allotted)</CardTitle>
+          <CardTitle className="text-lg">Allot Students ({effectiveChecked.size} selected)</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
-          <Select value={allotMode} onValueChange={(v) => setAllotMode(v as "course" | "custom")}>
-            <SelectTrigger className="max-w-xs">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="course">Every student registered for this course</SelectItem>
-              <SelectItem value="custom">Custom list of roll numbers</SelectItem>
-            </SelectContent>
-          </Select>
-          {allotMode === "custom" && (
-            <div className="space-y-1.5">
-              <Label>Roll numbers (comma or newline separated)</Label>
-              <Textarea value={customRolls} onChange={(e) => setCustomRolls(e.target.value)} rows={3} />
+          {candidates.length === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              No students found in this quiz&apos;s linked section(s) yet - check section membership under Master Data → Sections.
+            </p>
+          ) : (
+            <div className="max-h-72 space-y-1 overflow-y-auto rounded-md border p-2">
+              {candidates.map((c) => (
+                <div key={c.roll} className="flex items-center justify-between rounded px-2 py-1.5 hover:bg-muted">
+                  <div className="flex items-center gap-2">
+                    <Checkbox
+                      checked={effectiveChecked.has(c.roll)}
+                      onCheckedChange={(checked) => toggleCandidate(c.roll, checked === true)}
+                      id={`student-${c.roll}`}
+                    />
+                    <label htmlFor={`student-${c.roll}`} className="text-sm">
+                      {c.name} <span className="text-muted-foreground">({c.roll})</span>
+                    </label>
+                  </div>
+                  {c.allotted && <Badge variant="secondary">already allotted</Badge>}
+                </div>
+              ))}
             </div>
           )}
-          <Button onClick={handleAllot} disabled={allotting}>
+          <Button onClick={handleAllot} disabled={allotting || candidates.length === 0}>
             {allotting ? "Allotting..." : "Allot Quiz"}
           </Button>
         </CardContent>

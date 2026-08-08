@@ -1,11 +1,13 @@
 import { NextRequest } from "next/server";
-import { ok, created, handleApiError } from "@/lib/api-response";
+import { ok, created, handleApiError, ApiError } from "@/lib/api-response";
 import { getAuthUser, requireRole } from "@/lib/auth";
 import { facultyCourseMappingQuerySchema } from "@/lib/validators/mapping";
 import { facultyCourseMappingCreateSchema } from "@/lib/validators/directory";
 import { paginationMeta } from "@/lib/validators/common";
 import { getFacultyCourseMappings, createFacultyCourseMapping } from "@/lib/legacy-db";
 import { getCurrentSubList } from "@/lib/config";
+import { prisma } from "@/lib/db";
+import { addManualSectionFaculty } from "@/lib/section-sync";
 
 // Sourced live from the legacy isr_sub_available_tbl, filtered by the
 // admin-configurable "current" sub_list (Settings > Semester Config). POST
@@ -33,9 +35,13 @@ export async function POST(req: NextRequest) {
     const user = getAuthUser(req);
     requireRole(user, "admin");
 
-    const body = facultyCourseMappingCreateSchema.parse(await req.json());
+    const { sectionId, ...rest } = facultyCourseMappingCreateSchema.parse(await req.json());
+    const section = await prisma.section.findUnique({ where: { id: sectionId } });
+    if (!section) throw new ApiError(404, "Section not found");
+
     const currentSubList = await getCurrentSubList();
-    const mapping = await createFacultyCourseMapping({ ...body, subList: currentSubList });
+    const mapping = await createFacultyCourseMapping({ ...rest, subList: currentSubList });
+    await addManualSectionFaculty(sectionId, rest.facRoll);
 
     return created(mapping);
   } catch (error) {

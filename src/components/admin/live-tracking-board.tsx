@@ -10,7 +10,7 @@ interface LiveQuizItem {
   id: number;
   title: string;
   course: { name: string; code: string };
-  section: { name: string };
+  sections: { name: string }[];
   faculty: { name: string };
   building: { name: string };
   durationMinutes: number;
@@ -72,7 +72,7 @@ export function LiveTrackingBoard({ compact = false }: LiveTrackingBoardProps) {
               </CardHeader>
               <CardContent className="space-y-2 text-sm">
                 <p className="text-muted-foreground">
-                  {quiz.course.name} ({quiz.course.code}) &middot; {quiz.section.name}
+                  {quiz.course.name} ({quiz.course.code}) &middot; {quiz.sections.map((s) => s.name).join(", ") || "—"}
                 </p>
                 <p className="text-muted-foreground">
                   {quiz.faculty.name} &middot; {quiz.building.name}

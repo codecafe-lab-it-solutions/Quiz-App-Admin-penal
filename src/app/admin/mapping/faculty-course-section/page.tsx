@@ -14,6 +14,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   Dialog,
   DialogContent,
@@ -38,13 +39,23 @@ interface ListResponse {
   currentSubList: string;
 }
 
+interface SectionOption {
+  id: number;
+  name: string;
+}
+interface SectionListResponse {
+  items: SectionOption[];
+}
+
 const fetcher = (url: string) => apiClient.get<ListResponse>(url);
+const sectionFetcher = (url: string) => apiClient.get<SectionListResponse>(url);
 
 const schema = z.object({
   facRoll: z.string().trim().min(1, "Faculty roll is required"),
   subCode: z.string().trim().min(1, "Course code is required"),
   branch: z.string().trim().min(1, "Branch is required"),
   sem: z.string().trim().min(1, "Semester is required"),
+  sectionId: z.coerce.number().int().positive("Select a section"),
 });
 type FormValues = z.infer<typeof schema>;
 
@@ -56,16 +67,20 @@ export default function FacultyMappingPage() {
   const params = new URLSearchParams({ pageSize: "100" });
   if (facultyRoll.trim()) params.set("facultyRoll", facultyRoll.trim());
   const { data, isLoading, mutate } = useSWR(`/api/admin/mapping/faculty-course-section?${params.toString()}`, fetcher);
+  const { data: sectionData } = useSWR("/api/admin/sections?pageSize=200", sectionFetcher);
 
   const {
     register,
     handleSubmit,
     reset,
+    watch,
+    setValue,
     formState: { errors },
   } = useForm<FormValues>({ resolver: zodResolver(schema) });
+  const sectionId = watch("sectionId");
 
   const openCreate = () => {
-    reset({ facRoll: "", subCode: "", branch: "", sem: "" });
+    reset({ facRoll: "", subCode: "", branch: "", sem: "", sectionId: undefined });
     setDialogOpen(true);
   };
 
@@ -152,6 +167,22 @@ export default function FacultyMappingPage() {
                 <Input id="sem" {...register("sem")} placeholder="e.g. 3" />
                 {errors.sem && <p className="text-sm text-destructive">{errors.sem.message}</p>}
               </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Section</Label>
+              <Select value={sectionId ? String(sectionId) : undefined} onValueChange={(v) => setValue("sectionId", Number(v), { shouldValidate: true })}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select section" />
+                </SelectTrigger>
+                <SelectContent>
+                  {sectionData?.items.map((s) => (
+                    <SelectItem key={s.id} value={String(s.id)}>
+                      {s.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {errors.sectionId && <p className="text-sm text-destructive">{errors.sectionId.message}</p>}
             </div>
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>

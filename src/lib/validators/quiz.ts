@@ -8,8 +8,8 @@ export const quizCreateSchema = z
     // ignored (the caller's own roll is used) when a faculty member creates it.
     facultyRoll: z.string().trim().min(1).optional(),
     courseId: z.coerce.number().int().positive("Select a course"),
-    // TODO: section source pending confirmation - no legacy source yet, optional until then
-    sectionId: z.coerce.number().int().positive().optional(),
+    sectionIds: z.array(z.coerce.number().int().positive()).min(1, "Select at least one section"),
+    sessionId: z.coerce.number().int().positive().optional(),
     buildingId: z.coerce.number().int().positive("Select a building"),
     startTime: z.coerce.date(),
     endTime: z.coerce.date(),
@@ -29,7 +29,8 @@ export type QuizCreateInput = z.infer<typeof quizCreateSchema>;
 export const quizUpdateSchema = z.object({
   title: z.string().trim().min(3).optional(),
   courseId: z.coerce.number().int().positive().optional(),
-  sectionId: z.coerce.number().int().positive().optional(),
+  sectionIds: z.array(z.coerce.number().int().positive()).min(1).optional(),
+  sessionId: z.coerce.number().int().positive().optional(),
   buildingId: z.coerce.number().int().positive().optional(),
   startTime: z.coerce.date().optional(),
   endTime: z.coerce.date().optional(),
@@ -110,10 +111,10 @@ export const gradeSubjectiveAnswerSchema = z.object({
 });
 export type GradeSubjectiveAnswerInput = z.infer<typeof gradeSubjectiveAnswerSchema>;
 
+// The checked subset of the quiz's section-derived roster, chosen in the
+// allotment UI (default: everyone checked). The server still verifies every
+// roll is actually a member of one of the quiz's linked sections.
 export const allotSchema = z.object({
-  // "course": allot every student registered for the quiz's course (from the
-  // legacy per-batch registration tables). "custom": allot specific rolls.
-  mode: z.enum(["course", "custom"]),
-  studentRolls: z.array(z.string().trim().min(1)).optional(),
+  studentRolls: z.array(z.string().trim().min(1)).min(1, "Select at least one student"),
 });
 export type AllotInput = z.infer<typeof allotSchema>;

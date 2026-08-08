@@ -4,6 +4,7 @@ import { ok, created, handleApiError } from "@/lib/api-response";
 import { getAuthUser, requireRole } from "@/lib/auth";
 import { sectionSchema } from "@/lib/validators/master-data";
 import { paginationSchema, paginationMeta } from "@/lib/validators/common";
+import { syncSection } from "@/lib/section-sync";
 
 export async function GET(req: NextRequest) {
   try {
@@ -13,12 +14,10 @@ export async function GET(req: NextRequest) {
     const params = Object.fromEntries(req.nextUrl.searchParams);
     const { page, pageSize, search } = paginationSchema.parse(params);
     const courseId = params.courseId ? Number(params.courseId) : undefined;
-    const sessionId = params.sessionId ? Number(params.sessionId) : undefined;
 
     const where = {
       ...(search ? { name: { contains: search } } : {}),
-      ...(courseId ? { courseId } : {}),
-      ...(sessionId ? { sessionId } : {}),
+      ...(courseId ? { courses: { some: { courseId } } } : {}),
     };
 
     const [items, total] = await Promise.all([
@@ -28,8 +27,8 @@ export async function GET(req: NextRequest) {
         take: pageSize,
         orderBy: { name: "asc" },
         include: {
-          course: { select: { id: true, name: true, code: true } },
-          session: { select: { id: true, name: true } },
+          courses: { include: { course: { select: { id: true, name: true, code: true } } } },
+          _count: { select: { students: true, faculty: true } },
         },
       }),
       prisma.section.count({ where }),
@@ -46,8 +45,15 @@ export async function POST(req: NextRequest) {
     const user = getAuthUser(req);
     requireRole(user, "admin");
 
-    const body = sectionSchema.parse(await req.json());
-    const section = await prisma.section.create({ data: body });
+    const { name, courseIds } = sectionSchema.parse(await req.json());
+    const section = await prisma.section.create({
+      data: {
+        name,
+        courses: { create: courseIds.map((courseId) => ({ courseId })) },
+      },
+    });
+
+    await syncSection(section.id);
 
     return created(section);
   } catch (error) {

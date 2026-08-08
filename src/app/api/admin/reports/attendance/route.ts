@@ -17,7 +17,7 @@ export async function GET(req: NextRequest) {
 
     const where = {
       ...(query.courseId ? { courseId: query.courseId } : {}),
-      ...(query.sectionId ? { quiz: { sectionId: query.sectionId } } : {}),
+      ...(query.sectionId ? { quiz: { sections: { some: { sectionId: query.sectionId } } } } : {}),
       ...(query.from || query.to
         ? {
             date: {
@@ -33,7 +33,7 @@ export async function GET(req: NextRequest) {
       orderBy: { date: "desc" as const },
       include: {
         course: { select: { id: true, name: true, code: true } },
-        quiz: { select: { id: true, title: true, section: { select: { id: true, name: true } } } },
+        quiz: { select: { id: true, title: true, sections: { include: { section: { select: { id: true, name: true } } } } } },
       },
     };
 
@@ -54,7 +54,7 @@ export async function GET(req: NextRequest) {
           studentName: names.get(r.studentRoll) ?? r.studentRoll,
           rollNo: r.studentRoll,
           course: `${r.course.name} (${r.course.code})`,
-          section: r.quiz.section?.name ?? "—",
+          section: r.quiz.sections.map((s) => s.section.name).join(", ") || "—",
           quiz: r.quiz.title,
           date: r.date.toISOString().slice(0, 10),
           status: r.status,
@@ -74,7 +74,7 @@ export async function GET(req: NextRequest) {
           names.get(r.studentRoll) ?? r.studentRoll,
           r.studentRoll,
           `${r.course.name} (${r.course.code})`,
-          r.quiz.section?.name ?? "—",
+          r.quiz.sections.map((s) => s.section.name).join(", ") || "—",
           r.quiz.title,
           r.date.toISOString().slice(0, 10),
           r.status,

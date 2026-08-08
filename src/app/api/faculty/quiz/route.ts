@@ -24,11 +24,17 @@ export async function POST(req: NextRequest) {
       throw new ApiError(403, "This faculty member is not mapped to teach this course");
     }
 
+    const sections = await prisma.section.findMany({ where: { id: { in: body.sectionIds } } });
+    if (sections.length !== body.sectionIds.length) {
+      throw new ApiError(404, "One or more selected sections were not found");
+    }
+
     const quiz = await prisma.quiz.create({
       data: {
         title: body.title,
         courseId: body.courseId,
-        sectionId: body.sectionId ?? null,
+        sections: { create: body.sectionIds.map((sectionId) => ({ sectionId })) },
+        sessionId: body.sessionId ?? null,
         buildingId: body.buildingId,
         facultyRoll,
         startTime: body.startTime,

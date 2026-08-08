@@ -14,7 +14,7 @@ export async function GET(req: NextRequest) {
       orderBy: { actualStartTime: "asc" },
       include: {
         course: { select: { id: true, name: true, code: true } },
-        section: { select: { id: true, name: true } },
+        sections: { include: { section: { select: { id: true, name: true } } } },
         building: { select: { id: true, name: true } },
         _count: { select: { allotments: true } },
       },
@@ -38,7 +38,7 @@ export async function GET(req: NextRequest) {
           id: quiz.id,
           title: quiz.title,
           course: quiz.course,
-          section: quiz.section,
+          sections: quiz.sections.map((s) => s.section),
           faculty: { roll: quiz.facultyRoll, name: facultyNames.get(quiz.facultyRoll) ?? quiz.facultyRoll },
           building: quiz.building,
           startTime: quiz.startTime,

@@ -27,10 +27,14 @@ export const sessionUpdateSchema = sessionBaseSchema.partial();
 
 export const sectionSchema = z.object({
   name: z.string().trim().min(1, "Section name is required"),
-  courseId: z.coerce.number().int().positive("Select a course"),
-  sessionId: z.coerce.number().int().positive("Select a session"),
+  courseIds: z.array(z.coerce.number().int().positive()).min(1, "Select at least one course"),
 });
 export type SectionInput = z.infer<typeof sectionSchema>;
+
+export const sectionMemberSchema = z.object({
+  roll: z.string().trim().min(1, "Roll number is required"),
+});
+export type SectionMemberInput = z.infer<typeof sectionMemberSchema>;
 
 export const buildingSchema = z.object({
   name: z.string().trim().min(2, "Building name is required"),

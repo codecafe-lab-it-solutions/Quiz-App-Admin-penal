@@ -4,8 +4,17 @@ import { ok, handleApiError, ApiError } from "@/lib/api-response";
 import { getAuthUser, requireRole } from "@/lib/auth";
 import { allotSchema } from "@/lib/validators/quiz";
 import { idParamSchema } from "@/lib/validators/common";
-import { getCourseRegistrations } from "@/lib/legacy-db";
-import { getCurrentSubList } from "@/lib/config";
+
+async function getSectionDerivedRolls(quizId: number): Promise<Set<string>> {
+  const quizSections = await prisma.quizSection.findMany({ where: { quizId } });
+  const sectionIds = quizSections.map((qs) => qs.sectionId);
+  if (sectionIds.length === 0) return new Set();
+
+  const members = await prisma.sectionStudent.findMany({
+    where: { sectionId: { in: sectionIds }, source: { not: "manual_removed" } },
+  });
+  return new Set(members.map((m) => m.studentRoll));
+}
 
 export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
   try {
@@ -13,26 +22,17 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     requireRole(user, "faculty", "admin");
 
     const { id: quizId } = idParamSchema.parse(params);
-    const quiz = await prisma.quiz.findUnique({ where: { id: quizId }, include: { course: true } });
+    const quiz = await prisma.quiz.findUnique({ where: { id: quizId } });
     if (!quiz || (user.role === "faculty" && quiz.facultyRoll !== String(user.sub))) throw new ApiError(404, "Quiz not found");
     if (quiz.status === "completed") throw new ApiError(400, "Cannot allot a completed quiz");
 
     const body = allotSchema.parse(await req.json());
 
-    let studentRolls: string[];
-
-    if (body.mode === "course") {
-      const registrations = await getCourseRegistrations(quiz.course.code, await getCurrentSubList());
-      studentRolls = [...new Set(registrations.map((r) => r.roll))];
-    } else {
-      if (!body.studentRolls || body.studentRolls.length === 0) {
-        throw new ApiError(400, "Provide at least one student roll for custom allotment");
-      }
-      studentRolls = body.studentRolls;
-    }
+    const eligibleRolls = await getSectionDerivedRolls(quizId);
+    const studentRolls = body.studentRolls.filter((roll) => eligibleRolls.has(roll));
 
     if (studentRolls.length === 0) {
-      throw new ApiError(400, "No students found to allot");
+      throw new ApiError(400, "No eligible students to allot - check the quiz's linked sections have members");
     }
 
     await prisma.$transaction(

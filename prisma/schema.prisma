@@ -63,6 +63,12 @@ enum AntiCheatEventType {
   background
 }
 
+enum SectionMemberSource {
+  auto
+  manual_added
+  manual_removed
+}
+
 // ---------------------------------------------------------------------------
 // Identity / accounts
 // ---------------------------------------------------------------------------
@@ -101,7 +107,7 @@ model Course {
   updatedAt    DateTime @updatedAt @map("updated_at")
 
   department Department @relation(fields: [departmentId], references: [id])
-  sections   Section[]
+  sectionCourses SectionCourse[]
 
   quizzes     Quiz[]
   attendance  Attendance[]
@@ -118,7 +124,7 @@ model AcademicSession {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  sections Section[]
+  quizzes Quiz[]
 
   @@map("academic_sessions")
 }
@@ -126,19 +132,65 @@ model AcademicSession {
 model Section {
   id        Int      @id @default(autoincrement())
   name      String
-  courseId  Int      @map("course_id")
-  sessionId Int      @map("session_id")
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  course  Course          @relation(fields: [courseId], references: [id])
-  session AcademicSession @relation(fields: [sessionId], references: [id])
+  courses  SectionCourse[]
+  students SectionStudent[]
+  faculty  SectionFaculty[]
+  quizzes  QuizSection[]
 
-  quizzes     Quiz[]
-
-  @@index([courseId])
-  @@index([sessionId])
   @@map("sections")
+}
+
+// Many-to-many join so a merged section can span multiple courses/batches
+// (e.g. one combined section covering CS + IT + Mechanical).
+model SectionCourse {
+  id        Int      @id @default(autoincrement())
+  sectionId Int      @map("section_id")
+  courseId  Int      @map("course_id")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  section Section @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+  course  Course  @relation(fields: [courseId], references: [id], onDelete: Cascade)
+
+  @@unique([sectionId, courseId])
+  @@index([courseId])
+  @@map("section_courses")
+}
+
+// Section membership for students, backed by legacy roll numbers (no Prisma
+// FK — see the legacy-integration note further down). `source` distinguishes
+// rows auto-derived from the linked courses' legacy rosters from rows a human
+// has explicitly added or removed, so re-syncing never clobbers an override.
+model SectionStudent {
+  id          Int                 @id @default(autoincrement())
+  sectionId   Int                 @map("section_id")
+  studentRoll String              @map("student_roll")
+  source      SectionMemberSource @default(auto)
+  createdAt   DateTime            @default(now()) @map("created_at")
+
+  section Section @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+
+  @@unique([sectionId, studentRoll])
+  @@index([studentRoll])
+  @@map("section_students")
+}
+
+// Mirrors SectionStudent for faculty membership (legacy isr_faculty_tbl.roll,
+// not a Prisma FK), auto-synced from isr_sub_available_tbl per linked course.
+model SectionFaculty {
+  id          Int                 @id @default(autoincrement())
+  sectionId   Int                 @map("section_id")
+  facultyRoll String              @map("faculty_roll")
+  source      SectionMemberSource @default(auto)
+  createdAt   DateTime            @default(now()) @map("created_at")
+
+  section Section @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+
+  @@unique([sectionId, facultyRoll])
+  @@index([facultyRoll])
+  @@map("section_faculty")
 }
 
 model Building {
@@ -272,7 +324,7 @@ model Quiz {
   id                Int        @id @default(autoincrement())
   title             String
   courseId          Int        @map("course_id")
-  sectionId         Int?       @map("section_id") // TODO: section source pending confirmation
+  sessionId         Int?       @map("session_id")
   facultyRoll       String     @map("faculty_roll") // legacy isr_faculty_tbl.roll — not a Prisma FK
   buildingId        Int        @map("building_id")
   startTime         DateTime   @map("start_time")
@@ -288,10 +340,11 @@ model Quiz {
   createdAt         DateTime   @default(now()) @map("created_at")
   updatedAt         DateTime   @updatedAt @map("updated_at")
 
-  course   Course   @relation(fields: [courseId], references: [id])
-  section  Section? @relation(fields: [sectionId], references: [id])
-  building Building @relation(fields: [buildingId], references: [id])
+  course   Course           @relation(fields: [courseId], references: [id])
+  session  AcademicSession? @relation(fields: [sessionId], references: [id])
+  building Building         @relation(fields: [buildingId], references: [id])
 
+  sections    QuizSection[]
   questions   Question[]
   allotments  QuizAllotment[]
   attempts    QuizAttempt[]
@@ -299,11 +352,27 @@ model Quiz {
   results     Result[]
 
   @@index([courseId])
-  @@index([sectionId])
+  @@index([sessionId])
   @@index([facultyRoll])
   @@index([buildingId])
   @@index([status])
   @@map("quizzes")
+}
+
+// Many-to-many so a quiz can be given to more than one merged/combined
+// section at once (section selection is mandatory at quiz-creation time).
+model QuizSection {
+  id        Int      @id @default(autoincrement())
+  quizId    Int      @map("quiz_id")
+  sectionId Int      @map("section_id")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  quiz    Quiz    @relation(fields: [quizId], references: [id], onDelete: Cascade)
+  section Section @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+
+  @@unique([quizId, sectionId])
+  @@index([sectionId])
+  @@map("quiz_sections")
 }
 
 model Question {

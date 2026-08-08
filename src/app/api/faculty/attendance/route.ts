@@ -26,7 +26,7 @@ export async function GET(req: NextRequest) {
     const where = {
       quiz: {
         facultyRoll: String(user.sub),
-        ...(sectionId ? { sectionId } : {}),
+        ...(sectionId ? { sections: { some: { sectionId } } } : {}),
       },
       ...(courseId ? { courseId } : {}),
       ...(quizId ? { quizId } : {}),
@@ -40,7 +40,7 @@ export async function GET(req: NextRequest) {
         orderBy: { date: "desc" },
         include: {
           course: { select: { id: true, name: true, code: true } },
-          quiz: { select: { id: true, title: true, section: { select: { id: true, name: true } } } },
+          quiz: { select: { id: true, title: true, sections: { include: { section: { select: { id: true, name: true } } } } } },
         },
       }),
       prisma.attendance.count({ where }),

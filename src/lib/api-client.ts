@@ -15,7 +15,31 @@ interface ApiEnvelope<T> {
   error?: { message: string; fields?: Record<string, string[]> };
 }
 
-async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
+// The access-token cookie is short-lived (15m, see src/lib/cookies.ts) by
+// design; this is what silently renews it so a 401 mid-session doesn't bounce
+// the user to /login. Concurrent 401s share one in-flight refresh call rather
+// than each firing their own.
+let refreshPromise: Promise<boolean> | null = null;
+
+function refreshSession(): Promise<boolean> {
+  if (!refreshPromise) {
+    refreshPromise = fetch("/api/auth/refresh", { method: "POST", credentials: "include" })
+      .then((res) => res.ok)
+      .catch(() => false)
+      .finally(() => {
+        refreshPromise = null;
+      });
+  }
+  return refreshPromise;
+}
+
+function redirectToLogin() {
+  if (typeof window === "undefined") return;
+  const redirect = encodeURIComponent(window.location.pathname + window.location.search);
+  window.location.href = `/login?redirect=${redirect}`;
+}
+
+async function request<T>(path: string, options: RequestInit = {}, isRetry = false): Promise<T> {
   const isFormData = options.body instanceof FormData;
 
   const res = await fetch(path, {
@@ -26,6 +50,17 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
       ...(options.headers ?? {}),
     },
   });
+
+  // Don't try to refresh a failed login/refresh/logout call itself - only a
+  // genuinely expired access token on an already-authenticated request.
+  if (res.status === 401 && !isRetry && !path.startsWith("/api/auth/")) {
+    const refreshed = await refreshSession();
+    if (refreshed) {
+      return request<T>(path, options, true);
+    }
+    redirectToLogin();
+    throw new ApiClientError(401, "Session expired, please log in again");
+  }
 
   const contentType = res.headers.get("content-type") ?? "";
   if (!contentType.includes("application/json")) {

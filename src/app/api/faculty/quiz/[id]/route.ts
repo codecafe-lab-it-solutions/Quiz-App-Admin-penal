@@ -18,7 +18,8 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
       where: { id },
       include: {
         course: { select: { id: true, name: true, code: true } },
-        section: { select: { id: true, name: true } },
+        sections: { include: { section: { select: { id: true, name: true } } } },
+        session: { select: { id: true, name: true } },
         building: true,
         questions: {
           orderBy: { orderIndex: "asc" },
@@ -46,8 +47,20 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
       throw new ApiError(400, "A completed quiz cannot be edited");
     }
 
-    const body = quizUpdateSchema.parse(await req.json());
-    const quiz = await prisma.quiz.update({ where: { id }, data: body });
+    const { sectionIds, ...rest } = quizUpdateSchema.parse(await req.json());
+
+    const quiz = await prisma.$transaction(async (tx) => {
+      if (sectionIds) {
+        await tx.quizSection.deleteMany({ where: { quizId: id, sectionId: { notIn: sectionIds } } });
+        const existing = await tx.quizSection.findMany({ where: { quizId: id } });
+        const existingIds = new Set(existing.map((s) => s.sectionId));
+        const toAdd = sectionIds.filter((sid) => !existingIds.has(sid));
+        if (toAdd.length) {
+          await tx.quizSection.createMany({ data: toAdd.map((sectionId) => ({ quizId: id, sectionId })) });
+        }
+      }
+      return tx.quiz.update({ where: { id }, data: rest });
+    });
 
     return ok(quiz);
   } catch (error) {

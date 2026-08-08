@@ -26,7 +26,7 @@ export async function GET(req: NextRequest) {
               title: true,
               totalMarks: true,
               course: { select: { id: true, name: true, code: true } },
-              section: { select: { id: true, name: true } },
+              sections: { include: { section: { select: { id: true, name: true } } } },
             },
           },
         },

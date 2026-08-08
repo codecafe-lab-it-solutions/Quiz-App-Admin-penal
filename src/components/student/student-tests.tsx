@@ -17,7 +17,7 @@ interface StudentQuiz {
   totalMarks: number;
   myAllotmentStatus: "allotted" | "attempted" | "absent";
   course: { name: string; code: string };
-  section: { name: string } | null;
+  sections: { section: { name: string } }[];
   faculty: { name: string };
 }
 
@@ -47,7 +47,7 @@ export function StudentTests() {
   const columns: DataTableColumn<StudentQuiz>[] = [
     { key: "title", header: "Quiz", render: (r) => <span className="font-medium">{r.title}</span> },
     { key: "course", header: "Course", render: (r) => `${r.course.name} (${r.course.code})` },
-    { key: "section", header: "Section", render: (r) => r.section?.name ?? "—" },
+    { key: "section", header: "Section", render: (r) => r.sections.map((s) => s.section.name).join(", ") || "—" },
     { key: "faculty", header: "Faculty", render: (r) => r.faculty.name },
     { key: "startTime", header: "Start", render: (r) => formatDateTime(r.startTime) },
     { key: "status", header: "Status", render: (r) => <Badge variant={statusVariant[r.status]}>{r.status}</Badge> },

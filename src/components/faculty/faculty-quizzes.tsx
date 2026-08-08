@@ -19,7 +19,7 @@ interface FacultyQuiz {
   endTime: string;
   totalMarks: number;
   course: { name: string; code: string };
-  section: { name: string } | null;
+  sections: { section: { name: string } }[];
   building: { name: string };
   _count: { questions: number; allotments: number };
 }
@@ -55,7 +55,7 @@ export function FacultyQuizzes() {
       ),
     },
     { key: "course", header: "Course", render: (r) => `${r.course.name} (${r.course.code})` },
-    { key: "section", header: "Section", render: (r) => r.section?.name ?? "—" },
+    { key: "section", header: "Section", render: (r) => r.sections.map((s) => s.section.name).join(", ") || "—" },
     { key: "building", header: "Building", render: (r) => r.building.name },
     { key: "startTime", header: "Start", render: (r) => formatDateTime(r.startTime) },
     { key: "questions", header: "Questions", render: (r) => r._count.questions },

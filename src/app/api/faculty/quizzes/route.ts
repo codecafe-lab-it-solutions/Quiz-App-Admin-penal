@@ -29,7 +29,7 @@ export async function GET(req: NextRequest) {
         orderBy: { createdAt: "desc" },
         include: {
           course: { select: { id: true, name: true, code: true } },
-          section: { select: { id: true, name: true } },
+          sections: { include: { section: { select: { id: true, name: true } } } },
           building: { select: { id: true, name: true } },
           _count: { select: { questions: true, allotments: true } },
         },

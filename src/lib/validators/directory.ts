@@ -41,6 +41,7 @@ export const facultyCourseMappingCreateSchema = z.object({
   subCode: z.string().trim().min(1, "Course code is required"),
   branch: z.string().trim().min(1, "Branch is required"),
   sem: z.string().trim().min(1, "Semester is required"),
+  sectionId: z.coerce.number().int().positive("Select a section"),
 });
 
 export const studentCourseMappingCreateSchema = z.object({
