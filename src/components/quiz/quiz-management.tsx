@@ -32,6 +32,26 @@ interface QuizDetail {
   _count: { allotments: number };
 }
 
+interface AttemptEntry {
+  student: { roll: string; name: string };
+  allotmentStatus: "allotted" | "attempted" | "absent";
+  isProxy: boolean;
+  attempt: {
+    status: "in_progress" | "submitted" | "auto_submitted";
+    startTime: string;
+    endTime: string | null;
+    autoSubmitted: boolean;
+  } | null;
+}
+
+interface AttemptsResponse {
+  totalAllotted: number;
+  attemptedCount: number;
+  notAttemptedCount: number;
+  attempted: AttemptEntry[];
+  notAttempted: AttemptEntry[];
+}
+
 interface SubjectiveAnswer {
   answerId: number;
   questionText: string;
@@ -85,6 +105,14 @@ export function QuizManagement({ quizId, role }: { quizId: number; role: "facult
   // Default: everyone checked. Once the faculty/admin touches a box, their
   // selection takes over instead of re-defaulting on every refetch.
   const effectiveChecked = checkedRolls ?? new Set(candidates.map((c) => c.roll));
+
+  // Polls only while the quiz is actually live, so submission status/proxy
+  // state on screen tracks what's really happening in real time.
+  const { data: attemptsData, mutate: mutateAttempts } = useSWR(
+    quiz?.status === "live" ? `/api/faculty/quiz/${quizId}/attempts` : null,
+    (url: string) => fetcher<AttemptsResponse>(url),
+    { refreshInterval: 8000 }
+  );
 
   if (isLoading || !quiz) {
     return <p className="text-sm text-muted-foreground">Loading quiz...</p>;
@@ -180,6 +208,21 @@ export function QuizManagement({ quizId, role }: { quizId: number; role: "facult
       toast.error(error instanceof ApiClientError ? error.message : "Failed to allot quiz");
     } finally {
       setAllotting(false);
+    }
+  };
+
+  const handleToggleProxy = async (roll: string, currentlyProxy: boolean) => {
+    try {
+      if (currentlyProxy) {
+        await apiClient.delete(`/api/faculty/quiz/${quizId}/allotments/${encodeURIComponent(roll)}/proxy`);
+        toast.success(`${roll} restored to real attendance`);
+      } else {
+        await apiClient.post(`/api/faculty/quiz/${quizId}/allotments/${encodeURIComponent(roll)}/proxy`);
+        toast.success(`${roll} flagged as proxy - counted as absent`);
+      }
+      mutateAttempts();
+    } catch (error) {
+      toast.error(error instanceof ApiClientError ? error.message : "Failed to update proxy flag");
     }
   };
 
@@ -323,6 +366,10 @@ export function QuizManagement({ quizId, role }: { quizId: number; role: "facult
         </CardHeader>
       </Card>
 
+      {quiz.status === "live" && (
+        <LiveMonitoringCard data={attemptsData} onToggleProxy={handleToggleProxy} />
+      )}
+
       <Card>
         <CardHeader className="flex flex-row items-center justify-between space-y-0">
           <CardTitle className="text-lg">Questions</CardTitle>
@@ -446,6 +493,70 @@ export function QuizManagement({ quizId, role }: { quizId: number; role: "facult
         onSaved={mutate}
       />
     </div>
+  );
+}
+
+function attemptStatusLabel(entry: AttemptEntry): string {
+  if (!entry.attempt) return "Not started";
+  if (entry.attempt.status === "in_progress") return "In progress";
+  if (entry.attempt.status === "auto_submitted") return "Auto-submitted";
+  return "Submitted";
+}
+
+function attemptStatusVariant(entry: AttemptEntry): "secondary" | "warning" | "success" {
+  if (!entry.attempt) return "secondary";
+  if (entry.attempt.status === "in_progress") return "warning";
+  return "success";
+}
+
+function LiveMonitoringCard({
+  data,
+  onToggleProxy,
+}: {
+  data: AttemptsResponse | undefined;
+  onToggleProxy: (roll: string, currentlyProxy: boolean) => void;
+}) {
+  const entries = [...(data?.attempted ?? []), ...(data?.notAttempted ?? [])].sort((a, b) =>
+    a.student.name.localeCompare(b.student.name)
+  );
+  const inProgressCount = entries.filter((e) => e.attempt?.status === "in_progress").length;
+  const submittedCount = entries.filter((e) => e.attempt?.status === "submitted" || e.attempt?.status === "auto_submitted").length;
+  const notStartedCount = entries.filter((e) => !e.attempt).length;
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-lg">Live Monitoring</CardTitle>
+        <p className="text-sm text-muted-foreground">
+          {notStartedCount} not started · {inProgressCount} in progress · {submittedCount} submitted. Refreshes every 8 seconds.
+        </p>
+      </CardHeader>
+      <CardContent>
+        {entries.length === 0 ? (
+          <p className="text-sm text-muted-foreground">No students allotted to this quiz yet.</p>
+        ) : (
+          <div className="max-h-96 space-y-1 overflow-y-auto rounded-md border p-2">
+            {entries.map((entry) => (
+              <div key={entry.student.roll} className="flex items-center justify-between rounded px-2 py-1.5 hover:bg-muted">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm">{entry.student.name}</span>
+                  <span className="text-xs text-muted-foreground">({entry.student.roll})</span>
+                  <Badge variant={attemptStatusVariant(entry)}>{attemptStatusLabel(entry)}</Badge>
+                  {entry.isProxy && <Badge variant="destructive">Proxy (absent)</Badge>}
+                </div>
+                <Button
+                  size="sm"
+                  variant={entry.isProxy ? "outline" : "destructive"}
+                  onClick={() => onToggleProxy(entry.student.roll, entry.isProxy)}
+                >
+                  {entry.isProxy ? "Remove Proxy" : "Mark Proxy"}
+                </Button>
+              </div>
+            ))}
+          </div>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 

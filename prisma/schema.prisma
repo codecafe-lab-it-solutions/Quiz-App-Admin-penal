@@ -427,6 +427,10 @@ model QuizAllotment {
   quizId      Int             @map("quiz_id")
   studentRoll String          @map("student_roll") // legacy isr_stu_data_tbl.stu_roll — not a Prisma FK
   status      AllotmentStatus @default(allotted)
+  // Set when a faculty/admin flags this student's live attempt as a proxy
+  // (someone else appears to be taking it). A proxy always counts as absent
+  // (status flips to "absent"); un-flagging restores their real attendance.
+  isProxy     Boolean         @default(false) @map("is_proxy")
   createdAt   DateTime        @default(now()) @map("created_at")
   updatedAt   DateTime        @updatedAt @map("updated_at")
 

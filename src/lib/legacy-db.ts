@@ -66,6 +66,9 @@ export interface CourseCatalogEntry {
   // added it to the local course catalog yet (Quiz.courseId needs this FK -
   // null means "ask admin to add this course under Master Data > Courses").
   courseId: number | null;
+  // Sections linked to this course (Master Data > Sections) - empty until an
+  // admin creates one, since quiz creation now requires picking a section.
+  sections: { id: number; name: string }[];
 }
 
 export interface CourseRosterEntry {
@@ -629,22 +632,31 @@ export async function getFacultyCourseCatalog(facultyRoll: string, subList: stri
   const codes = [...new Set(mappings.map((m) => m.subCode))];
   const [curriculum, appCourses] = await Promise.all([
     prisma.isrCurriculumTbl.findMany({ where: { bsmsCode: { in: codes }, subList } }),
-    prisma.course.findMany({ where: { code: { in: codes } }, select: { id: true, code: true } }),
+    prisma.course.findMany({
+      where: { code: { in: codes } },
+      select: { id: true, code: true, name: true, credits: true, sectionCourses: { include: { section: { select: { id: true, name: true } } } } },
+    }),
   ]);
   const byCode = new Map(curriculum.map((c) => [c.bsmsCode, c]));
-  const courseIdByCode = new Map(appCourses.map((c) => [c.code, c.id]));
+  const appCourseByCode = new Map(appCourses.map((c) => [c.code, c]));
   const faculty = await getFacultyByRoll(facultyRoll);
 
   return mappings.map((m) => {
     const c = byCode.get(m.subCode);
+    const appCourse = appCourseByCode.get(m.subCode);
     return {
       subCode: m.subCode,
-      title: c?.title ?? null,
+      // The legacy curriculum table (isr_curriculum_tbl) is the primary
+      // source, but it's sparsely populated in practice - fall back to the
+      // admin-managed local Course catalog (Master Data > Courses) rather
+      // than showing a blank name/credit count when that lookup misses.
+      title: c?.title ?? appCourse?.name ?? null,
       branch: c?.bsmsBranch ?? m.branch ?? null,
-      credits: c?.bsmsCredit ?? null,
+      credits: c?.bsmsCredit ?? appCourse?.credits ?? null,
       facRoll: m.facRoll,
       facultyName: faculty?.name ?? null,
-      courseId: courseIdByCode.get(m.subCode) ?? null,
+      courseId: appCourse?.id ?? null,
+      sections: appCourse?.sectionCourses.map((sc) => sc.section) ?? [],
     };
   });
 }

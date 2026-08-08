@@ -46,6 +46,11 @@ interface SessionOption {
   name: string;
 }
 
+interface StudentOption {
+  roll: string;
+  name: string;
+}
+
 const fetcher = <T,>(url: string) => apiClient.get<T>(url);
 
 function toLocalInputValue(date: Date): string {
@@ -58,7 +63,6 @@ export function QuizCreateForm({ role }: { role: "faculty" | "admin" }) {
   const [facultyRoll, setFacultyRoll] = useState("");
   const [title, setTitle] = useState("");
   const [courseCode, setCourseCode] = useState("");
-  const [sectionIds, setSectionIds] = useState<number[]>([]);
   const [sessionId, setSessionId] = useState("");
   const [buildingId, setBuildingId] = useState("");
   const [startTime, setStartTime] = useState(toLocalInputValue(new Date(Date.now() + 60 * 60 * 1000)));
@@ -94,23 +98,38 @@ export function QuizCreateForm({ role }: { role: "faculty" | "admin" }) {
   const buildings = buildingsData?.items ?? [];
   const selectedCourse = courses.find((c) => c.subCode === courseCode);
 
+  // Every section linked to the chosen course is auto-included (no manual
+  // section picking) - the visible/interactive part is just which students
+  // to allot, sourced from the union of those sections' membership.
   const { data: sectionsData } = useSWR(
     selectedCourse?.courseId ? `/api/faculty/sections?courseId=${selectedCourse.courseId}` : null,
     (url: string) => fetcher<{ items: SectionOption[] }>(url)
   );
   const sections = sectionsData?.items ?? [];
+  const sectionIds = sections.map((s) => s.id);
+
+  const { data: studentsData } = useSWR(
+    sectionIds.length > 0 ? `/api/faculty/sections/students?sectionIds=${sectionIds.join(",")}` : null,
+    (url: string) => fetcher<{ items: StudentOption[] }>(url)
+  );
+  const candidates = studentsData?.items ?? [];
+  const [checkedRolls, setCheckedRolls] = useState<Set<string> | null>(null);
+  const effectiveChecked = checkedRolls ?? new Set(candidates.map((c) => c.roll));
+
+  const toggleStudent = (roll: string, checked: boolean) => {
+    const next = new Set(effectiveChecked);
+    if (checked) next.add(roll);
+    else next.delete(roll);
+    setCheckedRolls(next);
+  };
 
   useEffect(() => {
     setCourseCode("");
   }, [facultyRoll]);
 
   useEffect(() => {
-    setSectionIds([]);
+    setCheckedRolls(null);
   }, [courseCode]);
-
-  const toggleSection = (id: number, checked: boolean) => {
-    setSectionIds((prev) => (checked ? [...prev, id] : prev.filter((s) => s !== id)));
-  };
 
   const handleSubmit = async () => {
     if (role === "admin" && !facultyRoll) {
@@ -127,7 +146,7 @@ export function QuizCreateForm({ role }: { role: "faculty" | "admin" }) {
       return;
     }
     if (sectionIds.length === 0) {
-      toast.error("Select at least one section");
+      toast.error("This course has no sections yet - ask an admin to add one under Master Data → Sections");
       return;
     }
     if (!buildingId) {
@@ -158,7 +177,14 @@ export function QuizCreateForm({ role }: { role: "faculty" | "admin" }) {
         allowSkipSwitch,
         status: "draft",
       });
-      toast.success("Quiz created - now add questions and allot students");
+
+      const studentRolls = [...effectiveChecked];
+      if (studentRolls.length > 0) {
+        await apiClient.post(`/api/faculty/quiz/${quiz.id}/allot`, { studentRolls });
+        toast.success(`Quiz created and ${studentRolls.length} student(s) allotted - now add questions`);
+      } else {
+        toast.success("Quiz created - now add questions and allot students");
+      }
       router.push(`${role === "faculty" ? "/faculty/quizzes" : "/admin/tests"}/${quiz.id}`);
     } catch (error) {
       toast.error(error instanceof ApiClientError ? error.message : "Failed to create quiz");
@@ -234,45 +260,20 @@ export function QuizCreateForm({ role }: { role: "faculty" | "admin" }) {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <div className="space-y-1.5">
-            <Label>Sections</Label>
-            <div className="max-h-40 space-y-2 overflow-y-auto rounded-md border p-3">
-              {!courseCode && <p className="text-xs text-muted-foreground">Select a course first.</p>}
-              {courseCode && sections.length === 0 && (
-                <p className="text-xs text-muted-foreground">
-                  No sections linked to this course yet - ask an admin to add one under Master Data → Sections.
-                </p>
-              )}
-              {sections.map((s) => (
-                <div key={s.id} className="flex items-center gap-2">
-                  <Checkbox
-                    checked={sectionIds.includes(s.id)}
-                    onCheckedChange={(checked) => toggleSection(s.id, checked === true)}
-                    id={`section-${s.id}`}
-                  />
-                  <label htmlFor={`section-${s.id}`} className="text-sm">
-                    {s.name}
-                  </label>
-                </div>
+        <div className="space-y-1.5">
+          <Label>Session (optional)</Label>
+          <Select value={sessionId} onValueChange={setSessionId}>
+            <SelectTrigger className="max-w-xs">
+              <SelectValue placeholder="Map to an upcoming session" />
+            </SelectTrigger>
+            <SelectContent>
+              {(sessionsData?.items ?? []).map((s) => (
+                <SelectItem key={s.id} value={String(s.id)}>
+                  {s.name}
+                </SelectItem>
               ))}
-            </div>
-          </div>
-          <div className="space-y-1.5">
-            <Label>Session (optional)</Label>
-            <Select value={sessionId} onValueChange={setSessionId}>
-              <SelectTrigger>
-                <SelectValue placeholder="Map to an upcoming session" />
-              </SelectTrigger>
-              <SelectContent>
-                {(sessionsData?.items ?? []).map((s) => (
-                  <SelectItem key={s.id} value={String(s.id)}>
-                    {s.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+            </SelectContent>
+          </Select>
         </div>
 
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
@@ -308,6 +309,33 @@ export function QuizCreateForm({ role }: { role: "faculty" | "admin" }) {
           <div className="flex items-center justify-between rounded-md border p-3">
             <Label htmlFor="allowSkipSwitch" className="cursor-pointer">Allow skip/switch</Label>
             <Switch id="allowSkipSwitch" checked={allowSkipSwitch} onCheckedChange={setAllowSkipSwitch} />
+          </div>
+        </div>
+
+        <div className="space-y-1.5">
+          <Label>Allot Students ({effectiveChecked.size} selected)</Label>
+          <div className="max-h-56 space-y-1 overflow-y-auto rounded-md border p-2">
+            {!courseCode && <p className="p-2 text-xs text-muted-foreground">Select a course first.</p>}
+            {courseCode && sections.length === 0 && (
+              <p className="p-2 text-xs text-muted-foreground">
+                No sections linked to this course yet - ask an admin to add one under Master Data → Sections.
+              </p>
+            )}
+            {courseCode && sections.length > 0 && candidates.length === 0 && (
+              <p className="p-2 text-xs text-muted-foreground">No students found in this course&apos;s section(s) yet.</p>
+            )}
+            {candidates.map((c) => (
+              <div key={c.roll} className="flex items-center gap-2 rounded px-2 py-1.5 hover:bg-muted">
+                <Checkbox
+                  checked={effectiveChecked.has(c.roll)}
+                  onCheckedChange={(checked) => toggleStudent(c.roll, checked === true)}
+                  id={`student-${c.roll}`}
+                />
+                <label htmlFor={`student-${c.roll}`} className="text-sm">
+                  {c.name} <span className="text-muted-foreground">({c.roll})</span>
+                </label>
+              </div>
+            ))}
           </div>
         </div>
 

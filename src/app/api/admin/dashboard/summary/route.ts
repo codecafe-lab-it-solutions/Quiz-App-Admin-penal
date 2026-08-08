@@ -9,10 +9,13 @@ export async function GET(req: NextRequest) {
     const user = getAuthUser(req);
     requireRole(user, "admin");
 
-    const startOfDay = new Date();
-    startOfDay.setHours(0, 0, 0, 0);
-    const endOfDay = new Date();
-    endOfDay.setHours(23, 59, 59, 999);
+    // Attendance.date is a MySQL DATE column - Prisma normalizes it to UTC
+    // midnight on both write and read, so "today" must be computed in UTC
+    // terms too. Using local-time boundaries here would drift by a day
+    // whenever the app server's timezone isn't UTC (e.g. IST is +5:30).
+    const now = new Date();
+    const startOfDay = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+    const endOfDay = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 23, 59, 59, 999));
 
     const [totalFaculty, totalStudents, liveQuizCount, todayAttendance] = await Promise.all([
       countFaculty(),

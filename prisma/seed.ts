@@ -284,6 +284,117 @@ async function ensureTimedDemoQuiz(params: {
   });
 }
 
+// "Class test" style completed quizzes that always happened "today" (times
+// and attendance dates refresh on every re-seed) - this is what feeds the
+// Admin Dashboard's "Today's Attendance" KPI and gives every course/faculty/
+// student real attendance+result rows, not just the one historical midterm.
+async function ensureRecentCompletedQuiz(params: {
+  title: string;
+  courseId: number;
+  sectionId: number;
+  facultyRoll: string;
+  buildingId: number;
+  questionText: string;
+  outcomes: { roll: string; present: boolean; correct?: boolean }[];
+  // Attaches one AntiCheatEvent + GeofenceLog to the first present student,
+  // so the Violations feature has something real to show.
+  withViolation?: boolean;
+}) {
+  const now = new Date();
+  const start = new Date(now.getTime() - 3 * 60 * 60 * 1000);
+  const end = new Date(start.getTime() + 45 * 60 * 1000);
+  // Matches the real submission flow (src/app/api/student/attempt/[id]/submit
+  // /route.ts, which stores `date: quiz.startTime`) - Attendance.date is a
+  // MySQL DATE column, normalized in UTC regardless of server-local timezone,
+  // so deriving it from the same UTC timestamp keeps this consistent with
+  // both production writes and the dashboard's UTC-based "today" query.
+  const attendanceDate = start;
+  const marks = 10;
+
+  const existing = await prisma.quiz.findFirst({ where: { title: params.title } });
+  if (existing) {
+    await prisma.quiz.update({
+      where: { id: existing.id },
+      data: { startTime: start, endTime: end, actualStartTime: start, actualStopTime: end },
+    });
+    await prisma.attendance.updateMany({ where: { quizId: existing.id }, data: { date: attendanceDate } });
+    return existing;
+  }
+
+  const quiz = await prisma.quiz.create({
+    data: {
+      title: params.title,
+      courseId: params.courseId,
+      sections: { create: [{ sectionId: params.sectionId }] },
+      facultyRoll: params.facultyRoll,
+      buildingId: params.buildingId,
+      startTime: start,
+      endTime: end,
+      durationMinutes: 45,
+      totalMarks: marks,
+      randomize: true,
+      negativeMarking: false,
+      allowSkipSwitch: true,
+      status: "completed",
+      actualStartTime: start,
+      actualStopTime: end,
+    },
+  });
+
+  const q = await prisma.question.create({
+    data: { quizId: quiz.id, questionText: params.questionText, questionType: "mcq", marks, negativeMarks: 0, orderIndex: 1 },
+  });
+  const options = await Promise.all([
+    prisma.questionOption.create({ data: { questionId: q.id, optionText: "Option A", isCorrect: true } }),
+    prisma.questionOption.create({ data: { questionId: q.id, optionText: "Option B", isCorrect: false } }),
+  ]);
+
+  const building = await prisma.building.findUnique({ where: { id: params.buildingId } });
+  let violationAttached = false;
+
+  for (const outcome of params.outcomes) {
+    if (!outcome.present) {
+      await prisma.quizAllotment.create({ data: { quizId: quiz.id, studentRoll: outcome.roll, status: "absent" } });
+      await prisma.attendance.create({ data: { studentRoll: outcome.roll, courseId: params.courseId, quizId: quiz.id, date: attendanceDate, status: "absent" } });
+      continue;
+    }
+
+    await prisma.quizAllotment.create({ data: { quizId: quiz.id, studentRoll: outcome.roll, status: "attempted" } });
+    const attempt = await prisma.quizAttempt.create({
+      data: { quizId: quiz.id, studentRoll: outcome.roll, startTime: start, endTime: end, status: "submitted" },
+    });
+    const correct = outcome.correct !== false;
+    const marksObtained = correct ? marks : 0;
+    await prisma.studentAnswer.create({
+      data: { attemptId: attempt.id, questionId: q.id, selectedOptionId: correct ? options[0].id : options[1].id, isCorrect: correct, marksObtained, orderIndex: 1 },
+    });
+    await prisma.attendance.create({ data: { studentRoll: outcome.roll, courseId: params.courseId, quizId: quiz.id, date: attendanceDate, status: "present" } });
+    await prisma.result.create({
+      data: { quizId: quiz.id, studentRoll: outcome.roll, marksObtained, percentage: (marksObtained / marks) * 100, status: "published", declaredAt: end, publishedAt: end },
+    });
+
+    if (params.withViolation && !violationAttached && building) {
+      violationAttached = true;
+      await prisma.antiCheatEvent.create({
+        data: { attemptId: attempt.id, eventType: "screen_switch", actionTaken: "Warning shown to student" },
+      });
+      await prisma.geofenceLog.create({
+        data: {
+          attemptId: attempt.id,
+          quizId: quiz.id,
+          studentRoll: outcome.roll,
+          latitude: building.latitude,
+          longitude: building.longitude,
+          distanceMeters: 12.4,
+          isWithinRange: true,
+        },
+      });
+    }
+  }
+
+  return quiz;
+}
+
 async function ensureQuestionAndAllotments(params: {
   quizId: number;
   questionText: string;
@@ -331,6 +442,8 @@ async function main() {
     role: "super_admin",
   });
   await ensureAdminUser({ name: "Ops Admin", email: "ops.admin@example.com", password: DEMO_PASSWORD, role: "admin" });
+  await ensureAdminUser({ name: "Registrar Admin", email: "registrar.admin@example.com", password: DEMO_PASSWORD, role: "admin" });
+  await ensureAdminUser({ name: "IT Support Admin", email: "it.support@example.com", password: DEMO_PASSWORD, role: "admin" });
   await ensureSemesterConfig();
 
   console.log("Seeding master data (departments, courses, sessions, buildings)...");
@@ -405,6 +518,9 @@ async function main() {
   await ensureFacultyCourseMapping({ sem: "5", subList: currentSubList, subCode: "CS302", facRoll: "FAC2025005", branch: "CSE" });
   await ensureFacultyCourseMapping({ sem: "3", subList: currentSubList, subCode: "EC201", facRoll: "FAC2025003", branch: "ECE" });
   await ensureFacultyCourseMapping({ sem: "3", subList: currentSubList, subCode: "EE201", facRoll: "FAC2025004", branch: "EEE" });
+  // FAC2025001 teaches two courses (CS201 + ME201) - a realistic multi-course
+  // faculty, and the only way ME201 gets an owner among the seeded faculty.
+  await ensureFacultyCourseMapping({ sem: "3", subList: currentSubList, subCode: "ME201", facRoll: "FAC2025001", branch: "ME" });
 
   console.log("Seeding course registrations across two batch tables...");
 
@@ -500,6 +616,77 @@ async function main() {
     marks: 10,
     allotRolls: ["STU2025003", "STU2024001", "STU2024002"],
     attemptedRoll: "STU2024001",
+  });
+
+  console.log("Seeding recent completed quizzes so every course/faculty/student has real attendance & results...");
+
+  await ensureRecentCompletedQuiz({
+    title: "Database Systems Class Test",
+    courseId: cs301.id,
+    sectionId: cs301SectionA.id,
+    facultyRoll: "FAC2025002",
+    buildingId: mainBlock.id,
+    questionText: "Which normal form removes transitive dependency?",
+    outcomes: [
+      { roll: "STU2025003", present: true, correct: true },
+      { roll: "STU2024001", present: true, correct: false },
+      { roll: "STU2024002", present: false },
+    ],
+  });
+
+  await ensureRecentCompletedQuiz({
+    title: "Computer Networks Class Test",
+    courseId: cs302.id,
+    sectionId: cs302SectionA.id,
+    facultyRoll: "FAC2025005",
+    buildingId: engBlock.id,
+    questionText: "Which layer of the OSI model handles routing?",
+    outcomes: [
+      { roll: "STU2025001", present: true, correct: true },
+      { roll: "STU2025002", present: true, correct: true },
+      { roll: "STU2024003", present: false },
+    ],
+    withViolation: true,
+  });
+
+  await ensureRecentCompletedQuiz({
+    title: "Digital Electronics Class Test",
+    courseId: ec201.id,
+    sectionId: ec201SectionA.id,
+    facultyRoll: "FAC2025003",
+    buildingId: mainBlock.id,
+    questionText: "A NAND gate is a universal gate. True or False?",
+    outcomes: [
+      { roll: "STU2025004", present: true, correct: true },
+      { roll: "STU2025006", present: true, correct: false },
+      { roll: "STU2025007", present: false },
+    ],
+  });
+
+  await ensureRecentCompletedQuiz({
+    title: "Control Systems Class Test",
+    courseId: ee201.id,
+    sectionId: ee201SectionA.id,
+    facultyRoll: "FAC2025004",
+    buildingId: engBlock.id,
+    questionText: "What does a PID controller stand for?",
+    outcomes: [
+      { roll: "STU2025009", present: true, correct: true },
+      { roll: "STU2025010", present: true, correct: true },
+    ],
+  });
+
+  await ensureRecentCompletedQuiz({
+    title: "Thermodynamics Class Test",
+    courseId: me201.id,
+    sectionId: me201SectionA.id,
+    facultyRoll: "FAC2025001",
+    buildingId: mainBlock.id,
+    questionText: "Which law of thermodynamics defines entropy?",
+    outcomes: [
+      { roll: "STU2025005", present: true, correct: true },
+      { roll: "STU2025008", present: false },
+    ],
   });
 
   console.log("\nSeed complete.\n");

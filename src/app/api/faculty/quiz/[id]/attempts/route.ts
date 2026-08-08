@@ -35,6 +35,7 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
       const entry = {
         student: { roll: allotment.studentRoll, name: names.get(allotment.studentRoll) ?? allotment.studentRoll },
         allotmentStatus: allotment.status,
+        isProxy: allotment.isProxy,
         attempt: attempt ?? null,
       };
       if (attempt) attempted.push(entry);
