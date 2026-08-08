@@ -65,8 +65,12 @@ export function QuizCreateForm({ role }: { role: "faculty" | "admin" }) {
   const [courseCode, setCourseCode] = useState("");
   const [sessionId, setSessionId] = useState("");
   const [buildingId, setBuildingId] = useState("");
-  const [startTime, setStartTime] = useState(toLocalInputValue(new Date(Date.now() + 60 * 60 * 1000)));
-  const [endTime, setEndTime] = useState(toLocalInputValue(new Date(Date.now() + 90 * 60 * 1000)));
+  const [startTime, setStartTime] = useState(
+    toLocalInputValue(new Date(Date.now() + 60 * 60 * 1000)),
+  );
+  const [endTime, setEndTime] = useState(
+    toLocalInputValue(new Date(Date.now() + 90 * 60 * 1000)),
+  );
   const [durationMinutes, setDurationMinutes] = useState("30");
   const [randomize, setRandomize] = useState(true);
   const [negativeMarking, setNegativeMarking] = useState(false);
@@ -77,7 +81,7 @@ export function QuizCreateForm({ role }: { role: "faculty" | "admin" }) {
 
   const { data: facultyData } = useSWR(
     role === "admin" ? `/api/admin/faculty?page=1&pageSize=200` : null,
-    (url: string) => fetcher<{ items: FacultyOption[] }>(url)
+    (url: string) => fetcher<{ items: FacultyOption[] }>(url),
   );
 
   const coursesUrl =
@@ -86,14 +90,17 @@ export function QuizCreateForm({ role }: { role: "faculty" | "admin" }) {
         ? `/api/faculty/courses?facultyRoll=${encodeURIComponent(facultyRoll)}`
         : null
       : `/api/faculty/courses`;
-  const { data: coursesData, isLoading: coursesLoading } = useSWR(coursesUrl, (url: string) =>
-    fetcher<{ items: CourseOption[] }>(url)
+  const { data: coursesData, isLoading: coursesLoading } = useSWR(
+    coursesUrl,
+    (url: string) => fetcher<{ items: CourseOption[] }>(url),
   );
-  const { data: buildingsData } = useSWR(`/api/faculty/buildings`, (url: string) =>
-    fetcher<{ items: BuildingOption[] }>(url)
+  const { data: buildingsData } = useSWR(
+    `/api/faculty/buildings`,
+    (url: string) => fetcher<{ items: BuildingOption[] }>(url),
   );
-  const { data: sessionsData } = useSWR(`/api/faculty/sessions`, (url: string) =>
-    fetcher<{ items: SessionOption[] }>(url)
+  const { data: sessionsData } = useSWR(
+    `/api/faculty/sessions`,
+    (url: string) => fetcher<{ items: SessionOption[] }>(url),
   );
 
   const courses = (coursesData?.items ?? []).filter((c) => c.courseId !== null);
@@ -104,8 +111,10 @@ export function QuizCreateForm({ role }: { role: "faculty" | "admin" }) {
   // section picking) - the visible/interactive part is just which students
   // to allot, sourced from the union of those sections' membership.
   const { data: sectionsData } = useSWR(
-    selectedCourse?.courseId ? `/api/faculty/sections?courseId=${selectedCourse.courseId}` : null,
-    (url: string) => fetcher<{ items: SectionOption[] }>(url)
+    selectedCourse?.courseId
+      ? `/api/faculty/sections?courseId=${selectedCourse.courseId}`
+      : null,
+    (url: string) => fetcher<{ items: SectionOption[] }>(url),
   );
   const sections = sectionsData?.items ?? [];
   const sectionIds = sections.map((s) => s.id);
@@ -120,12 +129,15 @@ export function QuizCreateForm({ role }: { role: "faculty" | "admin" }) {
   }, [sectionIds.join(",")]);
 
   const { data: studentsData } = useSWR(
-    activeSectionIds.length > 0 ? `/api/faculty/sections/students?sectionIds=${activeSectionIds.join(",")}` : null,
-    (url: string) => fetcher<{ items: StudentOption[] }>(url)
+    activeSectionIds.length > 0
+      ? `/api/faculty/sections/students?sectionIds=${activeSectionIds.join(",")}`
+      : null,
+    (url: string) => fetcher<{ items: StudentOption[] }>(url),
   );
   const candidates = studentsData?.items ?? [];
   const [checkedRolls, setCheckedRolls] = useState<Set<string> | null>(null);
-  const effectiveChecked = checkedRolls ?? new Set(candidates.map((c) => c.roll));
+  const effectiveChecked =
+    checkedRolls ?? new Set(candidates.map((c) => c.roll));
 
   const toggleStudent = (roll: string, checked: boolean) => {
     const next = new Set(effectiveChecked);
@@ -201,14 +213,24 @@ export function QuizCreateForm({ role }: { role: "faculty" | "admin" }) {
 
       const studentRolls = [...effectiveChecked];
       if (studentRolls.length > 0) {
-        await apiClient.post(`/api/faculty/quiz/${quiz.id}/allot`, { studentRolls });
-        toast.success(`Quiz created and ${studentRolls.length} student(s) allotted - now add questions`);
+        await apiClient.post(`/api/faculty/quiz/${quiz.id}/allot`, {
+          studentRolls,
+        });
+        toast.success(
+          `Quiz created and ${studentRolls.length} student(s) allotted - now add questions`,
+        );
       } else {
         toast.success("Quiz created - now add questions and allot students");
       }
-      router.push(`${role === "faculty" ? "/faculty/quizzes" : "/admin/tests"}/${quiz.id}`);
+      router.push(
+        `${role === "faculty" ? "/faculty/quizzes" : "/admin/tests"}/${quiz.id}`,
+      );
     } catch (error) {
-      toast.error(error instanceof ApiClientError ? error.message : "Failed to create quiz");
+      toast.error(
+        error instanceof ApiClientError
+          ? error.message
+          : "Failed to create quiz",
+      );
     } finally {
       setSubmitting(false);
     }
@@ -240,15 +262,28 @@ export function QuizCreateForm({ role }: { role: "faculty" | "admin" }) {
 
         <div className="space-y-1.5">
           <Label htmlFor="title">Title</Label>
-          <Input id="title" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Unit 1 Quiz" />
+          <Input
+            id="title"
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            placeholder="e.g. Unit 1 Quiz"
+          />
         </div>
 
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <div className="space-y-1.5">
             <Label>Course</Label>
-            <Select value={courseCode} onValueChange={setCourseCode} disabled={role === "admin" && !facultyRoll}>
+            <Select
+              value={courseCode}
+              onValueChange={setCourseCode}
+              disabled={role === "admin" && !facultyRoll}
+            >
               <SelectTrigger>
-                <SelectValue placeholder={coursesLoading ? "Loading..." : "Select a course"} />
+                <SelectValue
+                  placeholder={
+                    coursesLoading ? "Loading..." : "Select a course"
+                  }
+                />
               </SelectTrigger>
               <SelectContent>
                 {courses.map((c) => (
@@ -260,7 +295,8 @@ export function QuizCreateForm({ role }: { role: "faculty" | "admin" }) {
             </Select>
             {coursesData && courses.length === 0 && !coursesLoading && (
               <p className="text-xs text-muted-foreground">
-                No courses with a catalog entry yet - ask an admin to add one under Master Data → Courses.
+                No courses with a catalog entry yet - ask an admin to add one
+                under Master Data → Courses.
               </p>
             )}
           </div>
@@ -283,10 +319,15 @@ export function QuizCreateForm({ role }: { role: "faculty" | "admin" }) {
 
         <div className="space-y-1.5">
           <Label>Sections</Label>
-          {!courseCode && <p className="text-xs text-muted-foreground">Select a course first.</p>}
+          {!courseCode && (
+            <p className="text-xs text-muted-foreground">
+              Select a course first.
+            </p>
+          )}
           {courseCode && sections.length === 0 && (
             <p className="p-2 text-xs text-muted-foreground">
-              No sections linked to this course yet - ask an admin to add one under Master Data → Sections.
+              No sections linked to this course yet - ask an admin to add one
+              under Master Data → Sections.
             </p>
           )}
           {courseCode && sections.length > 0 && (
@@ -298,7 +339,9 @@ export function QuizCreateForm({ role }: { role: "faculty" | "admin" }) {
                     onCheckedChange={(checked) => {
                       setSelectedSectionIds((prev) => {
                         if (checked === true) {
-                          return prev.includes(section.id) ? prev : [...prev, section.id];
+                          return prev.includes(section.id)
+                            ? prev
+                            : [...prev, section.id];
                         }
                         return prev.filter((id) => id !== section.id);
                       });
@@ -333,11 +376,21 @@ export function QuizCreateForm({ role }: { role: "faculty" | "admin" }) {
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           <div className="space-y-1.5">
             <Label htmlFor="startTime">Start Time</Label>
-            <Input id="startTime" type="datetime-local" value={startTime} onChange={(e) => setStartTime(e.target.value)} />
+            <Input
+              id="startTime"
+              type="datetime-local"
+              value={startTime}
+              onChange={(e) => setStartTime(e.target.value)}
+            />
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="endTime">End Time</Label>
-            <Input id="endTime" type="datetime-local" value={endTime} onChange={(e) => setEndTime(e.target.value)} />
+            <Input
+              id="endTime"
+              type="datetime-local"
+              value={endTime}
+              onChange={(e) => setEndTime(e.target.value)}
+            />
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="durationMinutes">Duration (minutes)</Label>
@@ -353,44 +406,81 @@ export function QuizCreateForm({ role }: { role: "faculty" | "admin" }) {
 
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-4">
           <div className="flex items-center justify-between rounded-md border p-3">
-            <Label htmlFor="randomize" className="cursor-pointer">Randomize order</Label>
-            <Switch id="randomize" checked={randomize} onCheckedChange={setRandomize} />
+            <Label htmlFor="randomize" className="cursor-pointer">
+              Randomize order
+            </Label>
+            <Switch
+              id="randomize"
+              checked={randomize}
+              onCheckedChange={setRandomize}
+            />
           </div>
           <div className="flex items-center justify-between rounded-md border p-3">
-            <Label htmlFor="negativeMarking" className="cursor-pointer">Negative marking</Label>
-            <Switch id="negativeMarking" checked={negativeMarking} onCheckedChange={setNegativeMarking} />
+            <Label htmlFor="negativeMarking" className="cursor-pointer">
+              Negative marking
+            </Label>
+            <Switch
+              id="negativeMarking"
+              checked={negativeMarking}
+              onCheckedChange={setNegativeMarking}
+            />
           </div>
           <div className="flex items-center justify-between rounded-md border p-3">
-            <Label htmlFor="allowSkipSwitch" className="cursor-pointer">Allow skip/switch</Label>
-            <Switch id="allowSkipSwitch" checked={allowSkipSwitch} onCheckedChange={setAllowSkipSwitch} />
+            <Label htmlFor="allowSkipSwitch" className="cursor-pointer">
+              Allow skip/switch
+            </Label>
+            <Switch
+              id="allowSkipSwitch"
+              checked={allowSkipSwitch}
+              onCheckedChange={setAllowSkipSwitch}
+            />
           </div>
           <div className="flex items-center justify-between rounded-md border p-3">
-            <Label htmlFor="requireLocation" className="cursor-pointer">Require GPS</Label>
-            <Switch id="requireLocation" checked={requireLocation} onCheckedChange={setRequireLocation} />
+            <Label htmlFor="requireLocation" className="cursor-pointer">
+              Require GPS
+            </Label>
+            <Switch
+              id="requireLocation"
+              checked={requireLocation}
+              onCheckedChange={setRequireLocation}
+            />
           </div>
         </div>
 
         <div className="space-y-1.5">
           <Label>Allot Students ({effectiveChecked.size} selected)</Label>
           <div className="max-h-56 space-y-1 overflow-y-auto rounded-md border p-2">
-            {!courseCode && <p className="p-2 text-xs text-muted-foreground">Select a course first.</p>}
+            {!courseCode && (
+              <p className="p-2 text-xs text-muted-foreground">
+                Select a course first.
+              </p>
+            )}
             {courseCode && sections.length === 0 && (
               <p className="p-2 text-xs text-muted-foreground">
-                No sections linked to this course yet - ask an admin to add one under Master Data → Sections.
+                No sections linked to this course yet - ask an admin to add one
+                under Master Data → Sections.
               </p>
             )}
             {courseCode && sections.length > 0 && candidates.length === 0 && (
-              <p className="p-2 text-xs text-muted-foreground">No students found in this course&apos;s section(s) yet.</p>
+              <p className="p-2 text-xs text-muted-foreground">
+                No students found in this course&apos;s section(s) yet.
+              </p>
             )}
             {candidates.map((c) => (
-              <div key={c.roll} className="flex items-center gap-2 rounded px-2 py-1.5 hover:bg-muted">
+              <div
+                key={c.roll}
+                className="flex items-center gap-2 rounded px-2 py-1.5 hover:bg-muted"
+              >
                 <Checkbox
                   checked={effectiveChecked.has(c.roll)}
-                  onCheckedChange={(checked) => toggleStudent(c.roll, checked === true)}
+                  onCheckedChange={(checked) =>
+                    toggleStudent(c.roll, checked === true)
+                  }
                   id={`student-${c.roll}`}
                 />
                 <label htmlFor={`student-${c.roll}`} className="text-sm">
-                  {c.name} <span className="text-muted-foreground">({c.roll})</span>
+                  {c.name}{" "}
+                  <span className="text-muted-foreground">({c.roll})</span>
                 </label>
               </div>
             ))}
@@ -398,7 +488,8 @@ export function QuizCreateForm({ role }: { role: "faculty" | "admin" }) {
         </div>
 
         <p className="text-xs text-muted-foreground">
-          Total marks are calculated automatically as questions are added on the next step.
+          Total marks are calculated automatically as questions are added on the
+          next step.
         </p>
 
         <div className="flex justify-end">

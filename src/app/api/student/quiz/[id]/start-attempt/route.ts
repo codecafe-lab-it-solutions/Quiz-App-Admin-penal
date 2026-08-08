@@ -15,7 +15,10 @@ function shuffledIds(ids: number[]): number[] {
   return result;
 }
 
-export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(
+  req: NextRequest,
+  { params }: { params: { id: string } },
+) {
   try {
     const user = getAuthUser(req);
     requireRole(user, "student");
@@ -33,14 +36,23 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       include: { building: true, questions: { select: { id: true } } },
     });
     if (!quiz) throw new ApiError(404, "Quiz not found");
-    if (quiz.status !== "live") throw new ApiError(400, "This quiz is not currently live");
+    if (quiz.status !== "live")
+      throw new ApiError(400, "This quiz is not currently live");
 
     const existingAttempt = await prisma.quizAttempt.findUnique({
       where: { quizId_studentRoll: { quizId, studentRoll: String(user.sub) } },
     });
-    if (existingAttempt) throw new ApiError(409, "You have already started or completed this attempt");
+    if (existingAttempt)
+      throw new ApiError(
+        409,
+        "You have already started or completed this attempt",
+      );
 
-    if (!quiz.requireLocation || body.latitude == null || body.longitude == null) {
+    if (
+      !quiz.requireLocation ||
+      body.latitude == null ||
+      body.longitude == null
+    ) {
       const fallbackDistanceMeters = 0;
       const fallbackWithinRange = true;
       await prisma.geofenceLog.create({
@@ -60,7 +72,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
         body.longitude,
         Number(quiz.building.latitude),
         Number(quiz.building.longitude),
-        quiz.building.radiusMeters
+        quiz.building.radiusMeters,
       );
 
       if (!isWithinRange) {
@@ -76,7 +88,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
         });
         throw new ApiError(
           403,
-          `You must be within ${quiz.building.radiusMeters}m of ${quiz.building.name} to start this quiz`
+          `You must be within ${quiz.building.radiusMeters}m of ${quiz.building.name} to start this quiz`,
         );
       }
 

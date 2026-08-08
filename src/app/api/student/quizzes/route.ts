@@ -12,7 +12,12 @@ export async function GET(req: NextRequest) {
 
     const params = Object.fromEntries(req.nextUrl.searchParams);
     const { page, pageSize } = paginationSchema.parse(params);
-    const status = params.status as "draft" | "scheduled" | "live" | "completed" | undefined;
+    const status = params.status as
+      | "draft"
+      | "scheduled"
+      | "live"
+      | "completed"
+      | undefined;
 
     const studentRoll = String(user.sub);
     const where = {
@@ -29,19 +34,34 @@ export async function GET(req: NextRequest) {
         orderBy: { startTime: "desc" },
         include: {
           course: { select: { id: true, name: true, code: true } },
-          sections: { include: { section: { select: { id: true, name: true } } } },
-          building: { select: { id: true, name: true, latitude: true, longitude: true, radiusMeters: true } },
+          sections: {
+            include: { section: { select: { id: true, name: true } } },
+          },
+          building: {
+            select: {
+              id: true,
+              name: true,
+              latitude: true,
+              longitude: true,
+              radiusMeters: true,
+            },
+          },
           allotments: { where: { studentRoll }, select: { status: true } },
         },
       }),
       prisma.quiz.count({ where }),
     ]);
 
-    const facultyNames = await getFacultyNamesByRolls(items.map((q) => q.facultyRoll));
+    const facultyNames = await getFacultyNamesByRolls(
+      items.map((q) => q.facultyRoll),
+    );
 
     const shaped = items.map((q) => ({
       ...q,
-      faculty: { roll: q.facultyRoll, name: facultyNames.get(q.facultyRoll) ?? q.facultyRoll },
+      faculty: {
+        roll: q.facultyRoll,
+        name: facultyNames.get(q.facultyRoll) ?? q.facultyRoll,
+      },
       myAllotmentStatus: q.allotments[0]?.status ?? "allotted",
       allotments: undefined,
     }));

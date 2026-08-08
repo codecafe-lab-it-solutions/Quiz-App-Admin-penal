@@ -13,12 +13,23 @@ export async function GET(req: NextRequest) {
     const user = getAuthUser(req);
     requireRole(user, "admin");
 
-    const query = attendanceReportQuerySchema.parse(Object.fromEntries(req.nextUrl.searchParams));
+    const query = attendanceReportQuerySchema.parse(
+      Object.fromEntries(req.nextUrl.searchParams),
+    );
 
     const where = {
       ...(query.courseId ? { courseId: query.courseId } : {}),
-      ...(query.sectionId ? { quiz: { sections: { some: { sectionId: query.sectionId } } } } : {}),
-      ...(query.search ? { OR: [{ studentRoll: { contains: query.search } }, { quiz: { title: { contains: query.search } } }] } : {}),
+      ...(query.sectionId
+        ? { quiz: { sections: { some: { sectionId: query.sectionId } } } }
+        : {}),
+      ...(query.search
+        ? {
+            OR: [
+              { studentRoll: { contains: query.search } },
+              { quiz: { title: { contains: query.search } } },
+            ],
+          }
+        : {}),
       ...(query.from || query.to
         ? {
             date: {
@@ -34,13 +45,23 @@ export async function GET(req: NextRequest) {
       orderBy: { date: "desc" as const },
       include: {
         course: { select: { id: true, name: true, code: true } },
-        quiz: { select: { id: true, title: true, sections: { include: { section: { select: { id: true, name: true } } } } } },
+        quiz: {
+          select: {
+            id: true,
+            title: true,
+            sections: {
+              include: { section: { select: { id: true, name: true } } },
+            },
+          },
+        },
       },
     };
 
     if (query.export === "excel") {
       const rows = await prisma.attendance.findMany(baseQuery);
-      const names = await getStudentNamesByRolls(rows.map((r) => r.studentRoll));
+      const names = await getStudentNamesByRolls(
+        rows.map((r) => r.studentRoll),
+      );
       const buffer = buildWorkbookBuffer(
         [
           { key: "studentName", label: "Student Name" },
@@ -60,14 +81,18 @@ export async function GET(req: NextRequest) {
           date: r.date.toISOString().slice(0, 10),
           status: r.status,
         })),
-        "Attendance"
+        "Attendance",
       );
-      return new Response(new Uint8Array(buffer), { headers: excelResponseHeaders("attendance-report.xlsx") });
+      return new Response(new Uint8Array(buffer), {
+        headers: excelResponseHeaders("attendance-report.xlsx"),
+      });
     }
 
     if (query.export === "pdf") {
       const rows = await prisma.attendance.findMany(baseQuery);
-      const names = await getStudentNamesByRolls(rows.map((r) => r.studentRoll));
+      const names = await getStudentNamesByRolls(
+        rows.map((r) => r.studentRoll),
+      );
       const buffer = buildPdfTableBuffer(
         "Course-wise Attendance Report",
         ["Student", "Roll No", "Course", "Section", "Quiz", "Date", "Status"],
@@ -79,9 +104,11 @@ export async function GET(req: NextRequest) {
           r.quiz.title,
           r.date.toISOString().slice(0, 10),
           r.status,
-        ])
+        ]),
       );
-      return new Response(new Uint8Array(buffer), { headers: pdfResponseHeaders("attendance-report.pdf") });
+      return new Response(new Uint8Array(buffer), {
+        headers: pdfResponseHeaders("attendance-report.pdf"),
+      });
     }
 
     const [items, total] = await Promise.all([
@@ -94,9 +121,15 @@ export async function GET(req: NextRequest) {
     ]);
 
     const names = await getStudentNamesByRolls(items.map((r) => r.studentRoll));
-    const itemsWithNames = items.map((r) => ({ ...r, studentName: names.get(r.studentRoll) ?? r.studentRoll }));
+    const itemsWithNames = items.map((r) => ({
+      ...r,
+      studentName: names.get(r.studentRoll) ?? r.studentRoll,
+    }));
 
-    return ok({ items: itemsWithNames, meta: paginationMeta(total, query.page, query.pageSize) });
+    return ok({
+      items: itemsWithNames,
+      meta: paginationMeta(total, query.page, query.pageSize),
+    });
   } catch (error) {
     return handleApiError(error);
   }

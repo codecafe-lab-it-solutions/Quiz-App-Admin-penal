@@ -5,7 +5,10 @@ import { getAuthUser, requireRole } from "@/lib/auth";
 import { idParamSchema } from "@/lib/validators/common";
 import { getStudentNamesByRolls } from "@/lib/legacy-db";
 
-export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
+export async function GET(
+  req: NextRequest,
+  { params }: { params: { id: string } },
+) {
   try {
     const user = getAuthUser(req);
     requireRole(user, "faculty", "admin");
@@ -24,7 +27,10 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
       },
     });
 
-    if (!quiz || (user.role === "faculty" && quiz.facultyRoll !== String(user.sub))) {
+    if (
+      !quiz ||
+      (user.role === "faculty" && quiz.facultyRoll !== String(user.sub))
+    ) {
       throw new ApiError(404, "Quiz not found");
     }
 
@@ -38,7 +44,9 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
         include: {
           answers: {
             include: {
-              question: { select: { id: true, questionType: true, marks: true } },
+              question: {
+                select: { id: true, questionType: true, marks: true },
+              },
             },
           },
         },
@@ -54,11 +62,21 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
       prisma.result.findMany({ where: { quizId } }),
     ]);
 
-    const names = await getStudentNamesByRolls(allotments.map((a) => a.studentRoll));
+    const names = await getStudentNamesByRolls(
+      allotments.map((a) => a.studentRoll),
+    );
     const attemptByStudent = new Map(attempts.map((a) => [a.studentRoll, a]));
     const resultByStudent = new Map(results.map((r) => [r.studentRoll, r]));
 
-    const questionStats = new Map<number, { attemptedCount: number; correctCount: number; wrongCount: number; skippedCount: number }>();
+    const questionStats = new Map<
+      number,
+      {
+        attemptedCount: number;
+        correctCount: number;
+        wrongCount: number;
+        skippedCount: number;
+      }
+    >();
 
     for (const attempt of attempts) {
       for (const answer of attempt.answers) {
@@ -82,16 +100,27 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
     }
 
     const questionBreakdown = questions.map((question) => {
-      const stats = questionStats.get(question.id) ?? { attemptedCount: 0, correctCount: 0, wrongCount: 0, skippedCount: 0 };
+      const stats = questionStats.get(question.id) ?? {
+        attemptedCount: 0,
+        correctCount: 0,
+        wrongCount: 0,
+        skippedCount: 0,
+      };
       let answerKey = "No answer key";
 
       if (question.questionType === "mcq") {
-        const correctOption = question.options.find((option) => option.isCorrect);
-        answerKey = correctOption?.optionText ? correctOption.optionText.replace(/<[^>]+>/g, "").trim() : "No correct option";
+        const correctOption = question.options.find(
+          (option) => option.isCorrect,
+        );
+        answerKey = correctOption?.optionText
+          ? correctOption.optionText.replace(/<[^>]+>/g, "").trim()
+          : "No correct option";
       } else if (question.questionType === "formula") {
         answerKey = `Correct value: ${question.formula?.correctValue ?? 0} ± ${question.formula?.tolerance ?? 0}`;
       } else if (question.questionType === "subjective") {
-        answerKey = question.referenceAnswer?.trim() ? question.referenceAnswer.trim() : "Subjective response";
+        answerKey = question.referenceAnswer?.trim()
+          ? question.referenceAnswer.trim()
+          : "Subjective response";
       }
 
       return {
@@ -110,8 +139,16 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
     const studentResults = allotments.map((allotment) => {
       const attempt = attemptByStudent.get(allotment.studentRoll);
       const result = resultByStudent.get(allotment.studentRoll);
-      const marksObtained = result?.marksObtained ?? attempt?.answers.reduce((sum, answer) => sum + answer.marksObtained, 0) ?? 0;
-      const percentage = result?.percentage ?? (quiz.totalMarks > 0 ? (marksObtained / quiz.totalMarks) * 100 : 0);
+      const marksObtained =
+        result?.marksObtained ??
+        attempt?.answers.reduce(
+          (sum, answer) => sum + answer.marksObtained,
+          0,
+        ) ??
+        0;
+      const percentage =
+        result?.percentage ??
+        (quiz.totalMarks > 0 ? (marksObtained / quiz.totalMarks) * 100 : 0);
 
       return {
         roll: allotment.studentRoll,
@@ -124,11 +161,19 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
       };
     });
 
-    const submittedCount = attempts.filter((a) => a.status === "submitted" || a.status === "auto_submitted").length;
+    const submittedCount = attempts.filter(
+      (a) => a.status === "submitted" || a.status === "auto_submitted",
+    ).length;
     const ungradedCount = attempts.reduce(
       (sum, attempt) =>
-        sum + attempt.answers.filter((answer) => answer.question.questionType === "subjective" && !answer.isSkipped && !answer.manuallyGraded).length,
-      0
+        sum +
+        attempt.answers.filter(
+          (answer) =>
+            answer.question.questionType === "subjective" &&
+            !answer.isSkipped &&
+            !answer.manuallyGraded,
+        ).length,
+      0,
     );
 
     return ok({
@@ -138,9 +183,12 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
         attemptedCount: attempts.length,
         submittedCount,
         notAttemptedCount: allotments.length - attempts.length,
-        absentCount: allotments.filter((item) => item.status === "absent").length,
-        declaredCount: results.filter((item) => item.status === "declared").length,
-        publishedCount: results.filter((item) => item.status === "published").length,
+        absentCount: allotments.filter((item) => item.status === "absent")
+          .length,
+        declaredCount: results.filter((item) => item.status === "declared")
+          .length,
+        publishedCount: results.filter((item) => item.status === "published")
+          .length,
         ungradedCount,
       },
       questionBreakdown,

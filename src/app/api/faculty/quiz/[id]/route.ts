@@ -6,7 +6,10 @@ import { quizUpdateSchema } from "@/lib/validators/quiz";
 import { idParamSchema } from "@/lib/validators/common";
 import { loadAccessibleQuiz } from "@/lib/quiz-access";
 
-export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
+export async function GET(
+  req: NextRequest,
+  { params }: { params: { id: string } },
+) {
   try {
     const user = getAuthUser(req);
     requireRole(user, "faculty", "admin");
@@ -18,7 +21,9 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
       where: { id, deletedAt: null },
       include: {
         course: { select: { id: true, name: true, code: true } },
-        sections: { include: { section: { select: { id: true, name: true } } } },
+        sections: {
+          include: { section: { select: { id: true, name: true } } },
+        },
         session: { select: { id: true, name: true } },
         building: true,
         questions: {
@@ -35,7 +40,10 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
   }
 }
 
-export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
+export async function PATCH(
+  req: NextRequest,
+  { params }: { params: { id: string } },
+) {
   try {
     const user = getAuthUser(req);
     requireRole(user, "faculty", "admin");
@@ -51,12 +59,18 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
 
     const quiz = await prisma.$transaction(async (tx) => {
       if (sectionIds) {
-        await tx.quizSection.deleteMany({ where: { quizId: id, sectionId: { notIn: sectionIds } } });
-        const existing = await tx.quizSection.findMany({ where: { quizId: id } });
+        await tx.quizSection.deleteMany({
+          where: { quizId: id, sectionId: { notIn: sectionIds } },
+        });
+        const existing = await tx.quizSection.findMany({
+          where: { quizId: id },
+        });
         const existingIds = new Set(existing.map((s) => s.sectionId));
         const toAdd = sectionIds.filter((sid) => !existingIds.has(sid));
         if (toAdd.length) {
-          await tx.quizSection.createMany({ data: toAdd.map((sectionId) => ({ quizId: id, sectionId })) });
+          await tx.quizSection.createMany({
+            data: toAdd.map((sectionId) => ({ quizId: id, sectionId })),
+          });
         }
       }
       return tx.quiz.update({ where: { id }, data: rest });
@@ -68,7 +82,10 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   }
 }
 
-export async function DELETE(req: NextRequest, { params }: { params: { id: string } }) {
+export async function DELETE(
+  req: NextRequest,
+  { params }: { params: { id: string } },
+) {
   try {
     const user = getAuthUser(req);
     requireRole(user, "faculty", "admin");
@@ -80,7 +97,10 @@ export async function DELETE(req: NextRequest, { params }: { params: { id: strin
       throw new ApiError(400, "A live quiz cannot be deleted. Stop it first.");
     }
 
-    await prisma.quiz.update({ where: { id }, data: { deletedAt: new Date() } });
+    await prisma.quiz.update({
+      where: { id },
+      data: { deletedAt: new Date() },
+    });
     return ok({ message: "Quiz deleted" });
   } catch (error) {
     return handleApiError(error);

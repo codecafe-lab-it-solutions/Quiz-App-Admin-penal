@@ -11,13 +11,22 @@ export async function GET(req: NextRequest) {
 
     const params = Object.fromEntries(req.nextUrl.searchParams);
     const { page, pageSize, search } = paginationSchema.parse(params);
-    const status = params.status as "draft" | "scheduled" | "live" | "completed" | undefined;
+    const status = params.status as
+      | "draft"
+      | "scheduled"
+      | "live"
+      | "completed"
+      | undefined;
 
     // Faculty always see only their own quizzes. An admin sees every quiz
     // system-wide unless they narrow it down with ?facultyRoll= (oversight).
     const where = {
       deletedAt: null,
-      ...(user.role === "faculty" ? { facultyRoll: String(user.sub) } : params.facultyRoll ? { facultyRoll: params.facultyRoll } : {}),
+      ...(user.role === "faculty"
+        ? { facultyRoll: String(user.sub) }
+        : params.facultyRoll
+          ? { facultyRoll: params.facultyRoll }
+          : {}),
       ...(status ? { status } : {}),
       ...(search ? { title: { contains: search } } : {}),
     };
@@ -30,7 +39,9 @@ export async function GET(req: NextRequest) {
         orderBy: { createdAt: "desc" },
         include: {
           course: { select: { id: true, name: true, code: true } },
-          sections: { include: { section: { select: { id: true, name: true } } } },
+          sections: {
+            include: { section: { select: { id: true, name: true } } },
+          },
           building: { select: { id: true, name: true } },
           _count: { select: { questions: true, allotments: true } },
         },

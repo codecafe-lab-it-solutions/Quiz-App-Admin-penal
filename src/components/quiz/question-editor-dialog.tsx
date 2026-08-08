@@ -7,7 +7,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
-import { RichTextEditor, isMathliveElement } from "@/components/quiz/rich-text-editor";
+import {
+  RichTextEditor,
+  isMathliveElement,
+} from "@/components/quiz/rich-text-editor";
 import { stripHtml } from "@/lib/sanitize-html";
 import {
   Dialog,
@@ -72,7 +75,11 @@ export function QuestionEditorDialog({
       setQuestionText(editing.questionText);
       setMarks(String(editing.marks));
       setNegativeMarks(String(editing.negativeMarks ?? 0));
-      setOptions(editing.options && editing.options.length >= 2 ? editing.options : EMPTY_OPTIONS);
+      setOptions(
+        editing.options && editing.options.length >= 2
+          ? editing.options
+          : EMPTY_OPTIONS,
+      );
     } else {
       setQuestionText("");
       setMarks("1");
@@ -82,11 +89,15 @@ export function QuestionEditorDialog({
   }, [open, editing]);
 
   const updateOption = (index: number, patch: Partial<QuestionOptionRow>) => {
-    setOptions((prev) => prev.map((o, i) => (i === index ? { ...o, ...patch } : o)));
+    setOptions((prev) =>
+      prev.map((o, i) => (i === index ? { ...o, ...patch } : o)),
+    );
   };
 
   const setCorrectOption = (index: number) => {
-    setOptions((prev) => prev.map((o, i) => ({ ...o, isCorrect: i === index })));
+    setOptions((prev) =>
+      prev.map((o, i) => ({ ...o, isCorrect: i === index })),
+    );
   };
 
   const addOption = () => {
@@ -136,17 +147,26 @@ export function QuestionEditorDialog({
       marks: marksNum,
       negativeMarks: negNum,
       orderIndex: editing?.orderIndex ?? nextOrderIndex,
-      options: filled.map((o) => ({ optionText: o.optionText, isCorrect: o.isCorrect })),
+      options: filled.map((o) => ({
+        optionText: o.optionText,
+        isCorrect: o.isCorrect,
+      })),
     };
 
     setSubmitting(true);
     try {
-      await apiClient.post(`/api/faculty/quiz/${quizId}/questions`, { questions: [payload] });
+      await apiClient.post(`/api/faculty/quiz/${quizId}/questions`, {
+        questions: [payload],
+      });
       toast.success(editing ? "Question updated" : "Question added");
       onOpenChange(false);
       onSaved();
     } catch (error) {
-      toast.error(error instanceof ApiClientError ? error.message : "Failed to save question");
+      toast.error(
+        error instanceof ApiClientError
+          ? error.message
+          : "Failed to save question",
+      );
     } finally {
       setSubmitting(false);
     }
@@ -164,7 +184,9 @@ export function QuestionEditorDialog({
         }}
       >
         <DialogHeader>
-          <DialogTitle>{editing ? "Edit Question" : "Add Question"}</DialogTitle>
+          <DialogTitle>
+            {editing ? "Edit Question" : "Add Question"}
+          </DialogTitle>
           <DialogDescription>
             Add an objective question with four answer options by default.
           </DialogDescription>
@@ -183,7 +205,14 @@ export function QuestionEditorDialog({
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
               <Label htmlFor="marks">Marks</Label>
-              <Input id="marks" type="number" min={1} step="1" value={marks} onChange={(e) => setMarks(e.target.value)} />
+              <Input
+                id="marks"
+                type="number"
+                min={1}
+                step="1"
+                value={marks}
+                onChange={(e) => setMarks(e.target.value)}
+              />
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="negativeMarks">Negative Marks</Label>
@@ -211,7 +240,9 @@ export function QuestionEditorDialog({
                 <div className="flex-1">
                   <RichTextEditor
                     value={option.optionText}
-                    onChange={(html) => updateOption(index, { optionText: html })}
+                    onChange={(html) =>
+                      updateOption(index, { optionText: html })
+                    }
                     placeholder={`Option ${String.fromCharCode(65 + index)}`}
                     minHeight="60px"
                   />
@@ -229,7 +260,12 @@ export function QuestionEditorDialog({
               </div>
             ))}
             {options.length < 4 && (
-              <Button type="button" variant="outline" size="sm" onClick={addOption}>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={addOption}
+              >
                 <Plus className="mr-2 h-4 w-4" />
                 Add option
               </Button>
@@ -238,7 +274,11 @@ export function QuestionEditorDialog({
         </div>
 
         <DialogFooter>
-          <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => onOpenChange(false)}
+          >
             Cancel
           </Button>
           <Button type="button" onClick={handleSubmit} disabled={submitting}>

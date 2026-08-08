@@ -8,7 +8,9 @@ export const quizCreateSchema = z
     // ignored (the caller's own roll is used) when a faculty member creates it.
     facultyRoll: z.string().trim().min(1).optional(),
     courseId: z.coerce.number().int().positive("Select a course"),
-    sectionIds: z.array(z.coerce.number().int().positive()).min(1, "Select at least one section"),
+    sectionIds: z
+      .array(z.coerce.number().int().positive())
+      .min(1, "Select at least one section"),
     sessionId: z.coerce.number().int().positive().optional(),
     buildingId: z.coerce.number().int().positive("Select a building"),
     startTime: z.coerce.date(),
@@ -49,8 +51,10 @@ export type QuizUpdateInput = z.infer<typeof quizUpdateSchema>;
 // question editor (Bold/Italic/alignment + $...$ LaTeX equations) - sanitized
 // here so every write path (the dialog, bulk import, a future mobile client)
 // is covered regardless of which UI produced the HTML.
-const richText = (message: string) => z.string().trim().min(1, message).transform(sanitizeQuestionHtml);
-const richTextOptional = () => z.string().trim().transform(sanitizeQuestionHtml).optional();
+const richText = (message: string) =>
+  z.string().trim().min(1, message).transform(sanitizeQuestionHtml);
+const richTextOptional = () =>
+  z.string().trim().transform(sanitizeQuestionHtml).optional();
 
 const mcqQuestionSchema = z.object({
   id: z.number().int().positive().optional(),
@@ -66,7 +70,7 @@ const mcqQuestionSchema = z.object({
         id: z.number().int().positive().optional(),
         optionText: richText("Option text is required"),
         isCorrect: z.boolean().default(false),
-      })
+      }),
     )
     .min(2, "Provide at least two options")
     .refine((options) => options.some((o) => o.isCorrect), {
@@ -111,12 +115,16 @@ export const questionsBulkSchema = z.object({
 export const gradeSubjectiveAnswerSchema = z.object({
   marksAwarded: z.coerce.number().min(0, "Marks awarded cannot be negative"),
 });
-export type GradeSubjectiveAnswerInput = z.infer<typeof gradeSubjectiveAnswerSchema>;
+export type GradeSubjectiveAnswerInput = z.infer<
+  typeof gradeSubjectiveAnswerSchema
+>;
 
 // The checked subset of the quiz's section-derived roster, chosen in the
 // allotment UI (default: everyone checked). The server still verifies every
 // roll is actually a member of one of the quiz's linked sections.
 export const allotSchema = z.object({
-  studentRolls: z.array(z.string().trim().min(1)).min(1, "Select at least one student"),
+  studentRolls: z
+    .array(z.string().trim().min(1))
+    .min(1, "Select at least one student"),
 });
 export type AllotInput = z.infer<typeof allotSchema>;

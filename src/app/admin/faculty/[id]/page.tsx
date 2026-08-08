@@ -6,8 +6,21 @@ import useSWR from "swr";
 import { apiClient } from "@/lib/api-client";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { ArrowLeft } from "lucide-react";
 
 interface FacultyDetail {
@@ -15,7 +28,12 @@ interface FacultyDetail {
   name: string;
   email: string;
   currentSubList: string;
-  courseMappings: { id: number; subCode: string; branch: string; sem: string }[];
+  courseMappings: {
+    id: number;
+    subCode: string;
+    branch: string;
+    sem: string;
+  }[];
   sections: { id: number; name: string }[];
 }
 
@@ -23,7 +41,10 @@ const fetcher = (url: string) => apiClient.get<FacultyDetail>(url);
 
 export default function FacultyDetailPage() {
   const params = useParams<{ id: string }>();
-  const { data, isLoading } = useSWR(`/api/admin/faculty/${params.id}`, fetcher);
+  const { data, isLoading } = useSWR(
+    `/api/admin/faculty/${params.id}`,
+    fetcher,
+  );
 
   if (isLoading || !data) {
     return <p className="text-sm text-muted-foreground">Loading...</p>;
@@ -49,13 +70,17 @@ export default function FacultyDetailPage() {
         <CardHeader className="flex flex-row items-center justify-between space-y-0">
           <div>
             <CardTitle>Course mappings</CardTitle>
-            <CardDescription>From the legacy course-allocation table.</CardDescription>
+            <CardDescription>
+              From the legacy course-allocation table.
+            </CardDescription>
           </div>
           <Badge variant="secondary">Showing: {data.currentSubList}</Badge>
         </CardHeader>
         <CardContent>
           {data.courseMappings.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No course mappings for the current semester.</p>
+            <p className="text-sm text-muted-foreground">
+              No course mappings for the current semester.
+            </p>
           ) : (
             <Table>
               <TableHeader>
@@ -82,11 +107,15 @@ export default function FacultyDetailPage() {
       <Card>
         <CardHeader>
           <CardTitle>Sections</CardTitle>
-          <CardDescription>Section memberships managed in the section hub.</CardDescription>
+          <CardDescription>
+            Section memberships managed in the section hub.
+          </CardDescription>
         </CardHeader>
         <CardContent>
           {data.sections.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No section memberships yet.</p>
+            <p className="text-sm text-muted-foreground">
+              No section memberships yet.
+            </p>
           ) : (
             <Table>
               <TableHeader>

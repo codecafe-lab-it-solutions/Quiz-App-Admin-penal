@@ -6,7 +6,10 @@ import { geofenceCheckSchema } from "@/lib/validators/attempt";
 import { idParamSchema } from "@/lib/validators/common";
 import { isWithinRadius } from "@/lib/geofence";
 
-export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(
+  req: NextRequest,
+  { params }: { params: { id: string } },
+) {
   try {
     const user = getAuthUser(req);
     requireRole(user, "student");
@@ -19,10 +22,17 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     });
     if (!allotment) throw new ApiError(403, "This quiz is not allotted to you");
 
-    const quiz = await prisma.quiz.findUnique({ where: { id: quizId }, include: { building: true } });
+    const quiz = await prisma.quiz.findUnique({
+      where: { id: quizId },
+      include: { building: true },
+    });
     if (!quiz) throw new ApiError(404, "Quiz not found");
 
-    if (!quiz.requireLocation || body.latitude == null || body.longitude == null) {
+    if (
+      !quiz.requireLocation ||
+      body.latitude == null ||
+      body.longitude == null
+    ) {
       return ok({
         isWithinRange: true,
         distanceMeters: 0,
@@ -37,7 +47,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       body.longitude,
       Number(quiz.building.latitude),
       Number(quiz.building.longitude),
-      quiz.building.radiusMeters
+      quiz.building.radiusMeters,
     );
 
     await prisma.geofenceLog.create({
