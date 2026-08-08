@@ -1,4 +1,5 @@
 import { NextRequest } from "next/server";
+import { prisma } from "@/lib/db";
 import { ok, created, fail, handleApiError } from "@/lib/api-response";
 import { getAuthUser, requireRole } from "@/lib/auth";
 import { studentCourseMappingQuerySchema } from "@/lib/validators/mapping";

@@ -13,7 +13,9 @@ export async function GET(req: NextRequest) {
     const user = getAuthUser(req);
     requireRole(user, "admin");
 
-    const params = Object.fromEntries(req.nextUrl.searchParams);
+    const params: Record<string, string | string[]> = Object.fromEntries(
+      req.nextUrl.searchParams,
+    );
     const studentRolls = req.nextUrl.searchParams.getAll("studentRoll");
     if (studentRolls.length > 0) {
       params.studentRoll = studentRolls;
