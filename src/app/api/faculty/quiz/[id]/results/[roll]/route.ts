@@ -18,7 +18,13 @@ export async function GET(
 
     const quiz = await prisma.quiz.findUnique({
       where: { id: quizId },
-      select: { id: true, title: true, totalMarks: true, facultyRoll: true },
+      select: {
+        id: true,
+        title: true,
+        totalMarks: true,
+        facultyRoll: true,
+        negativeMarking: true,
+      },
     });
     if (
       !quiz ||
@@ -32,9 +38,20 @@ export async function GET(
     });
     if (!attempt) throw new ApiError(404, "This student has no attempt for this quiz");
 
-    const orderedIds: number[] = attempt.questionOrder
+    // Real student-app attempts persist the shuffled question order they were
+    // served, but older/seeded attempts may not have one - fall back to the
+    // quiz's own question order so the answer sheet is never empty.
+    let orderedIds: number[] = attempt.questionOrder
       ? JSON.parse(attempt.questionOrder)
       : [];
+    if (orderedIds.length === 0) {
+      const quizQuestions = await prisma.question.findMany({
+        where: { quizId },
+        orderBy: { orderIndex: "asc" },
+        select: { id: true },
+      });
+      orderedIds = quizQuestions.map((q) => q.id);
+    }
 
     const [questions, options, formulas, answers, result, names] = await Promise.all([
       prisma.question.findMany({ where: { id: { in: orderedIds } } }),
@@ -111,6 +128,7 @@ export async function GET(
       studentName: names.get(studentRoll) ?? studentRoll,
       attemptStatus: attempt.status,
       totalMarks: quiz.totalMarks,
+      negativeMarking: quiz.negativeMarking,
       marksObtained: result?.marksObtained ?? 0,
       percentage: result?.percentage ?? 0,
       resultStatus: result?.status ?? "pending",

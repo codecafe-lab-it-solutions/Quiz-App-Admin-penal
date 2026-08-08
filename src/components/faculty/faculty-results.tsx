@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import useSWR from "swr";
+import Link from "next/link";
 import { apiClient } from "@/lib/api-client";
 import { DataTable, DataTableColumn } from "@/components/admin/data-table";
 import { PaginationBar } from "@/components/admin/pagination-bar";
@@ -50,55 +51,6 @@ interface ListResponse<T> {
   items: T[];
   meta: { total: number; page: number; pageSize: number; totalPages: number };
 }
-interface AnswerSheetQuestion {
-  id: number;
-  questionText: string;
-  questionType: string;
-  marks: number;
-  options?: { id: number; optionText: string; isCorrect: boolean }[];
-  correctValue?: number | null;
-  tolerance?: number | null;
-  referenceAnswer?: string | null;
-  yourAnswer: {
-    selectedOptionId: number | null;
-    answerValue: number | null;
-    writtenAnswer: string | null;
-    isSkipped: boolean;
-  };
-  isCorrect: boolean | null;
-  marksObtained: number;
-}
-interface AnswerSheetDetail {
-  quizTitle: string;
-  studentName: string;
-  studentRoll: string;
-  totalMarks: number;
-  marksObtained: number;
-  questions: AnswerSheetQuestion[];
-}
-
-function correctAnswerLabel(q: AnswerSheetQuestion): string {
-  if (q.questionType === "mcq") {
-    const correct = q.options?.find((o) => o.isCorrect);
-    return correct ? correct.optionText.replace(/<[^>]+>/g, "").trim() : "No correct option";
-  }
-  if (q.questionType === "formula") {
-    return `${q.correctValue ?? 0} ± ${q.tolerance ?? 0}`;
-  }
-  return q.referenceAnswer?.trim() || "Subjective response";
-}
-
-function studentAnswerLabel(q: AnswerSheetQuestion): string {
-  if (q.yourAnswer.isSkipped) return "Not attempted";
-  if (q.questionType === "mcq") {
-    const chosen = q.options?.find((o) => o.id === q.yourAnswer.selectedOptionId);
-    return chosen ? chosen.optionText.replace(/<[^>]+>/g, "").trim() : "—";
-  }
-  if (q.questionType === "formula") {
-    return q.yourAnswer.answerValue !== null ? String(q.yourAnswer.answerValue) : "—";
-  }
-  return q.yourAnswer.writtenAnswer?.trim() || "—";
-}
 
 const statusVariant: Record<string, "default" | "secondary" | "success" | "warning" | "outline"> = {
   pending: "secondary",
@@ -107,7 +59,6 @@ const statusVariant: Record<string, "default" | "secondary" | "success" | "warni
 };
 
 const fetcher = (url: string) => apiClient.get<ListResponse<ResultRow>>(url);
-const fetchAnswerSheet = (url: string) => apiClient.get<AnswerSheetDetail>(url);
 
 export function FacultyResults() {
   const [page, setPage] = useState(1);
@@ -117,7 +68,6 @@ export function FacultyResults() {
   const [search, setSearch] = useState("");
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
-  const [selectedResult, setSelectedResult] = useState<{ quizId: number; roll: string } | null>(null);
 
   const { data: courseData } = useSWR("/api/faculty/courses", (url) =>
     apiClient.get<{ items: CourseCatalogEntry[] }>(url),
@@ -141,13 +91,6 @@ export function FacultyResults() {
   const { data, isLoading } = useSWR(
     `/api/faculty/reports/results?${buildParams().toString()}`,
     fetcher,
-  );
-
-  const { data: answerSheet, isLoading: answerSheetLoading } = useSWR(
-    selectedResult
-      ? `/api/faculty/quiz/${selectedResult.quizId}/results/${selectedResult.roll}`
-      : null,
-    fetchAnswerSheet,
   );
 
   const courses = (courseData?.items ?? []).filter((c) => c.courseId !== null);
@@ -194,57 +137,15 @@ export function FacultyResults() {
       header: "",
       className: "text-right",
       render: (row) => (
-        <Button
-          variant={
-            selectedResult?.quizId === row.quiz.id && selectedResult.roll === row.studentRoll
-              ? "secondary"
-              : "outline"
-          }
-          size="sm"
-          onClick={() => setSelectedResult({ quizId: row.quiz.id, roll: row.studentRoll })}
-        >
-          <ArrowRight className="mr-2 h-4 w-4" />
-          View Answer Sheet
+        <Button variant="outline" size="sm" asChild>
+          <Link
+            href={`/faculty/results/${row.quiz.id}/${encodeURIComponent(row.studentRoll)}`}
+          >
+            <ArrowRight className="mr-2 h-4 w-4" />
+            View Answer Sheet
+          </Link>
         </Button>
       ),
-    },
-  ];
-
-  const answerSheetColumns: DataTableColumn<AnswerSheetQuestion>[] = [
-    {
-      key: "question",
-      header: "Question",
-      render: (row) => <div className="max-w-md whitespace-pre-wrap">{row.questionText}</div>,
-    },
-    { key: "type", header: "Type", render: (row) => row.questionType },
-    {
-      key: "yourAnswer",
-      header: "Student answer",
-      render: (row) => <span className="whitespace-pre-wrap text-sm">{studentAnswerLabel(row)}</span>,
-    },
-    {
-      key: "correctAnswer",
-      header: "Correct answer",
-      render: (row) => <span className="whitespace-pre-wrap text-sm">{correctAnswerLabel(row)}</span>,
-    },
-    {
-      key: "result",
-      header: "Result",
-      render: (row) =>
-        row.yourAnswer.isSkipped ? (
-          <Badge variant="secondary">Skipped</Badge>
-        ) : row.isCorrect === null ? (
-          <Badge variant="outline">Ungraded</Badge>
-        ) : row.isCorrect ? (
-          <Badge variant="success">Correct</Badge>
-        ) : (
-          <Badge variant="destructive">Wrong</Badge>
-        ),
-    },
-    {
-      key: "marks",
-      header: "Marks",
-      render: (row) => `${row.marksObtained.toFixed(1)} / ${row.marks}`,
     },
   ];
 
@@ -379,31 +280,6 @@ export function FacultyResults() {
           pageSize={data.meta.pageSize}
           onPageChange={setPage}
         />
-      )}
-
-      {selectedResult && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">
-              {answerSheet
-                ? `Answer sheet — ${answerSheet.studentName} (${answerSheet.studentRoll}) — ${answerSheet.quizTitle}`
-                : "Answer sheet"}
-            </CardTitle>
-            {answerSheet && (
-              <p className="text-sm text-muted-foreground">
-                Total: {answerSheet.marksObtained.toFixed(1)} / {answerSheet.totalMarks}
-              </p>
-            )}
-          </CardHeader>
-          <CardContent>
-            <DataTable
-              columns={answerSheetColumns}
-              rows={answerSheet?.questions ?? []}
-              rowKey={(row) => row.id}
-              loading={answerSheetLoading}
-            />
-          </CardContent>
-        </Card>
       )}
     </div>
   );
