@@ -10,18 +10,16 @@ export async function POST(
 ) {
   try {
     const user = getAuthUser(req);
-    requireRole(user, "faculty", "admin");
+    // Starting a quiz is admin-only from the web panel - faculty and
+    // students both start a quiz only via the mobile app.
+    requireRole(user, "admin");
 
     const { id } = idParamSchema.parse(params);
     const quiz = await prisma.quiz.findFirst({
       where: { id, deletedAt: null },
       include: { _count: { select: { questions: true } } },
     });
-    if (
-      !quiz ||
-      (user.role === "faculty" && quiz.facultyRoll !== String(user.sub))
-    )
-      throw new ApiError(404, "Quiz not found");
+    if (!quiz) throw new ApiError(404, "Quiz not found");
 
     if (quiz.status === "live") throw new ApiError(400, "Quiz is already live");
     if (quiz.status === "completed")

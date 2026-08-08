@@ -12,7 +12,13 @@ interface StudentResult {
   marksObtained: number;
   percentage: number;
   publishedAt: string | null;
-  quiz: { id: number; title: string; totalMarks: number; course: { name: string; code: string } };
+  quiz: {
+    id: number;
+    title: string;
+    totalMarks: number;
+    course: { name: string; code: string };
+    sections: { section: { id: number; name: string } }[];
+  };
 }
 
 interface ListResponse<T> {
@@ -31,6 +37,11 @@ export function StudentResults() {
   const columns: DataTableColumn<StudentResult>[] = [
     { key: "title", header: "Quiz", render: (r) => <span className="font-medium">{r.quiz.title}</span> },
     { key: "course", header: "Course", render: (r) => `${r.quiz.course.name} (${r.quiz.course.code})` },
+    {
+      key: "section",
+      header: "Section",
+      render: (r) => r.quiz.sections.map((s) => s.section.name).join(", ") || "—",
+    },
     { key: "marks", header: "Marks", render: (r) => `${r.marksObtained} / ${r.quiz.totalMarks}` },
     { key: "percentage", header: "Percentage", render: (r) => `${r.percentage.toFixed(2)}%` },
     { key: "publishedAt", header: "Published", render: (r) => (r.publishedAt ? format(r.publishedAt) : "—") },

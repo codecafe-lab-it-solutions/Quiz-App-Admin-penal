@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "Quiz & Attendance Management System API",
-    "description": "Complete REST API collection for Authentication, Admin, Faculty and Student endpoints. Set the `baseUrl` variable to your running server (default http://localhost:3000). After logging in, copy the returned accessToken/refreshToken into the corresponding collection variables.",
+    "description": "Complete REST API collection for Authentication, Admin, Faculty and Student endpoints. Set the `baseUrl` variable to your running server (default http://localhost:3000). After logging in, copy the returned accessToken/refreshToken into the corresponding collection variables. NOTE: Starting/Stopping a quiz from the web is Admin-only (faculty and students both start a quiz only via the mobile app) - those requests live under the Admin folder even though their URL is under /api/faculty/quiz for historical reasons.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -76,10 +76,13 @@
     },
     {
       "name": "Admin",
+      "description": "Admin-only unless noted. Includes the two quiz Start/Stop requests at the bottom - those are admin-only from the web panel (faculty/student start a quiz only via the mobile app).",
       "item": [
         { "name": "List Faculty (read-only, legacy DB)", "request": { "method": "GET", "url": "{{baseUrl}}/api/admin/faculty?page=1&pageSize=10&search=" } },
         { "name": "Get Faculty (read-only, legacy DB)", "request": { "method": "GET", "url": "{{baseUrl}}/api/admin/faculty/{{facultyRoll}}" } },
         { "name": "Faculty: Activate/Deactivate login", "request": { "method": "PATCH", "header": [{ "key": "Content-Type", "value": "application/json" }], "url": "{{baseUrl}}/api/admin/faculty/{{facultyRoll}}/status", "body": { "mode": "raw", "raw": "{\n  \"active\": false\n}" } } },
+
+        { "name": "My Password: Change (self-service)", "request": { "method": "PATCH", "header": [{ "key": "Content-Type", "value": "application/json" }], "url": "{{baseUrl}}/api/admin/me/password", "body": { "mode": "raw", "raw": "{\n  \"currentPassword\": \"ChangeMe123!\",\n  \"newPassword\": \"NewPassword123!\"\n}" } } },
 
         { "name": "List Students (read-only, legacy DB)", "request": { "method": "GET", "url": "{{baseUrl}}/api/admin/students?page=1&pageSize=10&search=" } },
         { "name": "Get Student (read-only, legacy DB)", "request": { "method": "GET", "url": "{{baseUrl}}/api/admin/students/{{studentRoll}}" } },
@@ -113,11 +116,18 @@
         { "name": "Sessions: Update", "request": { "method": "PATCH", "header": [{ "key": "Content-Type", "value": "application/json" }], "url": "{{baseUrl}}/api/admin/sessions/{{id}}", "body": { "mode": "raw", "raw": "{\n  \"name\": \"2025-26 Odd Semester (Revised)\"\n}" } } },
         { "name": "Sessions: Delete", "request": { "method": "DELETE", "url": "{{baseUrl}}/api/admin/sessions/{{id}}" } },
 
-        { "name": "Sections: List", "request": { "method": "GET", "url": "{{baseUrl}}/api/admin/sections" } },
-        { "name": "Sections: Create", "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "url": "{{baseUrl}}/api/admin/sections", "body": { "mode": "raw", "raw": "{\n  \"name\": \"A\",\n  \"courseId\": 1,\n  \"sessionId\": 1\n}" } } },
+        { "name": "Sections: List", "request": { "method": "GET", "url": "{{baseUrl}}/api/admin/sections?page=1&pageSize=10&search=" } },
+        { "name": "Sections: Create", "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "url": "{{baseUrl}}/api/admin/sections", "body": { "mode": "raw", "raw": "{\n  \"name\": \"A\",\n  \"courseIds\": [1]\n}" }, "description": "A section can span multiple courses (merged batches) - just add more ids to courseIds." } },
         { "name": "Sections: Get", "request": { "method": "GET", "url": "{{baseUrl}}/api/admin/sections/{{id}}" } },
-        { "name": "Sections: Update", "request": { "method": "PATCH", "header": [{ "key": "Content-Type", "value": "application/json" }], "url": "{{baseUrl}}/api/admin/sections/{{id}}", "body": { "mode": "raw", "raw": "{\n  \"name\": \"B\"\n}" } } },
+        { "name": "Sections: Update", "request": { "method": "PATCH", "header": [{ "key": "Content-Type", "value": "application/json" }], "url": "{{baseUrl}}/api/admin/sections/{{id}}", "body": { "mode": "raw", "raw": "{\n  \"name\": \"B\",\n  \"courseIds\": [1, 2]\n}" } } },
         { "name": "Sections: Delete", "request": { "method": "DELETE", "url": "{{baseUrl}}/api/admin/sections/{{id}}" } },
+        { "name": "Sections: List Student Members", "request": { "method": "GET", "url": "{{baseUrl}}/api/admin/sections/{{id}}/students" } },
+        { "name": "Sections: Manually Add Student", "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "url": "{{baseUrl}}/api/admin/sections/{{id}}/students", "body": { "mode": "raw", "raw": "{\n  \"roll\": \"{{studentRoll}}\"\n}" }, "description": "Overrides auto-sync - kept even if the student later drops off the linked course's roster." } },
+        { "name": "Sections: Remove Student", "request": { "method": "DELETE", "url": "{{baseUrl}}/api/admin/sections/{{id}}/students/{{studentRoll}}" } },
+        { "name": "Sections: List Faculty Members", "request": { "method": "GET", "url": "{{baseUrl}}/api/admin/sections/{{id}}/faculty" } },
+        { "name": "Sections: Manually Add Faculty", "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "url": "{{baseUrl}}/api/admin/sections/{{id}}/faculty", "body": { "mode": "raw", "raw": "{\n  \"roll\": \"{{facultyRoll}}\"\n}" } } },
+        { "name": "Sections: Remove Faculty", "request": { "method": "DELETE", "url": "{{baseUrl}}/api/admin/sections/{{id}}/faculty/{{facultyRoll}}" } },
+        { "name": "Sections: Re-sync membership from course rosters", "request": { "method": "POST", "url": "{{baseUrl}}/api/admin/sections/{{id}}/resync" } },
 
         { "name": "Buildings: List", "request": { "method": "GET", "url": "{{baseUrl}}/api/admin/buildings" } },
         { "name": "Buildings: Create", "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "url": "{{baseUrl}}/api/admin/buildings", "body": { "mode": "raw", "raw": "{\n  \"name\": \"Main Block\",\n  \"latitude\": 28.6139,\n  \"longitude\": 77.2090,\n  \"radiusMeters\": 40\n}" } } },
@@ -134,19 +144,35 @@
         { "name": "Dashboard Summary", "request": { "method": "GET", "url": "{{baseUrl}}/api/admin/dashboard/summary" } },
         { "name": "Reports: Live Tracking", "request": { "method": "GET", "url": "{{baseUrl}}/api/admin/reports/live-tracking" } },
         { "name": "Reports: Attendance (JSON)", "request": { "method": "GET", "url": "{{baseUrl}}/api/admin/reports/attendance?page=1&pageSize=20" } },
+        { "name": "Reports: Attendance (filtered)", "request": { "method": "GET", "url": "{{baseUrl}}/api/admin/reports/attendance?courseId=1&sectionId=1&search=&from=&to=&page=1&pageSize=20" } },
         { "name": "Reports: Attendance (Excel export)", "request": { "method": "GET", "url": "{{baseUrl}}/api/admin/reports/attendance?export=excel" } },
         { "name": "Reports: Attendance (PDF export)", "request": { "method": "GET", "url": "{{baseUrl}}/api/admin/reports/attendance?export=pdf" } },
-        { "name": "Violations: List (anti-cheat + geofence)", "request": { "method": "GET", "url": "{{baseUrl}}/api/admin/violations?page=1&pageSize=20" } }
+        { "name": "Reports: Results (JSON)", "request": { "method": "GET", "url": "{{baseUrl}}/api/admin/reports/results?page=1&pageSize=20" } },
+        { "name": "Reports: Results (filtered)", "request": { "method": "GET", "url": "{{baseUrl}}/api/admin/reports/results?courseId=1&sectionId=1&resultStatus=published&search=&from=&to=&page=1&pageSize=20", "description": "resultStatus is one of pending | declared | published." } },
+        { "name": "Violations: List (anti-cheat + geofence)", "request": { "method": "GET", "url": "{{baseUrl}}/api/admin/violations?page=1&pageSize=20" } },
+
+        { "name": "Quiz: Start (admin-only from web)", "request": { "method": "POST", "url": "{{baseUrl}}/api/faculty/quiz/{{quizId}}/start", "description": "403 for a faculty token - starting a quiz from the web panel is admin-only. Faculty and students both start a quiz only via the mobile app." } },
+        { "name": "Quiz: Stop (admin-only from web)", "request": { "method": "POST", "url": "{{baseUrl}}/api/faculty/quiz/{{quizId}}/stop", "description": "403 for a faculty token, same restriction as Start." } }
       ]
     },
     {
       "name": "Faculty",
+      "description": "Everything here requires a faculty token (an admin token also works for most of these - see middleware). Quiz Start/Stop moved to the Admin folder since faculty is now blocked from starting/stopping a quiz via the web (mobile app only).",
       "item": [
         { "name": "My Courses (legacy-sourced, real Prog/Dept)", "request": { "method": "GET", "url": "{{baseUrl}}/api/faculty/courses" } },
         { "name": "Course Roster (legacy-sourced)", "request": { "method": "GET", "url": "{{baseUrl}}/api/faculty/courses/CS201/students" } },
+
+        { "name": "Sessions: List (read-only)", "request": { "method": "GET", "url": "{{baseUrl}}/api/faculty/sessions" } },
+
+        { "name": "Sections: List", "request": { "method": "GET", "url": "{{baseUrl}}/api/faculty/sections" } },
+        { "name": "Sections: Create", "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "url": "{{baseUrl}}/api/faculty/sections", "body": { "mode": "raw", "raw": "{\n  \"name\": \"A\",\n  \"courseIds\": [1]\n}" }, "description": "Faculty can create/edit sections but not delete them or manage individual membership - those stay admin-only." } },
+        { "name": "Sections: Get", "request": { "method": "GET", "url": "{{baseUrl}}/api/faculty/sections/{{id}}" } },
+        { "name": "Sections: Update", "request": { "method": "PATCH", "header": [{ "key": "Content-Type", "value": "application/json" }], "url": "{{baseUrl}}/api/faculty/sections/{{id}}", "body": { "mode": "raw", "raw": "{\n  \"name\": \"B\"\n}" } } },
+        { "name": "Sections: Roster for given section ids (pre-quiz picker)", "request": { "method": "GET", "url": "{{baseUrl}}/api/faculty/sections/students?sectionIds=1,2" } },
+
         { "name": "List My Quizzes", "request": { "method": "GET", "url": "{{baseUrl}}/api/faculty/quizzes" } },
-        { "name": "Create Quiz", "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "url": "{{baseUrl}}/api/faculty/quiz", "body": { "mode": "raw", "raw": "{\n  \"title\": \"Unit 1 Quiz\",\n  \"courseId\": 1,\n  \"sectionId\": 1,\n  \"buildingId\": 1,\n  \"startTime\": \"2026-08-10T09:00:00.000Z\",\n  \"endTime\": \"2026-08-10T09:30:00.000Z\",\n  \"durationMinutes\": 20,\n  \"totalMarks\": 10,\n  \"randomize\": true,\n  \"negativeMarking\": false,\n  \"allowSkipSwitch\": true,\n  \"status\": \"draft\"\n}" } } },
-        { "name": "Create Quiz (as Admin, on a faculty's behalf)", "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "url": "{{baseUrl}}/api/faculty/quiz", "body": { "mode": "raw", "raw": "{\n  \"facultyRoll\": \"{{facultyRoll}}\",\n  \"title\": \"Unit 1 Quiz\",\n  \"courseId\": 1,\n  \"buildingId\": 1,\n  \"startTime\": \"2026-08-10T09:00:00.000Z\",\n  \"endTime\": \"2026-08-10T09:30:00.000Z\",\n  \"durationMinutes\": 20,\n  \"totalMarks\": 1,\n  \"randomize\": true,\n  \"negativeMarking\": false,\n  \"allowSkipSwitch\": true,\n  \"status\": \"draft\"\n}" } } },
+        { "name": "Create Quiz", "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "url": "{{baseUrl}}/api/faculty/quiz", "body": { "mode": "raw", "raw": "{\n  \"title\": \"Unit 1 Quiz\",\n  \"courseId\": 1,\n  \"sectionIds\": [1],\n  \"buildingId\": 1,\n  \"startTime\": \"2026-08-10T09:00:00.000Z\",\n  \"endTime\": \"2026-08-10T09:30:00.000Z\",\n  \"durationMinutes\": 20,\n  \"totalMarks\": 10,\n  \"randomize\": true,\n  \"negativeMarking\": false,\n  \"allowSkipSwitch\": true,\n  \"requireLocation\": true,\n  \"status\": \"draft\"\n}" } } },
+        { "name": "Create Quiz (as Admin, on a faculty's behalf)", "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "url": "{{baseUrl}}/api/faculty/quiz", "body": { "mode": "raw", "raw": "{\n  \"facultyRoll\": \"{{facultyRoll}}\",\n  \"title\": \"Unit 1 Quiz\",\n  \"courseId\": 1,\n  \"sectionIds\": [1],\n  \"buildingId\": 1,\n  \"startTime\": \"2026-08-10T09:00:00.000Z\",\n  \"endTime\": \"2026-08-10T09:30:00.000Z\",\n  \"durationMinutes\": 20,\n  \"totalMarks\": 1,\n  \"randomize\": true,\n  \"negativeMarking\": false,\n  \"allowSkipSwitch\": true,\n  \"requireLocation\": true,\n  \"status\": \"draft\"\n}" } } },
         { "name": "Get Quiz", "request": { "method": "GET", "url": "{{baseUrl}}/api/faculty/quiz/{{quizId}}" } },
         { "name": "Update Quiz", "request": { "method": "PATCH", "header": [{ "key": "Content-Type", "value": "application/json" }], "url": "{{baseUrl}}/api/faculty/quiz/{{quizId}}", "body": { "mode": "raw", "raw": "{\n  \"title\": \"Unit 1 Quiz (Revised)\"\n}" } } },
         { "name": "Delete Quiz", "request": { "method": "DELETE", "url": "{{baseUrl}}/api/faculty/quiz/{{quizId}}" } },
@@ -155,15 +181,25 @@
         { "name": "Add/Update Questions (Objective + Subjective)", "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "url": "{{baseUrl}}/api/faculty/quiz/{{quizId}}/questions", "body": { "mode": "raw", "raw": "{\n  \"questions\": [\n    {\n      \"questionType\": \"mcq\",\n      \"questionText\": \"2 + 2 = ?\",\n      \"marks\": 1,\n      \"negativeMarks\": 0,\n      \"orderIndex\": 0,\n      \"options\": [\n        { \"optionText\": \"3\", \"isCorrect\": false },\n        { \"optionText\": \"4\", \"isCorrect\": true }\n      ]\n    },\n    {\n      \"questionType\": \"subjective\",\n      \"questionText\": \"Explain Newton's second law of motion.\",\n      \"marks\": 5,\n      \"orderIndex\": 1,\n      \"referenceAnswer\": \"Force equals mass times acceleration (F = ma) - optional grading guide.\"\n    }\n  ]\n}" } } },
         { "name": "Download Bulk Import Template (.xlsx, includes Type column)", "request": { "method": "GET", "url": "{{baseUrl}}/api/faculty/questions/import-template" } },
         { "name": "Bulk Import Questions (.xlsx upload, OBJECTIVE/SUBJECTIVE)", "request": { "method": "POST", "url": "{{baseUrl}}/api/faculty/quiz/{{quizId}}/questions/import", "body": { "mode": "formdata", "formdata": [{ "key": "file", "type": "file", "src": [] }] } } },
-        { "name": "Allot Quiz", "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "url": "{{baseUrl}}/api/faculty/quiz/{{quizId}}/allot", "body": { "mode": "raw", "raw": "{\n  \"mode\": \"course\"\n}" } } },
-        { "name": "Start Quiz", "request": { "method": "POST", "url": "{{baseUrl}}/api/faculty/quiz/{{quizId}}/start" } },
-        { "name": "Stop Quiz", "request": { "method": "POST", "url": "{{baseUrl}}/api/faculty/quiz/{{quizId}}/stop" } },
+
+        { "name": "Allot Candidates (section roster + already-allotted flag)", "request": { "method": "GET", "url": "{{baseUrl}}/api/faculty/quiz/{{quizId}}/allot/candidates" } },
+        { "name": "Allot Quiz", "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "url": "{{baseUrl}}/api/faculty/quiz/{{quizId}}/allot", "body": { "mode": "raw", "raw": "{\n  \"studentRolls\": [\"{{studentRoll}}\"]\n}" }, "description": "Only rolls that belong to the quiz's linked section(s) are actually allotted - others are silently filtered out." } },
+
         { "name": "Get Attempts", "request": { "method": "GET", "url": "{{baseUrl}}/api/faculty/quiz/{{quizId}}/attempts" } },
+        { "name": "Quiz Results (class-wide breakdown + answer key)", "request": { "method": "GET", "url": "{{baseUrl}}/api/faculty/quiz/{{quizId}}/results", "description": "Aggregate view: per-question attempted/correct/wrong/skipped counts and the answer key, plus a per-student marks/percentage summary." } },
+        { "name": "Answer Sheet (one student's full breakdown with marks)", "request": { "method": "GET", "url": "{{baseUrl}}/api/faculty/quiz/{{quizId}}/results/{{studentRoll}}", "description": "Every question this student saw: their answer, the correct answer, correct/wrong/skipped, and marks obtained (negative if the quiz has negative marking and they got it wrong)." } },
         { "name": "List Subjective Answers (needs grading)", "request": { "method": "GET", "url": "{{baseUrl}}/api/faculty/quiz/{{quizId}}/subjective-answers" } },
         { "name": "Grade Subjective Answer", "request": { "method": "PATCH", "header": [{ "key": "Content-Type", "value": "application/json" }], "url": "{{baseUrl}}/api/faculty/quiz/{{quizId}}/subjective-answers/1", "body": { "mode": "raw", "raw": "{\n  \"marksAwarded\": 4\n}" } } },
         { "name": "Declare Result", "request": { "method": "POST", "url": "{{baseUrl}}/api/faculty/quiz/{{quizId}}/declare-result" } },
         { "name": "Publish Result", "request": { "method": "POST", "url": "{{baseUrl}}/api/faculty/quiz/{{quizId}}/publish-result" } },
+
+        { "name": "Reports: My Results (across every quiz I teach)", "request": { "method": "GET", "url": "{{baseUrl}}/api/faculty/reports/results?page=1&pageSize=20" } },
+        { "name": "Reports: My Results (filtered)", "request": { "method": "GET", "url": "{{baseUrl}}/api/faculty/reports/results?courseId=1&sectionId=1&resultStatus=published&search=&from=&to=&page=1&pageSize=20" } },
         { "name": "My Attendance", "request": { "method": "GET", "url": "{{baseUrl}}/api/faculty/attendance" } },
+
+        { "name": "Allotment: Mark Student as Proxy", "request": { "method": "POST", "url": "{{baseUrl}}/api/faculty/quiz/{{quizId}}/allotments/{{studentRoll}}/proxy", "description": "Flags the attempt as a proxy and forces attendance status to absent - use when someone else appears to be taking the quiz for this student." } },
+        { "name": "Allotment: Revert Proxy flag", "request": { "method": "DELETE", "url": "{{baseUrl}}/api/faculty/quiz/{{quizId}}/allotments/{{studentRoll}}/proxy", "description": "Restores the student's real status: attempted if they have a submitted attempt, otherwise allotted." } },
+
         { "name": "Buildings (read-only, for quiz creation)", "request": { "method": "GET", "url": "{{baseUrl}}/api/faculty/buildings" } }
       ]
     },
@@ -171,6 +207,7 @@
       "name": "Student",
       "item": [
         { "name": "List My Quizzes", "request": { "method": "GET", "url": "{{baseUrl}}/api/student/quizzes" } },
+        { "name": "My Attendance", "request": { "method": "GET", "url": "{{baseUrl}}/api/student/attendance?page=1&pageSize=10" } },
         { "name": "Geofence Check", "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "url": "{{baseUrl}}/api/student/quiz/{{quizId}}/geofence-check", "body": { "mode": "raw", "raw": "{\n  \"latitude\": 28.6139,\n  \"longitude\": 77.2090\n}" } } },
         { "name": "Start Attempt", "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "url": "{{baseUrl}}/api/student/quiz/{{quizId}}/start-attempt", "body": { "mode": "raw", "raw": "{\n  \"latitude\": 28.6139,\n  \"longitude\": 77.2090\n}" } } },
         { "name": "Get Attempt Questions", "request": { "method": "GET", "url": "{{baseUrl}}/api/student/attempt/{{attemptId}}/questions" } },

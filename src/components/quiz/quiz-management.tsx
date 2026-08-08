@@ -30,6 +30,7 @@ interface QuizDetail {
   randomize: boolean;
   negativeMarking: boolean;
   course: { id: number; name: string; code: string };
+  sections: { section: { id: number; name: string } }[];
   building: { name: string };
   questions: (QuestionRow & { id: number })[];
   _count: { allotments: number };
@@ -493,20 +494,22 @@ export function QuizManagement({
           <div>
             <CardTitle className="text-xl">{quiz.title}</CardTitle>
             <p className="text-sm text-muted-foreground">
-              {quiz.course.name} ({quiz.course.code}) · {quiz.building.name} ·{" "}
-              {formatDateTime(quiz.startTime)} – {formatDateTime(quiz.endTime)}{" "}
-              · {quiz.totalMarks} marks
+              {quiz.course.name} ({quiz.course.code}) · Section:{" "}
+              {quiz.sections.map((s) => s.section.name).join(", ") || "—"} ·{" "}
+              {quiz.building.name} · {formatDateTime(quiz.startTime)} –{" "}
+              {formatDateTime(quiz.endTime)} · {quiz.totalMarks} marks
             </p>
           </div>
           <div className="flex items-center gap-2">
             <Badge variant={statusVariant[quiz.status]}>{quiz.status}</Badge>
-            {(quiz.status === "draft" || quiz.status === "scheduled") && (
-              <Button size="sm" onClick={handleStart}>
-                <Play className="mr-2 h-4 w-4" />
-                Start
-              </Button>
-            )}
-            {quiz.status === "live" && (
+            {role === "admin" &&
+              (quiz.status === "draft" || quiz.status === "scheduled") && (
+                <Button size="sm" onClick={handleStart}>
+                  <Play className="mr-2 h-4 w-4" />
+                  Start
+                </Button>
+              )}
+            {role === "admin" && quiz.status === "live" && (
               <Button size="sm" variant="destructive" onClick={handleStop}>
                 <Square className="mr-2 h-4 w-4" />
                 Stop

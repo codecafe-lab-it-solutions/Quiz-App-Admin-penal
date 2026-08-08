@@ -15,7 +15,7 @@ interface AttendanceRow {
   status: "present" | "absent";
   date: string;
   course: { name: string; code: string };
-  quiz: { title: string };
+  quiz: { title: string; sections: { section: { id: number; name: string } }[] };
 }
 
 interface ListResponse<T> {
@@ -39,6 +39,11 @@ export function FacultyAttendance() {
   const columns: DataTableColumn<AttendanceRow>[] = [
     { key: "student", header: "Student", render: (r) => `${r.studentName} (${r.studentRoll})` },
     { key: "course", header: "Course", render: (r) => `${r.course.name} (${r.course.code})` },
+    {
+      key: "section",
+      header: "Section",
+      render: (r) => r.quiz.sections.map((s) => s.section.name).join(", ") || "—",
+    },
     { key: "quiz", header: "Quiz", render: (r) => r.quiz.title },
     { key: "date", header: "Date", render: (r) => format(r.date) },
     { key: "status", header: "Status", render: (r) => <Badge variant={statusVariant[r.status]}>{r.status}</Badge> },

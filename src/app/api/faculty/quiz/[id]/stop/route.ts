@@ -7,11 +7,13 @@ import { idParamSchema } from "@/lib/validators/common";
 export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
   try {
     const user = getAuthUser(req);
-    requireRole(user, "faculty", "admin");
+    // Stopping a quiz is admin-only from the web panel - faculty and
+    // students both start/stop a quiz only via the mobile app.
+    requireRole(user, "admin");
 
     const { id } = idParamSchema.parse(params);
     const quiz = await prisma.quiz.findUnique({ where: { id } });
-    if (!quiz || (user.role === "faculty" && quiz.facultyRoll !== String(user.sub))) throw new ApiError(404, "Quiz not found");
+    if (!quiz) throw new ApiError(404, "Quiz not found");
     if (quiz.status !== "live") throw new ApiError(400, "Only a live quiz can be stopped");
 
     const stopTime = new Date();

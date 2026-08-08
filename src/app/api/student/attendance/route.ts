@@ -23,7 +23,15 @@ export async function GET(req: NextRequest) {
         orderBy: { date: "desc" },
         include: {
           course: { select: { id: true, name: true, code: true } },
-          quiz: { select: { id: true, title: true } },
+          quiz: {
+            select: {
+              id: true,
+              title: true,
+              sections: {
+                include: { section: { select: { id: true, name: true } } },
+              },
+            },
+          },
         },
       }),
       prisma.attendance.count({ where }),
