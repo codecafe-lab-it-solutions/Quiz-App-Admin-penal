@@ -1,4 +1,4 @@
-import { LayoutDashboard, ClipboardList, FileBarChart } from "lucide-react";
+import { LayoutDashboard, ClipboardList, FileBarChart, FileText } from "lucide-react";
 import type { NavGroup } from "@/components/shell/nav-sidebar";
 
 export const FACULTY_NAV_GROUPS: NavGroup[] = [
@@ -12,6 +12,9 @@ export const FACULTY_NAV_GROUPS: NavGroup[] = [
   },
   {
     title: "Reports",
-    items: [{ label: "Attendance", href: "/faculty/attendance", icon: FileBarChart }],
+    items: [
+      { label: "Attendance", href: "/faculty/attendance", icon: FileBarChart },
+      { label: "Results", href: "/faculty/results", icon: FileText },
+    ],
   },
 ];

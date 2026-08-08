@@ -20,12 +20,38 @@ export async function GET(req: NextRequest) {
     const user = getAuthUser(req);
     requireRole(user, "admin");
 
-    const parsed = studentCourseMappingQuerySchema.safeParse(Object.fromEntries(req.nextUrl.searchParams));
+    const parsed = studentCourseMappingQuerySchema.safeParse(
+      Object.fromEntries(req.nextUrl.searchParams),
+    );
     if (!parsed.success) {
       return fail(400, "Provide either roll or courseCode to search");
     }
     const { roll, courseCode } = parsed.data;
     const subList = await getCurrentSubList();
+
+    const attachSections = async <T extends { roll: string }>(items: T[]) => {
+      const studentRolls = [...new Set(items.map((item) => item.roll))];
+      if (studentRolls.length === 0) {
+        return items.map((item) => ({ ...item, sections: [] }));
+      }
+
+      const sectionRows = await prisma.sectionStudent.findMany({
+        where: { studentRoll: { in: studentRolls } },
+        include: { section: { select: { id: true, name: true } } },
+      });
+
+      const sectionsByRoll = sectionRows.reduce((map, row) => {
+        const existing = map.get(row.studentRoll) ?? [];
+        existing.push(row.section);
+        map.set(row.studentRoll, existing);
+        return map;
+      }, new Map<string, { id: number; name: string }[]>());
+
+      return items.map((item) => ({
+        ...item,
+        sections: sectionsByRoll.get(item.roll) ?? [],
+      }));
+    };
 
     if (roll) {
       const student = await getStudentByRoll(roll);
@@ -33,11 +59,16 @@ export async function GET(req: NextRequest) {
         return ok({ items: [] });
       }
       const courses = await getStudentCourses(roll, student.batch, subList);
-      return ok({ items: courses.map((c) => ({ roll: c.roll, subCode: c.subCode, batch: student.batch })) });
+      const rows = courses.map((c) => ({
+        roll: c.roll,
+        subCode: c.subCode,
+        batch: student.batch,
+      }));
+      return ok({ items: await attachSections(rows) });
     }
 
     const items = await getCourseRegistrations(courseCode!, subList);
-    return ok({ items });
+    return ok({ items: await attachSections(items) });
   } catch (error) {
     return handleApiError(error);
   }
@@ -49,7 +80,10 @@ export async function POST(req: NextRequest) {
     requireRole(user, "admin");
 
     const body = studentCourseMappingCreateSchema.parse(await req.json());
-    const mapping = await createStudentCourseMapping({ ...body, subList: await getCurrentSubList() });
+    const mapping = await createStudentCourseMapping({
+      ...body,
+      subList: await getCurrentSubList(),
+    });
 
     return created(mapping);
   } catch (error) {

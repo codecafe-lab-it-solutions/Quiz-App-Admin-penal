@@ -7,7 +7,13 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { toast } from "sonner";
 import { apiClient, ApiClientError } from "@/lib/api-client";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { DataTable, DataTableColumn } from "@/components/admin/data-table";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -26,6 +32,7 @@ interface Registration {
   roll: string;
   subCode: string;
   batch?: string;
+  sections: { id: number; name: string }[];
 }
 
 interface ListResponse {
@@ -53,7 +60,10 @@ export default function StudentMappingPage() {
       ? `courseCode=${encodeURIComponent(courseCode.trim())}`
       : null;
 
-  const { data, isLoading, mutate } = useSWR(query ? `/api/admin/mapping/student-course-section?${query}` : null, fetcher);
+  const { data, isLoading, mutate } = useSWR(
+    query ? `/api/admin/mapping/student-course-section?${query}` : null,
+    fetcher,
+  );
 
   const {
     register,
@@ -78,7 +88,9 @@ export default function StudentMappingPage() {
       setRoll(values.roll);
       mutate();
     } catch (error) {
-      toast.error(error instanceof ApiClientError ? error.message : "Save failed");
+      toast.error(
+        error instanceof ApiClientError ? error.message : "Save failed",
+      );
     } finally {
       setSubmitting(false);
     }
@@ -86,18 +98,37 @@ export default function StudentMappingPage() {
 
   const columns: DataTableColumn<Registration>[] = [
     { key: "roll", header: "Student roll", render: (r) => r.roll },
+    {
+      key: "sections",
+      header: "Sections",
+      render: (r) =>
+        r.sections.length > 0
+          ? r.sections.map((section) => section.name).join(", ")
+          : "—",
+    },
     { key: "subCode", header: "Course code", render: (r) => r.subCode },
-    ...(courseCode.trim() ? [{ key: "batch", header: "Batch", render: (r: Registration) => r.batch ?? "—" }] : []),
+    ...(courseCode.trim()
+      ? [
+          {
+            key: "batch",
+            header: "Batch",
+            render: (r: Registration) => r.batch ?? "—",
+          },
+        ]
+      : []),
   ];
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Student ↔ Course Mapping</h1>
+          <h1 className="text-2xl font-bold tracking-tight">
+            Student ↔ Course Mapping
+          </h1>
           <p className="text-sm text-muted-foreground">
-            Live registrations synced from the university system. Search by student roll or course code -
-            this spans ~60 per-batch tables, so an unfiltered list isn't shown.
+            Live registrations synced from the university system. Search by
+            student roll or course code - this spans ~60 per-batch tables, so an
+            unfiltered list isn't shown.
           </p>
         </div>
         <Button onClick={openCreate}>
@@ -109,7 +140,10 @@ export default function StudentMappingPage() {
       <Card>
         <CardHeader>
           <CardTitle>Search registrations</CardTitle>
-          <CardDescription>Provide a student roll to see their courses, or a course code to see who's registered.</CardDescription>
+          <CardDescription>
+            Provide a student roll to see their courses, or a course code to see
+            who's registered.
+          </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -140,9 +174,16 @@ export default function StudentMappingPage() {
           </div>
 
           {query ? (
-            <DataTable columns={columns} rows={data?.items ?? []} rowKey={(r) => `${r.roll}-${r.subCode}`} loading={isLoading} />
+            <DataTable
+              columns={columns}
+              rows={data?.items ?? []}
+              rowKey={(r) => `${r.roll}-${r.subCode}`}
+              loading={isLoading}
+            />
           ) : (
-            <p className="text-sm text-muted-foreground">Enter a roll or course code to see registrations.</p>
+            <p className="text-sm text-muted-foreground">
+              Enter a roll or course code to see registrations.
+            </p>
           )}
         </CardContent>
       </Card>
@@ -151,21 +192,48 @@ export default function StudentMappingPage() {
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Add Mapping</DialogTitle>
-            <DialogDescription>Registers a student for a course, in the registration table for their batch.</DialogDescription>
+            <DialogDescription>
+              Registers a student for a course, in the registration table for
+              their batch.
+            </DialogDescription>
           </DialogHeader>
-          <form onSubmit={handleSubmit(onSubmit)} className="space-y-4" noValidate>
+          <form
+            onSubmit={handleSubmit(onSubmit)}
+            className="space-y-4"
+            noValidate
+          >
             <div className="space-y-1.5">
               <Label htmlFor="mappingRoll">Student roll</Label>
-              <Input id="mappingRoll" {...register("roll")} placeholder="e.g. R2025001" />
-              {errors.roll && <p className="text-sm text-destructive">{errors.roll.message}</p>}
+              <Input
+                id="mappingRoll"
+                {...register("roll")}
+                placeholder="e.g. R2025001"
+              />
+              {errors.roll && (
+                <p className="text-sm text-destructive">
+                  {errors.roll.message}
+                </p>
+              )}
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="mappingSubCode">Course code</Label>
-              <Input id="mappingSubCode" {...register("subCode")} placeholder="e.g. CS201" />
-              {errors.subCode && <p className="text-sm text-destructive">{errors.subCode.message}</p>}
+              <Input
+                id="mappingSubCode"
+                {...register("subCode")}
+                placeholder="e.g. CS201"
+              />
+              {errors.subCode && (
+                <p className="text-sm text-destructive">
+                  {errors.subCode.message}
+                </p>
+              )}
             </div>
             <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setDialogOpen(false)}
+              >
                 Cancel
               </Button>
               <Button type="submit" disabled={submitting}>

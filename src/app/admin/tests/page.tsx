@@ -19,6 +19,7 @@ interface QuizRow {
   startTime: string;
   facultyRoll: string;
   course: { name: string; code: string };
+  sections: { section: { id: number; name: string } }[];
   _count: { questions: number; allotments: number };
 }
 
@@ -27,7 +28,10 @@ interface ListResponse<T> {
   meta: { total: number; page: number; pageSize: number; totalPages: number };
 }
 
-const statusVariant: Record<string, "default" | "secondary" | "success" | "warning" | "destructive" | "outline"> = {
+const statusVariant: Record<
+  string,
+  "default" | "secondary" | "success" | "warning" | "destructive" | "outline"
+> = {
   draft: "secondary",
   scheduled: "warning",
   live: "success",
@@ -40,17 +44,54 @@ export default function AdminTestsPage() {
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");
 
-  const params = new URLSearchParams({ page: String(page), pageSize: "10", search });
-  const { data, isLoading } = useSWR(`/api/faculty/quizzes?${params.toString()}`, fetcher);
+  const params = new URLSearchParams({
+    page: String(page),
+    pageSize: "10",
+    search,
+  });
+  const { data, isLoading } = useSWR(
+    `/api/faculty/quizzes?${params.toString()}`,
+    fetcher,
+  );
 
   const columns: DataTableColumn<QuizRow>[] = [
-    { key: "title", header: "Title", render: (r) => <span className="font-medium">{r.title}</span> },
-    { key: "course", header: "Course", render: (r) => `${r.course.name} (${r.course.code})` },
+    {
+      key: "title",
+      header: "Title",
+      render: (r) => <span className="font-medium">{r.title}</span>,
+    },
+    {
+      key: "course",
+      header: "Course",
+      render: (r) => `${r.course.name} (${r.course.code})`,
+    },
+    {
+      key: "sections",
+      header: "Sections",
+      render: (r) =>
+        r.sections.length > 0
+          ? r.sections.map((s) => s.section.name).join(", ")
+          : "—",
+    },
     { key: "facultyRoll", header: "Faculty", render: (r) => r.facultyRoll },
-    { key: "startTime", header: "Start", render: (r) => formatDateTime(r.startTime) },
-    { key: "questions", header: "Questions", render: (r) => r._count.questions },
+    {
+      key: "startTime",
+      header: "Start",
+      render: (r) => formatDateTime(r.startTime),
+    },
+    {
+      key: "questions",
+      header: "Questions",
+      render: (r) => r._count.questions,
+    },
     { key: "allotted", header: "Allotted", render: (r) => r._count.allotments },
-    { key: "status", header: "Status", render: (r) => <Badge variant={statusVariant[r.status]}>{r.status}</Badge> },
+    {
+      key: "status",
+      header: "Status",
+      render: (r) => (
+        <Badge variant={statusVariant[r.status]}>{r.status}</Badge>
+      ),
+    },
     {
       key: "actions",
       header: "",
@@ -70,7 +111,10 @@ export default function AdminTestsPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Tests</h1>
-          <p className="text-sm text-muted-foreground">System-wide oversight of every quiz, or create one on a faculty member's behalf.</p>
+          <p className="text-sm text-muted-foreground">
+            System-wide oversight of every quiz, or create one on a faculty
+            member's behalf.
+          </p>
         </div>
         <Button asChild>
           <Link href="/admin/tests/new">
@@ -89,7 +133,12 @@ export default function AdminTestsPage() {
         searchPlaceholder="Search by title..."
       />
 
-      <DataTable columns={columns} rows={data?.items ?? []} rowKey={(r) => r.id} loading={isLoading} />
+      <DataTable
+        columns={columns}
+        rows={data?.items ?? []}
+        rowKey={(r) => r.id}
+        loading={isLoading}
+      />
 
       {data?.meta && (
         <PaginationBar

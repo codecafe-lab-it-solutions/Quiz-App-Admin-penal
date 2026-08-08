@@ -13,14 +13,21 @@ export async function GET(req: NextRequest) {
     const user = getAuthUser(req);
     requireRole(user, "admin");
 
-    const query = attendanceReportQuerySchema.parse(
-      Object.fromEntries(req.nextUrl.searchParams),
-    );
+    const params = Object.fromEntries(req.nextUrl.searchParams);
+    const studentRolls = req.nextUrl.searchParams.getAll("studentRoll");
+    if (studentRolls.length > 0) {
+      params.studentRoll = studentRolls;
+    }
+
+    const query = attendanceReportQuerySchema.parse(params);
 
     const where = {
       ...(query.courseId ? { courseId: query.courseId } : {}),
       ...(query.sectionId
         ? { quiz: { sections: { some: { sectionId: query.sectionId } } } }
+        : {}),
+      ...(query.studentRoll?.length
+        ? { studentRoll: { in: query.studentRoll } }
         : {}),
       ...(query.search
         ? {

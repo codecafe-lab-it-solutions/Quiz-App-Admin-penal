@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import useSWR from "swr";
 import { apiClient } from "@/lib/api-client";
 import { downloadFile } from "@/lib/api-client";
@@ -8,9 +8,15 @@ import { DataTable, DataTableColumn } from "@/components/admin/data-table";
 import { PaginationBar } from "@/components/admin/pagination-bar";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import {
   Select,
   SelectContent,
@@ -44,6 +50,10 @@ interface AttendanceRow {
     sections: { section: { id: number; name: string } }[];
   };
 }
+interface StudentOption {
+  roll: string;
+  name: string;
+}
 interface ListResponse<T> {
   items: T[];
   meta: { total: number; page: number; pageSize: number; totalPages: number };
@@ -58,6 +68,8 @@ export default function AttendanceReportPage() {
   const [courseId, setCourseId] = useState<string>("all");
   const [sectionId, setSectionId] = useState<string>("all");
   const [search, setSearch] = useState("");
+  const [studentSearch, setStudentSearch] = useState("");
+  const [selectedStudents, setSelectedStudents] = useState<StudentOption[]>([]);
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
 
@@ -72,6 +84,17 @@ export default function AttendanceReportPage() {
     listFetcher<Section>,
   );
 
+  const studentListUrl = `/api/admin/students?page=1&pageSize=50${studentSearch.trim() ? `&search=${encodeURIComponent(studentSearch.trim())}` : ""}`;
+  const { data: studentData } = useSWR(
+    studentListUrl,
+    listFetcher<StudentOption>,
+  );
+
+  const selectedStudentRolls = useMemo(
+    () => selectedStudents.map((student) => student.roll),
+    [selectedStudents],
+  );
+
   const buildParams = (extra?: Record<string, string>) => {
     const params = new URLSearchParams({ page: String(page), pageSize: "20" });
     if (courseId !== "all") params.set("courseId", courseId);
@@ -79,6 +102,7 @@ export default function AttendanceReportPage() {
     if (search) params.set("search", search);
     if (from) params.set("from", from);
     if (to) params.set("to", to);
+    selectedStudentRolls.forEach((roll) => params.append("studentRoll", roll));
     if (extra) Object.entries(extra).forEach(([k, v]) => params.set(k, v));
     return params;
   };
@@ -209,6 +233,94 @@ export default function AttendanceReportPage() {
                 setPage(1);
               }}
             />
+          </div>
+          <div className="space-y-1.5">
+            <Label>Students</Label>
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button variant="outline" className="w-full text-left">
+                  {selectedStudents.length > 0
+                    ? selectedStudents.length === 1
+                      ? `${selectedStudents[0].name} (${selectedStudents[0].roll})`
+                      : `${selectedStudents.length} students selected`
+                    : "All students"}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-80">
+                <div className="space-y-3">
+                  <Input
+                    placeholder="Search student name or roll"
+                    value={studentSearch}
+                    onChange={(e) => setStudentSearch(e.target.value)}
+                  />
+                  <div className="max-h-72 space-y-1 overflow-y-auto">
+                    {studentData?.items.map((student) => {
+                      const selected = selectedStudentRolls.includes(
+                        student.roll,
+                      );
+                      return (
+                        <label
+                          key={student.roll}
+                          className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1 hover:bg-accent hover:text-accent-foreground"
+                        >
+                          <Checkbox
+                            checked={selected}
+                            onCheckedChange={(checked) => {
+                              setSelectedStudents((current) => {
+                                if (checked) {
+                                  return current.some(
+                                    (s) => s.roll === student.roll,
+                                  )
+                                    ? current
+                                    : [
+                                        ...current,
+                                        {
+                                          roll: student.roll,
+                                          name: student.name,
+                                        },
+                                      ];
+                                }
+                                return current.filter(
+                                  (s) => s.roll !== student.roll,
+                                );
+                              });
+                            }}
+                          />
+                          <span className="text-sm">
+                            {student.name} ({student.roll})
+                          </span>
+                        </label>
+                      );
+                    })}
+                    {studentData?.items.length === 0 && (
+                      <div className="rounded-md border border-dashed border-muted p-3 text-sm text-muted-foreground">
+                        No students found.
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex items-center justify-between gap-2">
+                    <Button
+                      variant="ghost"
+                      onClick={() => {
+                        setSelectedStudents([]);
+                        setStudentSearch("");
+                        setPage(1);
+                      }}
+                    >
+                      Clear
+                    </Button>
+                    <Button
+                      variant="secondary"
+                      onClick={() => {
+                        setPage(1);
+                      }}
+                    >
+                      Apply
+                    </Button>
+                  </div>
+                </div>
+              </PopoverContent>
+            </Popover>
           </div>
           <div className="space-y-1.5">
             <Label>From</Label>

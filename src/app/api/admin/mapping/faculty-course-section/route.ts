@@ -4,7 +4,10 @@ import { getAuthUser, requireRole } from "@/lib/auth";
 import { facultyCourseMappingQuerySchema } from "@/lib/validators/mapping";
 import { facultyCourseMappingCreateSchema } from "@/lib/validators/directory";
 import { paginationMeta } from "@/lib/validators/common";
-import { getFacultyCourseMappings, createFacultyCourseMapping } from "@/lib/legacy-db";
+import {
+  getFacultyCourseMappings,
+  createFacultyCourseMapping,
+} from "@/lib/legacy-db";
 import { getCurrentSubList } from "@/lib/config";
 import { prisma } from "@/lib/db";
 import { addManualSectionFaculty } from "@/lib/section-sync";
@@ -17,14 +20,43 @@ export async function GET(req: NextRequest) {
     const user = getAuthUser(req);
     requireRole(user, "admin");
 
-    const { facultyRoll, page, pageSize } = facultyCourseMappingQuerySchema.parse(
-      Object.fromEntries(req.nextUrl.searchParams)
-    );
+    const { facultyRoll, page, pageSize } =
+      facultyCourseMappingQuerySchema.parse(
+        Object.fromEntries(req.nextUrl.searchParams),
+      );
 
     const currentSubList = await getCurrentSubList();
-    const { items, total } = await getFacultyCourseMappings(currentSubList, { facultyRoll, page, pageSize });
+    const { items, total } = await getFacultyCourseMappings(currentSubList, {
+      facultyRoll,
+      page,
+      pageSize,
+    });
 
-    return ok({ items, currentSubList, meta: paginationMeta(total, page, pageSize) });
+    const facultyRolls = [...new Set(items.map((item) => item.facRoll))];
+    const sectionRows = facultyRolls.length
+      ? await prisma.sectionFaculty.findMany({
+          where: { facultyRoll: { in: facultyRolls } },
+          include: { section: { select: { id: true, name: true } } },
+        })
+      : [];
+
+    const sectionsByFaculty = sectionRows.reduce((map, row) => {
+      const existing = map.get(row.facultyRoll) ?? [];
+      existing.push(row.section);
+      map.set(row.facultyRoll, existing);
+      return map;
+    }, new Map<string, { id: number; name: string }[]>());
+
+    const itemsWithSections = items.map((item) => ({
+      ...item,
+      sections: sectionsByFaculty.get(item.facRoll) ?? [],
+    }));
+
+    return ok({
+      items: itemsWithSections,
+      currentSubList,
+      meta: paginationMeta(total, page, pageSize),
+    });
   } catch (error) {
     return handleApiError(error);
   }
@@ -35,12 +67,19 @@ export async function POST(req: NextRequest) {
     const user = getAuthUser(req);
     requireRole(user, "admin");
 
-    const { sectionId, ...rest } = facultyCourseMappingCreateSchema.parse(await req.json());
-    const section = await prisma.section.findUnique({ where: { id: sectionId } });
+    const { sectionId, ...rest } = facultyCourseMappingCreateSchema.parse(
+      await req.json(),
+    );
+    const section = await prisma.section.findUnique({
+      where: { id: sectionId },
+    });
     if (!section) throw new ApiError(404, "Section not found");
 
     const currentSubList = await getCurrentSubList();
-    const mapping = await createFacultyCourseMapping({ ...rest, subList: currentSubList });
+    const mapping = await createFacultyCourseMapping({
+      ...rest,
+      subList: currentSubList,
+    });
     await addManualSectionFaculty(sectionId, rest.facRoll);
 
     return created(mapping);
