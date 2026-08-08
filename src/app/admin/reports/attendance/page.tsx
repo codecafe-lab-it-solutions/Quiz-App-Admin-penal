@@ -46,6 +46,7 @@ export default function AttendanceReportPage() {
   const [page, setPage] = useState(1);
   const [courseId, setCourseId] = useState<string>("all");
   const [sectionId, setSectionId] = useState<string>("all");
+  const [search, setSearch] = useState("");
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
 
@@ -59,6 +60,7 @@ export default function AttendanceReportPage() {
     const params = new URLSearchParams({ page: String(page), pageSize: "20" });
     if (courseId !== "all") params.set("courseId", courseId);
     if (sectionId !== "all") params.set("sectionId", sectionId);
+    if (search) params.set("search", search);
     if (from) params.set("from", from);
     if (to) params.set("to", to);
     if (extra) Object.entries(extra).forEach(([k, v]) => params.set(k, v));
@@ -108,7 +110,7 @@ export default function AttendanceReportPage() {
         <CardHeader>
           <CardTitle className="text-base">Filters</CardTitle>
         </CardHeader>
-        <CardContent className="grid grid-cols-1 gap-4 sm:grid-cols-4">
+        <CardContent className="grid grid-cols-1 gap-4 sm:grid-cols-5">
           <div className="space-y-1.5">
             <Label>Course</Label>
             <Select value={courseId} onValueChange={(v) => { setCourseId(v); setSectionId("all"); setPage(1); }}>
@@ -140,6 +142,10 @@ export default function AttendanceReportPage() {
                 ))}
               </SelectContent>
             </Select>
+          </div>
+          <div className="space-y-1.5">
+            <Label>Search</Label>
+            <Input placeholder="Roll / quiz" value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} />
           </div>
           <div className="space-y-1.5">
             <Label>From</Label>

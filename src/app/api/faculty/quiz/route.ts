@@ -44,6 +44,7 @@ export async function POST(req: NextRequest) {
         randomize: body.randomize,
         negativeMarking: body.negativeMarking,
         allowSkipSwitch: body.allowSkipSwitch,
+        requireLocation: body.requireLocation,
         status: body.status,
       },
     });

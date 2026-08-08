@@ -16,6 +16,7 @@ export async function GET(req: NextRequest) {
 
     const studentRoll = String(user.sub);
     const where = {
+      deletedAt: null,
       allotments: { some: { studentRoll } },
       ...(status ? { status } : {}),
     };

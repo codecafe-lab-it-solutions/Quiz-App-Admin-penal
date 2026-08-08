@@ -71,7 +71,9 @@ export function QuizCreateForm({ role }: { role: "faculty" | "admin" }) {
   const [randomize, setRandomize] = useState(true);
   const [negativeMarking, setNegativeMarking] = useState(false);
   const [allowSkipSwitch, setAllowSkipSwitch] = useState(true);
+  const [requireLocation, setRequireLocation] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  const [selectedSectionIds, setSelectedSectionIds] = useState<number[]>([]);
 
   const { data: facultyData } = useSWR(
     role === "admin" ? `/api/admin/faculty?page=1&pageSize=200` : null,
@@ -107,9 +109,18 @@ export function QuizCreateForm({ role }: { role: "faculty" | "admin" }) {
   );
   const sections = sectionsData?.items ?? [];
   const sectionIds = sections.map((s) => s.id);
+  const activeSectionIds = selectedSectionIds;
+
+  useEffect(() => {
+    if (sectionIds.length > 0) {
+      setSelectedSectionIds(sectionIds);
+    } else {
+      setSelectedSectionIds([]);
+    }
+  }, [sectionIds.join(",")]);
 
   const { data: studentsData } = useSWR(
-    sectionIds.length > 0 ? `/api/faculty/sections/students?sectionIds=${sectionIds.join(",")}` : null,
+    activeSectionIds.length > 0 ? `/api/faculty/sections/students?sectionIds=${activeSectionIds.join(",")}` : null,
     (url: string) => fetcher<{ items: StudentOption[] }>(url)
   );
   const candidates = studentsData?.items ?? [];
@@ -123,13 +134,22 @@ export function QuizCreateForm({ role }: { role: "faculty" | "admin" }) {
     setCheckedRolls(next);
   };
 
+  const toggleSection = (sectionId: number, checked: boolean) => {
+    setSelectedSectionIds((prev) => {
+      if (checked) {
+        return prev.includes(sectionId) ? prev : [...prev, sectionId];
+      }
+      return prev.filter((id) => id !== sectionId);
+    });
+  };
+
   useEffect(() => {
     setCourseCode("");
   }, [facultyRoll]);
 
   useEffect(() => {
     setCheckedRolls(null);
-  }, [courseCode]);
+  }, [courseCode, activeSectionIds.join(",")]);
 
   const handleSubmit = async () => {
     if (role === "admin" && !facultyRoll) {
@@ -145,8 +165,8 @@ export function QuizCreateForm({ role }: { role: "faculty" | "admin" }) {
       toast.error("Select a course");
       return;
     }
-    if (sectionIds.length === 0) {
-      toast.error("This course has no sections yet - ask an admin to add one under Master Data → Sections");
+    if (activeSectionIds.length === 0) {
+      toast.error("Select at least one section for this quiz");
       return;
     }
     if (!buildingId) {
@@ -165,7 +185,7 @@ export function QuizCreateForm({ role }: { role: "faculty" | "admin" }) {
         ...(role === "admin" ? { facultyRoll } : {}),
         title: title.trim(),
         courseId: course.courseId,
-        sectionIds,
+        sectionIds: activeSectionIds,
         ...(sessionId ? { sessionId: Number(sessionId) } : {}),
         buildingId: Number(buildingId),
         startTime: new Date(startTime).toISOString(),
@@ -175,6 +195,7 @@ export function QuizCreateForm({ role }: { role: "faculty" | "admin" }) {
         randomize,
         negativeMarking,
         allowSkipSwitch,
+        requireLocation,
         status: "draft",
       });
 
@@ -244,7 +265,7 @@ export function QuizCreateForm({ role }: { role: "faculty" | "admin" }) {
             )}
           </div>
           <div className="space-y-1.5">
-            <Label>Building / Geofence</Label>
+            <Label>Building</Label>
             <Select value={buildingId} onValueChange={setBuildingId}>
               <SelectTrigger>
                 <SelectValue placeholder="Select a building" />
@@ -258,6 +279,39 @@ export function QuizCreateForm({ role }: { role: "faculty" | "admin" }) {
               </SelectContent>
             </Select>
           </div>
+        </div>
+
+        <div className="space-y-1.5">
+          <Label>Sections</Label>
+          {!courseCode && <p className="text-xs text-muted-foreground">Select a course first.</p>}
+          {courseCode && sections.length === 0 && (
+            <p className="p-2 text-xs text-muted-foreground">
+              No sections linked to this course yet - ask an admin to add one under Master Data → Sections.
+            </p>
+          )}
+          {courseCode && sections.length > 0 && (
+            <div className="max-h-56 space-y-2 overflow-y-auto rounded-md border p-3">
+              {sections.map((section) => (
+                <div key={section.id} className="flex items-center gap-2">
+                  <Checkbox
+                    checked={activeSectionIds.includes(section.id)}
+                    onCheckedChange={(checked) => {
+                      setSelectedSectionIds((prev) => {
+                        if (checked === true) {
+                          return prev.includes(section.id) ? prev : [...prev, section.id];
+                        }
+                        return prev.filter((id) => id !== section.id);
+                      });
+                    }}
+                    id={`section-${section.id}`}
+                  />
+                  <label htmlFor={`section-${section.id}`} className="text-sm">
+                    {section.name}
+                  </label>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
         <div className="space-y-1.5">
@@ -297,7 +351,7 @@ export function QuizCreateForm({ role }: { role: "faculty" | "admin" }) {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-4">
           <div className="flex items-center justify-between rounded-md border p-3">
             <Label htmlFor="randomize" className="cursor-pointer">Randomize order</Label>
             <Switch id="randomize" checked={randomize} onCheckedChange={setRandomize} />
@@ -309,6 +363,10 @@ export function QuizCreateForm({ role }: { role: "faculty" | "admin" }) {
           <div className="flex items-center justify-between rounded-md border p-3">
             <Label htmlFor="allowSkipSwitch" className="cursor-pointer">Allow skip/switch</Label>
             <Switch id="allowSkipSwitch" checked={allowSkipSwitch} onCheckedChange={setAllowSkipSwitch} />
+          </div>
+          <div className="flex items-center justify-between rounded-md border p-3">
+            <Label htmlFor="requireLocation" className="cursor-pointer">Require GPS</Label>
+            <Switch id="requireLocation" checked={requireLocation} onCheckedChange={setRequireLocation} />
           </div>
         </div>
 

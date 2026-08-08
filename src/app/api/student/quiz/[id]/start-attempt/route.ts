@@ -40,30 +40,85 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     });
     if (existingAttempt) throw new ApiError(409, "You have already started or completed this attempt");
 
-    // Never trust the client's earlier geofence-check result - re-verify server side now.
-    const { isWithinRange, distanceMeters } = isWithinRadius(
-      body.latitude,
-      body.longitude,
-      Number(quiz.building.latitude),
-      Number(quiz.building.longitude),
-      quiz.building.radiusMeters
-    );
-
-    if (!isWithinRange) {
+    if (!quiz.requireLocation || body.latitude == null || body.longitude == null) {
+      const fallbackDistanceMeters = 0;
+      const fallbackWithinRange = true;
       await prisma.geofenceLog.create({
         data: {
           quizId,
           studentRoll: String(user.sub),
-          latitude: body.latitude,
-          longitude: body.longitude,
-          distanceMeters,
-          isWithinRange,
+          latitude: body.latitude ?? 0,
+          longitude: body.longitude ?? 0,
+          distanceMeters: fallbackDistanceMeters,
+          isWithinRange: fallbackWithinRange,
         },
       });
-      throw new ApiError(
-        403,
-        `You must be within ${quiz.building.radiusMeters}m of ${quiz.building.name} to start this quiz`
+    } else {
+      // Never trust the client's earlier geofence-check result - re-verify server side now.
+      const { isWithinRange, distanceMeters } = isWithinRadius(
+        body.latitude,
+        body.longitude,
+        Number(quiz.building.latitude),
+        Number(quiz.building.longitude),
+        quiz.building.radiusMeters
       );
+
+      if (!isWithinRange) {
+        await prisma.geofenceLog.create({
+          data: {
+            quizId,
+            studentRoll: String(user.sub),
+            latitude: body.latitude,
+            longitude: body.longitude,
+            distanceMeters,
+            isWithinRange,
+          },
+        });
+        throw new ApiError(
+          403,
+          `You must be within ${quiz.building.radiusMeters}m of ${quiz.building.name} to start this quiz`
+        );
+      }
+
+      const questionOrder = quiz.randomize
+        ? shuffledIds(quiz.questions.map((q) => q.id))
+        : quiz.questions.map((q) => q.id);
+
+      const attempt = await prisma.$transaction(async (tx) => {
+        const newAttempt = await tx.quizAttempt.create({
+          data: {
+            quizId,
+            studentRoll: String(user.sub),
+            latitude: body.latitude ?? 0,
+            longitude: body.longitude ?? 0,
+            status: "in_progress",
+            questionOrder: JSON.stringify(questionOrder),
+          },
+        });
+
+        await tx.geofenceLog.create({
+          data: {
+            attemptId: newAttempt.id,
+            quizId,
+            studentRoll: String(user.sub),
+            latitude: body.latitude ?? 0,
+            longitude: body.longitude ?? 0,
+            distanceMeters,
+            isWithinRange,
+          },
+        });
+
+        return newAttempt;
+      });
+
+      return created({
+        attemptId: attempt.id,
+        quizId,
+        durationMinutes: quiz.durationMinutes,
+        startTime: attempt.startTime,
+        totalQuestions: questionOrder.length,
+        allowSkipSwitch: quiz.allowSkipSwitch,
+      });
     }
 
     const questionOrder = quiz.randomize
@@ -75,8 +130,8 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
         data: {
           quizId,
           studentRoll: String(user.sub),
-          latitude: body.latitude,
-          longitude: body.longitude,
+          latitude: body.latitude ?? null,
+          longitude: body.longitude ?? null,
           status: "in_progress",
           questionOrder: JSON.stringify(questionOrder),
         },
@@ -87,10 +142,10 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
           attemptId: newAttempt.id,
           quizId,
           studentRoll: String(user.sub),
-          latitude: body.latitude,
-          longitude: body.longitude,
-          distanceMeters,
-          isWithinRange,
+          latitude: body.latitude ?? 0,
+          longitude: body.longitude ?? 0,
+          distanceMeters: 0,
+          isWithinRange: true,
         },
       });
 

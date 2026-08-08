@@ -18,6 +18,7 @@ export async function GET(req: NextRequest) {
     const where = {
       ...(query.courseId ? { courseId: query.courseId } : {}),
       ...(query.sectionId ? { quiz: { sections: { some: { sectionId: query.sectionId } } } } : {}),
+      ...(query.search ? { OR: [{ studentRoll: { contains: query.search } }, { quiz: { title: { contains: query.search } } }] } : {}),
       ...(query.from || query.to
         ? {
             date: {

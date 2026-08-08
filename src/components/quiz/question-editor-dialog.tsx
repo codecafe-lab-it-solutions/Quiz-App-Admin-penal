@@ -7,7 +7,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { RichTextEditor, isMathliveElement } from "@/components/quiz/rich-text-editor";
 import { stripHtml } from "@/lib/sanitize-html";
 import {
@@ -49,6 +48,8 @@ interface QuestionEditorDialogProps {
 const EMPTY_OPTIONS: QuestionOptionRow[] = [
   { optionText: "", isCorrect: true },
   { optionText: "", isCorrect: false },
+  { optionText: "", isCorrect: false },
+  { optionText: "", isCorrect: false },
 ];
 
 export function QuestionEditorDialog({
@@ -59,29 +60,23 @@ export function QuestionEditorDialog({
   editing,
   onSaved,
 }: QuestionEditorDialogProps) {
-  const [type, setType] = useState<"mcq" | "subjective">("mcq");
   const [questionText, setQuestionText] = useState("");
   const [marks, setMarks] = useState("1");
   const [negativeMarks, setNegativeMarks] = useState("0");
-  const [referenceAnswer, setReferenceAnswer] = useState("");
   const [options, setOptions] = useState<QuestionOptionRow[]>(EMPTY_OPTIONS);
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
     if (!open) return;
     if (editing) {
-      setType(editing.questionType === "subjective" ? "subjective" : "mcq");
       setQuestionText(editing.questionText);
       setMarks(String(editing.marks));
       setNegativeMarks(String(editing.negativeMarks ?? 0));
-      setReferenceAnswer(editing.referenceAnswer ?? "");
       setOptions(editing.options && editing.options.length >= 2 ? editing.options : EMPTY_OPTIONS);
     } else {
-      setType("mcq");
       setQuestionText("");
       setMarks("1");
       setNegativeMarks("0");
-      setReferenceAnswer("");
       setOptions(EMPTY_OPTIONS);
     }
   }, [open, editing]);
@@ -119,42 +114,30 @@ export function QuestionEditorDialog({
       return;
     }
 
-    let payload: Record<string, unknown>;
-
-    if (type === "subjective") {
-      payload = {
-        id: editing?.id,
-        questionType: "subjective",
-        questionText,
-        marks: marksNum,
-        orderIndex: editing?.orderIndex ?? nextOrderIndex,
-        referenceAnswer: stripHtml(referenceAnswer) ? referenceAnswer : undefined,
-      };
-    } else {
-      const filled = options.filter((o) => stripHtml(o.optionText));
-      if (filled.length < 2) {
-        toast.error("Provide at least two options");
-        return;
-      }
-      if (!filled.some((o) => o.isCorrect)) {
-        toast.error("Mark one option as correct");
-        return;
-      }
-      const negNum = Number(negativeMarks);
-      if (!Number.isFinite(negNum) || negNum < 0) {
-        toast.error("Negative marks must be zero or a positive number");
-        return;
-      }
-      payload = {
-        id: editing?.id,
-        questionType: "mcq",
-        questionText,
-        marks: marksNum,
-        negativeMarks: negNum,
-        orderIndex: editing?.orderIndex ?? nextOrderIndex,
-        options: filled.map((o) => ({ optionText: o.optionText, isCorrect: o.isCorrect })),
-      };
+    const filled = options.filter((o) => stripHtml(o.optionText));
+    if (filled.length < 2) {
+      toast.error("Provide at least two options");
+      return;
     }
+    if (!filled.some((o) => o.isCorrect)) {
+      toast.error("Mark one option as correct");
+      return;
+    }
+    const negNum = Number(negativeMarks);
+    if (!Number.isFinite(negNum) || negNum < 0) {
+      toast.error("Negative marks must be zero or a positive number");
+      return;
+    }
+
+    const payload = {
+      id: editing?.id,
+      questionType: "mcq",
+      questionText,
+      marks: marksNum,
+      negativeMarks: negNum,
+      orderIndex: editing?.orderIndex ?? nextOrderIndex,
+      options: filled.map((o) => ({ optionText: o.optionText, isCorrect: o.isCorrect })),
+    };
 
     setSubmitting(true);
     try {
@@ -183,18 +166,11 @@ export function QuestionEditorDialog({
         <DialogHeader>
           <DialogTitle>{editing ? "Edit Question" : "Add Question"}</DialogTitle>
           <DialogDescription>
-            Objective questions are auto-graded. Subjective questions are graded manually after submission.
+            Add an objective question with four answer options by default.
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4">
-          <Tabs value={type} onValueChange={(v) => setType(v as "mcq" | "subjective")}>
-            <TabsList>
-              <TabsTrigger value="mcq">Objective (MCQ)</TabsTrigger>
-              <TabsTrigger value="subjective">Subjective (Open-ended)</TabsTrigger>
-            </TabsList>
-          </Tabs>
-
           <div className="space-y-1.5">
             <Label>Question</Label>
             <RichTextEditor
@@ -209,69 +185,56 @@ export function QuestionEditorDialog({
               <Label htmlFor="marks">Marks</Label>
               <Input id="marks" type="number" min={1} step="1" value={marks} onChange={(e) => setMarks(e.target.value)} />
             </div>
-            {type === "mcq" && (
-              <div className="space-y-1.5">
-                <Label htmlFor="negativeMarks">Negative Marks</Label>
-                <Input
-                  id="negativeMarks"
-                  type="number"
-                  min={0}
-                  step="1"
-                  value={negativeMarks}
-                  onChange={(e) => setNegativeMarks(e.target.value)}
-                />
-              </div>
-            )}
-          </div>
-
-          {type === "mcq" ? (
-            <div className="space-y-2">
-              <Label>Options (mark the correct one)</Label>
-              {options.map((option, index) => (
-                <div key={index} className="flex items-start gap-2">
-                  <Checkbox
-                    checked={option.isCorrect}
-                    onCheckedChange={() => setCorrectOption(index)}
-                    aria-label={`Mark option ${index + 1} correct`}
-                    className="mt-3"
-                  />
-                  <div className="flex-1">
-                    <RichTextEditor
-                      value={option.optionText}
-                      onChange={(html) => updateOption(index, { optionText: html })}
-                      placeholder={`Option ${String.fromCharCode(65 + index)}`}
-                      minHeight="60px"
-                    />
-                  </div>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    disabled={options.length <= 2}
-                    onClick={() => removeOption(index)}
-                    className="mt-1"
-                  >
-                    <Trash2 className="h-4 w-4 text-destructive" />
-                  </Button>
-                </div>
-              ))}
-              {options.length < 4 && (
-                <Button type="button" variant="outline" size="sm" onClick={addOption}>
-                  <Plus className="mr-2 h-4 w-4" />
-                  Add option
-                </Button>
-              )}
-            </div>
-          ) : (
             <div className="space-y-1.5">
-              <Label>Reference Answer (optional)</Label>
-              <RichTextEditor
-                value={referenceAnswer}
-                onChange={setReferenceAnswer}
-                placeholder="Grading guide for whoever grades this manually - leave blank if there's no single correct answer"
+              <Label htmlFor="negativeMarks">Negative Marks</Label>
+              <Input
+                id="negativeMarks"
+                type="number"
+                min={0}
+                step="1"
+                value={negativeMarks}
+                onChange={(e) => setNegativeMarks(e.target.value)}
               />
             </div>
-          )}
+          </div>
+
+          <div className="space-y-2">
+            <Label>Options (mark the correct one)</Label>
+            {options.map((option, index) => (
+              <div key={index} className="flex items-start gap-2">
+                <Checkbox
+                  checked={option.isCorrect}
+                  onCheckedChange={() => setCorrectOption(index)}
+                  aria-label={`Mark option ${index + 1} correct`}
+                  className="mt-3"
+                />
+                <div className="flex-1">
+                  <RichTextEditor
+                    value={option.optionText}
+                    onChange={(html) => updateOption(index, { optionText: html })}
+                    placeholder={`Option ${String.fromCharCode(65 + index)}`}
+                    minHeight="60px"
+                  />
+                </div>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  disabled={options.length <= 2}
+                  onClick={() => removeOption(index)}
+                  className="mt-1"
+                >
+                  <Trash2 className="h-4 w-4 text-destructive" />
+                </Button>
+              </div>
+            ))}
+            {options.length < 4 && (
+              <Button type="button" variant="outline" size="sm" onClick={addOption}>
+                <Plus className="mr-2 h-4 w-4" />
+                Add option
+              </Button>
+            )}
+          </div>
         </div>
 
         <DialogFooter>

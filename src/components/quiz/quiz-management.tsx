@@ -97,6 +97,43 @@ export function QuizManagement({ quizId, role }: { quizId: number; role: "facult
     quiz?.status === "completed" ? `/api/faculty/quiz/${quizId}/subjective-answers` : null,
     (url: string) => fetcher<{ items: SubjectiveAnswer[]; ungradedCount: number }>(url)
   );
+  const { data: resultsData } = useSWR(
+    quiz?.status === "completed" ? `/api/faculty/quiz/${quizId}/results` : null,
+    (url: string) =>
+      fetcher<{
+        quiz: { id: number; title: string; totalMarks: number; status: string; course: { name: string; code: string }; building: { name: string } };
+        summary: {
+          totalAllotted: number;
+          attemptedCount: number;
+          submittedCount: number;
+          notAttemptedCount: number;
+          absentCount: number;
+          declaredCount: number;
+          publishedCount: number;
+          ungradedCount: number;
+        };
+        questionBreakdown: Array<{
+          id: number;
+          questionText: string;
+          questionType: string;
+          marks: number;
+          answerKey: string;
+          attemptedCount: number;
+          correctCount: number;
+          wrongCount: number;
+          skippedCount: number;
+        }>;
+        studentResults: Array<{
+          roll: string;
+          name: string;
+          attendanceStatus: string;
+          attemptStatus: string | null;
+          marksObtained: number;
+          percentage: number;
+          resultStatus: string;
+        }>;
+      }>(url)
+  );
   const { data: candidatesData, mutate: mutateCandidates } = useSWR(
     `/api/faculty/quiz/${quizId}/allot/candidates`,
     (url: string) => fetcher<{ items: { roll: string; name: string; allotted: boolean }[] }>(url)
@@ -294,6 +331,7 @@ export function QuizManagement({ quizId, role }: { quizId: number; role: "facult
           <Button
             variant="ghost"
             size="icon"
+            disabled={!canEditQuestions}
             onClick={() => {
               setEditingQuestion(r);
               setQuestionDialogOpen(true);
@@ -303,7 +341,7 @@ export function QuizManagement({ quizId, role }: { quizId: number; role: "facult
           </Button>
           <ConfirmDialog
             trigger={
-              <Button variant="ghost" size="icon">
+              <Button variant="ghost" size="icon" disabled={!canEditQuestions}>
                 <Trash2 className="h-4 w-4 text-destructive" />
               </Button>
             }
@@ -318,6 +356,8 @@ export function QuizManagement({ quizId, role }: { quizId: number; role: "facult
   ];
 
   const canEditQuestions = quiz.status === "draft" || quiz.status === "scheduled";
+  const canDeleteQuiz = quiz.status !== "live" && quiz.status !== "completed";
+  const allottedCount = quiz._count.allotments;
 
   return (
     <div className="space-y-6">
@@ -351,7 +391,7 @@ export function QuizManagement({ quizId, role }: { quizId: number; role: "facult
             {quiz.status !== "live" && (
               <ConfirmDialog
                 trigger={
-                  <Button size="sm" variant="outline">
+                  <Button size="sm" variant="outline" disabled={!canDeleteQuiz}>
                     <Trash2 className="mr-2 h-4 w-4 text-destructive" />
                     Delete
                   </Button>
@@ -421,7 +461,7 @@ export function QuizManagement({ quizId, role }: { quizId: number; role: "facult
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-lg">Allot Students ({effectiveChecked.size} selected)</CardTitle>
+          <CardTitle className="text-lg">Allot Students ({allottedCount} allotted)</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
           {candidates.length === 0 ? (
@@ -452,6 +492,8 @@ export function QuizManagement({ quizId, role }: { quizId: number; role: "facult
           </Button>
         </CardContent>
       </Card>
+
+      {quiz.status === "completed" && resultsData && <ResultsReportCard data={resultsData} />}
 
       {quiz.status === "completed" && (
         <Card>
@@ -560,6 +602,119 @@ function LiveMonitoringCard({
   );
 }
 
+function ResultsReportCard({
+  data,
+}: {
+  data: {
+    quiz: { id: number; title: string; totalMarks: number; status: string; course: { name: string; code: string }; building: { name: string } };
+    summary: {
+      totalAllotted: number;
+      attemptedCount: number;
+      submittedCount: number;
+      notAttemptedCount: number;
+      absentCount: number;
+      declaredCount: number;
+      publishedCount: number;
+      ungradedCount: number;
+    };
+    questionBreakdown: Array<{
+      id: number;
+      questionText: string;
+      questionType: string;
+      marks: number;
+      answerKey: string;
+      attemptedCount: number;
+      correctCount: number;
+      wrongCount: number;
+      skippedCount: number;
+    }>;
+    studentResults: Array<{
+      roll: string;
+      name: string;
+      attendanceStatus: string;
+      attemptStatus: string | null;
+      marksObtained: number;
+      percentage: number;
+      resultStatus: string;
+    }>;
+  };
+}) {
+  const summaryItems = [
+    { label: "Allotted", value: data.summary.totalAllotted },
+    { label: "Submitted", value: data.summary.submittedCount },
+    { label: "Not attempted", value: data.summary.notAttemptedCount },
+    { label: "Absent", value: data.summary.absentCount },
+    { label: "Declared", value: data.summary.declaredCount },
+    { label: "Published", value: data.summary.publishedCount },
+    { label: "Needs grading", value: data.summary.ungradedCount },
+  ];
+
+  const resultColumns: DataTableColumn<(typeof data.studentResults)[number]>[] = [
+    { key: "name", header: "Student", render: (row) => <span className="font-medium">{row.name}</span> },
+    { key: "roll", header: "Roll", render: (row) => row.roll },
+    { key: "attendanceStatus", header: "Attendance", render: (row) => <Badge variant="secondary">{row.attendanceStatus}</Badge> },
+    { key: "marks", header: "Marks", render: (row) => `${row.marksObtained.toFixed(0)} / ${data.quiz.totalMarks}` },
+    { key: "percentage", header: "%", render: (row) => `${row.percentage.toFixed(2)}%` },
+    { key: "resultStatus", header: "Result", render: (row) => <Badge variant="outline">{row.resultStatus}</Badge> },
+  ];
+
+  const questionColumns: DataTableColumn<(typeof data.questionBreakdown)[number]>[] = [
+    {
+      key: "question",
+      header: "Question",
+      render: (row) => <div className="max-w-md"><RichTextDisplay html={row.questionText} className="line-clamp-3" /></div>,
+    },
+    { key: "type", header: "Type", render: (row) => <Badge variant="secondary">{typeLabel[row.questionType] ?? row.questionType}</Badge> },
+    { key: "marks", header: "Marks", render: (row) => row.marks },
+    { key: "attempted", header: "Attempted", render: (row) => row.attemptedCount },
+    { key: "correct", header: "Correct", render: (row) => row.correctCount },
+    { key: "wrong", header: "Wrong", render: (row) => row.wrongCount },
+    { key: "skipped", header: "Skipped", render: (row) => row.skippedCount },
+    { key: "answerKey", header: "Answer key", render: (row) => <span className="max-w-xs whitespace-pre-wrap text-sm">{row.answerKey}</span> },
+  ];
+
+  return (
+    <Card className="space-y-4">
+      <CardHeader>
+        <CardTitle className="text-lg">Results & Report</CardTitle>
+        <p className="text-sm text-muted-foreground">
+          {data.quiz.course.name} ({data.quiz.course.code}) · {data.quiz.building.name}
+        </p>
+      </CardHeader>
+      <CardContent className="space-y-6">
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          {summaryItems.map((item) => (
+            <div key={item.label} className="rounded-md border p-3">
+              <p className="text-sm text-muted-foreground">{item.label}</p>
+              <p className="text-2xl font-semibold">{item.value}</p>
+            </div>
+          ))}
+        </div>
+
+        <div className="space-y-2">
+          <h3 className="text-sm font-semibold">Question-wise breakdown</h3>
+          <DataTable
+            columns={questionColumns}
+            rows={data.questionBreakdown}
+            rowKey={(row) => row.id}
+            emptyMessage="No question breakdown available yet."
+          />
+        </div>
+
+        <div className="space-y-2">
+          <h3 className="text-sm font-semibold">Student result summary</h3>
+          <DataTable
+            columns={resultColumns}
+            rows={data.studentResults}
+            rowKey={(row) => row.roll}
+            emptyMessage="No students have results yet."
+          />
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 function SubjectiveAnswerRow({
   answer,
   onGrade,
@@ -582,11 +737,6 @@ function SubjectiveAnswerRow({
       <p className="mt-2 whitespace-pre-wrap rounded bg-muted p-2 text-sm">
         {answer.writtenAnswer || <span className="italic text-muted-foreground">No answer written</span>}
       </p>
-      {answer.referenceAnswer && (
-        <div className="mt-1 text-xs text-muted-foreground">
-          Reference: <RichTextDisplay html={answer.referenceAnswer} className="inline" />
-        </div>
-      )}
       <div className="mt-2 flex items-center gap-2">
         <Input
           type="number"

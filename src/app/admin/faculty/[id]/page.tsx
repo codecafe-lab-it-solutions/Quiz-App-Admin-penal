@@ -16,6 +16,7 @@ interface FacultyDetail {
   email: string;
   currentSubList: string;
   courseMappings: { id: number; subCode: string; branch: string; sem: string }[];
+  sections: { id: number; name: string }[];
 }
 
 const fetcher = (url: string) => apiClient.get<FacultyDetail>(url);
@@ -70,6 +71,33 @@ export default function FacultyDetailPage() {
                     <TableCell>{m.subCode}</TableCell>
                     <TableCell>{m.branch}</TableCell>
                     <TableCell>{m.sem}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Sections</CardTitle>
+          <CardDescription>Section memberships managed in the section hub.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {data.sections.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No section memberships yet.</p>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Section name</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {data.sections.map((section) => (
+                  <TableRow key={section.id}>
+                    <TableCell>{section.name}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>

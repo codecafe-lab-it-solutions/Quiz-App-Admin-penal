@@ -22,6 +22,16 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     const quiz = await prisma.quiz.findUnique({ where: { id: quizId }, include: { building: true } });
     if (!quiz) throw new ApiError(404, "Quiz not found");
 
+    if (!quiz.requireLocation || body.latitude == null || body.longitude == null) {
+      return ok({
+        isWithinRange: true,
+        distanceMeters: 0,
+        allowedRadiusMeters: quiz.building.radiusMeters,
+        buildingName: quiz.building.name,
+        skipped: !quiz.requireLocation,
+      });
+    }
+
     const { isWithinRange, distanceMeters } = isWithinRadius(
       body.latitude,
       body.longitude,

@@ -16,6 +16,7 @@ export async function GET(req: NextRequest) {
     // Faculty always see only their own quizzes. An admin sees every quiz
     // system-wide unless they narrow it down with ?facultyRoll= (oversight).
     const where = {
+      deletedAt: null,
       ...(user.role === "faculty" ? { facultyRoll: String(user.sub) } : params.facultyRoll ? { facultyRoll: params.facultyRoll } : {}),
       ...(status ? { status } : {}),
       ...(search ? { title: { contains: search } } : {}),

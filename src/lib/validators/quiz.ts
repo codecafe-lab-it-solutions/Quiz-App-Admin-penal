@@ -18,6 +18,7 @@ export const quizCreateSchema = z
     randomize: z.boolean().default(true),
     negativeMarking: z.boolean().default(false),
     allowSkipSwitch: z.boolean().default(true),
+    requireLocation: z.boolean().default(true),
     status: z.enum(["draft", "scheduled"]).default("draft"),
   })
   .refine((data) => data.endTime > data.startTime, {
@@ -39,6 +40,7 @@ export const quizUpdateSchema = z.object({
   randomize: z.boolean().optional(),
   negativeMarking: z.boolean().optional(),
   allowSkipSwitch: z.boolean().optional(),
+  requireLocation: z.boolean().optional(),
   status: z.enum(["draft", "scheduled", "live", "completed"]).optional(),
 });
 export type QuizUpdateInput = z.infer<typeof quizUpdateSchema>;

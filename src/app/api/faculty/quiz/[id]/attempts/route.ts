@@ -11,7 +11,7 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
     requireRole(user, "faculty", "admin");
 
     const { id: quizId } = idParamSchema.parse(params);
-    const quiz = await prisma.quiz.findUnique({ where: { id: quizId } });
+    const quiz = await prisma.quiz.findFirst({ where: { id: quizId, deletedAt: null } });
     if (!quiz || (user.role === "faculty" && quiz.facultyRoll !== String(user.sub))) throw new ApiError(404, "Quiz not found");
 
     const allotments = await prisma.quizAllotment.findMany({

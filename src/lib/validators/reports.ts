@@ -3,6 +3,7 @@ import { z } from "zod";
 export const attendanceReportQuerySchema = z.object({
   courseId: z.coerce.number().int().positive().optional(),
   sectionId: z.coerce.number().int().positive().optional(),
+  search: z.string().trim().optional(),
   from: z.coerce.date().optional(),
   to: z.coerce.date().optional(),
   page: z.coerce.number().int().min(1).default(1),

@@ -1,14 +1,16 @@
 import { z } from "zod";
 
 export const geofenceCheckSchema = z.object({
-  latitude: z.coerce.number().min(-90).max(90),
-  longitude: z.coerce.number().min(-180).max(180),
+  latitude: z.coerce.number().min(-90).max(90).nullable().optional(),
+  longitude: z.coerce.number().min(-180).max(180).nullable().optional(),
+  accuracyMeters: z.coerce.number().min(0).max(2000).nullable().optional(),
 });
 export type GeofenceCheckInput = z.infer<typeof geofenceCheckSchema>;
 
 export const startAttemptSchema = z.object({
-  latitude: z.coerce.number().min(-90).max(90),
-  longitude: z.coerce.number().min(-180).max(180),
+  latitude: z.coerce.number().min(-90).max(90).nullable().optional(),
+  longitude: z.coerce.number().min(-180).max(180).nullable().optional(),
+  accuracyMeters: z.coerce.number().min(0).max(2000).nullable().optional(),
 });
 
 export const answerSchema = z.object({

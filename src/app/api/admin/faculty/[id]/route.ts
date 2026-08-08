@@ -4,6 +4,7 @@ import { getAuthUser, requireRole } from "@/lib/auth";
 import { facultyUpdateSchema } from "@/lib/validators/directory";
 import { getFacultyByRoll, getFacultyCourseMappings, updateFaculty, deleteFaculty } from "@/lib/legacy-db";
 import { getCurrentSubList } from "@/lib/config";
+import { prisma } from "@/lib/db";
 
 // Faculty master data is sourced live from the legacy isr_* tables. The
 // [id] segment is the legacy roll number, not a numeric app-owned id -
@@ -23,8 +24,13 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
       page: 1,
       pageSize: 200,
     });
+    const sections = await prisma.sectionFaculty.findMany({
+      where: { facultyRoll: roll },
+      include: { section: { select: { id: true, name: true } } },
+      orderBy: [{ section: { name: "asc" } }],
+    });
 
-    return ok({ ...faculty, currentSubList, courseMappings });
+    return ok({ ...faculty, currentSubList, courseMappings, sections: sections.map((s) => s.section) });
   } catch (error) {
     return handleApiError(error);
   }

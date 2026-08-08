@@ -14,8 +14,8 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
     const { id } = idParamSchema.parse(params);
     await loadAccessibleQuiz(user, id);
 
-    const quiz = await prisma.quiz.findUnique({
-      where: { id },
+    const quiz = await prisma.quiz.findFirst({
+      where: { id, deletedAt: null },
       include: {
         course: { select: { id: true, name: true, code: true } },
         sections: { include: { section: { select: { id: true, name: true } } } },
@@ -80,7 +80,7 @@ export async function DELETE(req: NextRequest, { params }: { params: { id: strin
       throw new ApiError(400, "A live quiz cannot be deleted. Stop it first.");
     }
 
-    await prisma.quiz.delete({ where: { id } });
+    await prisma.quiz.update({ where: { id }, data: { deletedAt: new Date() } });
     return ok({ message: "Quiz deleted" });
   } catch (error) {
     return handleApiError(error);
