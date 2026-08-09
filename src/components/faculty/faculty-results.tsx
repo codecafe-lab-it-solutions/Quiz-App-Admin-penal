@@ -3,7 +3,7 @@
 import { useState } from "react";
 import useSWR from "swr";
 import Link from "next/link";
-import { apiClient } from "@/lib/api-client";
+import { apiClient, downloadFile } from "@/lib/api-client";
 import { DataTable, DataTableColumn } from "@/components/admin/data-table";
 import { PaginationBar } from "@/components/admin/pagination-bar";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -19,7 +19,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { format } from "@/lib/format-date";
-import { ArrowRight } from "lucide-react";
+import { ArrowRight, FileSpreadsheet, FileText } from "lucide-react";
 
 interface CourseCatalogEntry {
   subCode: string;
@@ -93,6 +93,15 @@ export function FacultyResults() {
     fetcher,
   );
 
+  const handleExport = (type: "excel" | "pdf") => {
+    const params = buildParams();
+    params.set("export", type);
+    downloadFile(
+      `/api/faculty/reports/results?${params.toString()}`,
+      `results-report.${type === "excel" ? "xlsx" : "pdf"}`,
+    );
+  };
+
   const courses = (courseData?.items ?? []).filter((c) => c.courseId !== null);
 
   const columns: DataTableColumn<ResultRow>[] = [
@@ -151,11 +160,23 @@ export function FacultyResults() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">Results</h1>
-        <p className="text-sm text-muted-foreground">
-          Filter result records across your quizzes and open a student&apos;s full answer sheet against the answer key.
-        </p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">Results</h1>
+          <p className="text-sm text-muted-foreground">
+            Filter result records across your quizzes and open a student&apos;s full answer sheet against the answer key.
+          </p>
+        </div>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={() => handleExport("excel")}>
+            <FileSpreadsheet className="mr-2 h-4 w-4" />
+            Export Excel
+          </Button>
+          <Button variant="outline" onClick={() => handleExport("pdf")}>
+            <FileText className="mr-2 h-4 w-4" />
+            Export PDF
+          </Button>
+        </div>
       </div>
 
       <Card>

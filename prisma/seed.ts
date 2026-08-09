@@ -472,7 +472,7 @@ async function main() {
   console.log("Seeding sections (including one merged, multi-course section)...");
 
   const cs201SectionA = await ensureSection("A", [cs201.id]);
-  await ensureSection("B", [cs201.id]);
+  const cs201SectionB = await ensureSection("B", [cs201.id]);
   const cs301SectionA = await ensureSection("A", [cs301.id]);
   const cs302SectionA = await ensureSection("A", [cs302.id]);
   const ec201SectionA = await ensureSection("A", [ec201.id]);
@@ -549,7 +549,7 @@ async function main() {
   await ensureStudentCourseRegistration(batch2024Table, "STU2024003", "CS302", currentSubList);
 
   console.log("Syncing section membership from legacy rosters...");
-  for (const section of [cs201SectionA, cs301SectionA, cs302SectionA, ec201SectionA, me201SectionA, ee201SectionA, mergedSection]) {
+  for (const section of [cs201SectionA, cs201SectionB, cs301SectionA, cs302SectionA, ec201SectionA, me201SectionA, ee201SectionA, mergedSection]) {
     await syncSection(section.id);
   }
 

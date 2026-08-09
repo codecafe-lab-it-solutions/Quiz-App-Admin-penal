@@ -5,6 +5,8 @@ import { getAuthUser, requireRole } from "@/lib/auth";
 import { resultsReportQuerySchema } from "@/lib/validators/reports";
 import { paginationMeta } from "@/lib/validators/common";
 import { getStudentNamesByRolls } from "@/lib/legacy-db";
+import { buildWorkbookBuffer, excelResponseHeaders } from "@/lib/excel";
+import { buildPdfTableBuffer, pdfResponseHeaders } from "@/lib/pdf";
 
 export async function GET(req: NextRequest) {
   try {
@@ -39,26 +41,77 @@ export async function GET(req: NextRequest) {
         : {}),
     };
 
-    const [items, total] = await Promise.all([
-      prisma.result.findMany({
-        where,
-        skip: (query.page - 1) * query.pageSize,
-        take: query.pageSize,
-        orderBy: { publishedAt: "desc" },
-        include: {
-          quiz: {
-            select: {
-              id: true,
-              title: true,
-              totalMarks: true,
-              course: { select: { id: true, name: true, code: true } },
-              sections: {
-                include: { section: { select: { id: true, name: true } } },
-              },
+    const baseQuery = {
+      where,
+      orderBy: { publishedAt: "desc" as const },
+      include: {
+        quiz: {
+          select: {
+            id: true,
+            title: true,
+            totalMarks: true,
+            course: { select: { id: true, name: true, code: true } },
+            sections: {
+              include: { section: { select: { id: true, name: true } } },
             },
           },
         },
-      }),
+      },
+    };
+
+    if (query.export === "excel" || query.export === "pdf") {
+      const rows = await prisma.result.findMany(baseQuery);
+      const names = await getStudentNamesByRolls(rows.map((r) => r.studentRoll));
+
+      if (query.export === "excel") {
+        const buffer = buildWorkbookBuffer(
+          [
+            { key: "studentName", label: "Student Name" },
+            { key: "rollNo", label: "Roll No" },
+            { key: "course", label: "Course" },
+            { key: "section", label: "Section" },
+            { key: "quiz", label: "Quiz" },
+            { key: "marks", label: "Marks" },
+            { key: "percentage", label: "Percentage" },
+            { key: "status", label: "Status" },
+            { key: "publishedAt", label: "Published" },
+          ],
+          rows.map((r) => ({
+            studentName: names.get(r.studentRoll) ?? r.studentRoll,
+            rollNo: r.studentRoll,
+            course: `${r.quiz.course.name} (${r.quiz.course.code})`,
+            section: r.quiz.sections.map((s) => s.section.name).join(", ") || "—",
+            quiz: r.quiz.title,
+            marks: `${r.marksObtained} / ${r.quiz.totalMarks}`,
+            percentage: `${r.percentage.toFixed(2)}%`,
+            status: r.status,
+            publishedAt: r.publishedAt ? r.publishedAt.toISOString().slice(0, 10) : "—",
+          })),
+          "Results",
+        );
+        return new Response(new Uint8Array(buffer), { headers: excelResponseHeaders("results-report.xlsx") });
+      }
+
+      const buffer = buildPdfTableBuffer(
+        "Quiz Results Report",
+        ["Student", "Roll No", "Course", "Section", "Quiz", "Marks", "%", "Status", "Published"],
+        rows.map((r) => [
+          names.get(r.studentRoll) ?? r.studentRoll,
+          r.studentRoll,
+          `${r.quiz.course.name} (${r.quiz.course.code})`,
+          r.quiz.sections.map((s) => s.section.name).join(", ") || "—",
+          r.quiz.title,
+          `${r.marksObtained} / ${r.quiz.totalMarks}`,
+          `${r.percentage.toFixed(2)}%`,
+          r.status,
+          r.publishedAt ? r.publishedAt.toISOString().slice(0, 10) : "—",
+        ]),
+      );
+      return new Response(new Uint8Array(buffer), { headers: pdfResponseHeaders("results-report.pdf") });
+    }
+
+    const [items, total] = await Promise.all([
+      prisma.result.findMany({ ...baseQuery, skip: (query.page - 1) * query.pageSize, take: query.pageSize }),
       prisma.result.count({ where }),
     ]);
 

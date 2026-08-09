@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { ok, handleApiError } from "@/lib/api-response";
 import { getAuthUser, requireRole } from "@/lib/auth";
 import { getStudentNamesByRolls } from "@/lib/legacy-db";
+import { syncSection } from "@/lib/section-sync";
 
 // Union of section membership across the given sections - powers the
 // "Allot Students" checkbox list shown directly on the quiz-creation form,
@@ -20,6 +21,12 @@ export async function GET(req: NextRequest) {
     if (sectionIds.length === 0) {
       return ok({ items: [] });
     }
+
+    // Sync membership from the legacy rosters before reading it, so this list
+    // is never stale/empty just because a section's roster changed (or it was
+    // created) since the last sync - reconcile() is idempotent and preserves
+    // manual add/remove overrides either way.
+    await Promise.all(sectionIds.map((id) => syncSection(id)));
 
     const members = await prisma.sectionStudent.findMany({
       where: { sectionId: { in: sectionIds }, source: { not: "manual_removed" } },
