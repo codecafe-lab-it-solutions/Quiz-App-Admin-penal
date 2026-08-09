@@ -5,6 +5,7 @@ import { apiClient } from "@/lib/api-client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Radio, Users, Clock } from "lucide-react";
+import { formatDateTime } from "@/lib/format-date";
 
 interface LiveQuizItem {
   id: number;
@@ -13,8 +14,12 @@ interface LiveQuizItem {
   sections: { name: string }[];
   faculty: { name: string };
   building: { name: string };
+  startTime: string;
+  actualStartTime: string | null;
   durationMinutes: number;
-  elapsedSeconds: number;
+  durationSeconds: number | null;
+  submittedCount: number;
+  thresholdCount: number;
   remainingSeconds: number;
   totalAllotted: number;
   attemptedCount: number;
@@ -79,9 +84,15 @@ export function LiveTrackingBoard({ compact = false }: LiveTrackingBoardProps) {
                 </p>
                 <div className="flex items-center gap-2 text-muted-foreground">
                   <Clock className="h-4 w-4" />
+                  <span>Started {formatDateTime(quiz.actualStartTime ?? quiz.startTime)}</span>
+                </div>
+                <div className="flex items-center gap-2 text-muted-foreground">
+                  <Clock className="h-4 w-4" />
                   <span>
-                    Elapsed {formatDuration(quiz.elapsedSeconds)} &middot; Remaining{" "}
-                    {formatDuration(quiz.remainingSeconds)}
+                    {quiz.durationSeconds !== null
+                      ? `Duration ${formatDuration(quiz.durationSeconds)} (1st–80% submissions)`
+                      : `Duration pending (${quiz.submittedCount}/${quiz.thresholdCount} submitted)`}
+                    {" "}&middot; Remaining {formatDuration(quiz.remainingSeconds)}
                   </span>
                 </div>
                 <div className="flex items-center gap-2">

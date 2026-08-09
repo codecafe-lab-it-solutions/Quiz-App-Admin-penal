@@ -4,6 +4,7 @@ import { ok, created, handleApiError } from "@/lib/api-response";
 import { getAuthUser, requireRole } from "@/lib/auth";
 import { sessionSchema } from "@/lib/validators/master-data";
 import { paginationSchema, paginationMeta } from "@/lib/validators/common";
+import { getCurrentSubList } from "@/lib/config";
 
 export async function GET(req: NextRequest) {
   try {
@@ -38,7 +39,8 @@ export async function POST(req: NextRequest) {
     requireRole(user, "admin");
 
     const body = sessionSchema.parse(await req.json());
-    const session = await prisma.academicSession.create({ data: body });
+    const subListCode = await getCurrentSubList();
+    const session = await prisma.academicSession.create({ data: { ...body, subListCode } });
 
     return created(session);
   } catch (error) {

@@ -31,8 +31,32 @@ export async function GET(req: NextRequest) {
 
         const start = quiz.actualStartTime ?? quiz.startTime;
         const scheduledEnd = new Date(start.getTime() + quiz.durationMinutes * 60 * 1000);
-        const elapsedSeconds = Math.max(0, Math.floor((now - start.getTime()) / 1000));
         const remainingSeconds = Math.max(0, Math.floor((scheduledEnd.getTime() - now) / 1000));
+
+        const totalAllotted = quiz._count.allotments;
+
+        // Test duration = time from the 1st submission to the submission that
+        // crosses 80% of allotted students - this reflects how long the bulk
+        // of the class actually took, rather than start-to-stop wall time
+        // (faculty routinely forget to stop the test, so stop time isn't meaningful).
+        const submissions = await prisma.quizAttempt.findMany({
+          where: { quizId: quiz.id, status: { in: ["submitted", "auto_submitted"] } },
+          orderBy: { endTime: "asc" },
+          select: { endTime: true },
+        });
+
+        const thresholdCount = Math.max(1, Math.ceil(totalAllotted * 0.8));
+        const durationSeconds =
+          submissions.length >= thresholdCount && submissions[0].endTime
+            ? Math.max(
+                0,
+                Math.floor(
+                  (submissions[thresholdCount - 1].endTime!.getTime() -
+                    submissions[0].endTime!.getTime()) /
+                    1000
+                )
+              )
+            : null;
 
         return {
           id: quiz.id,
@@ -44,11 +68,13 @@ export async function GET(req: NextRequest) {
           startTime: quiz.startTime,
           actualStartTime: quiz.actualStartTime,
           durationMinutes: quiz.durationMinutes,
-          elapsedSeconds,
+          durationSeconds,
+          submittedCount: submissions.length,
+          thresholdCount,
           remainingSeconds,
-          totalAllotted: quiz._count.allotments,
+          totalAllotted,
           attemptedCount,
-          notAttemptedCount: Math.max(0, quiz._count.allotments - attemptedCount),
+          notAttemptedCount: Math.max(0, totalAllotted - attemptedCount),
         };
       })
     );

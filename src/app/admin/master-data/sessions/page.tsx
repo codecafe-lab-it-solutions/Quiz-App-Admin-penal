@@ -30,6 +30,7 @@ interface Session {
   name: string;
   startDate: string;
   endDate: string;
+  subListCode: string | null;
 }
 interface ListResponse<T> {
   items: T[];
@@ -113,6 +114,7 @@ export default function SessionsPage() {
     { key: "name", header: "Name", render: (r) => <span className="font-medium">{r.name}</span> },
     { key: "startDate", header: "Start Date", render: (r) => format(r.startDate) },
     { key: "endDate", header: "End Date", render: (r) => format(r.endDate) },
+    { key: "semester", header: "Semester", render: (r) => r.subListCode ?? "—" },
     {
       key: "actions",
       header: "",
@@ -143,7 +145,10 @@ export default function SessionsPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Academic Sessions</h1>
-          <p className="text-sm text-muted-foreground">Manage academic sessions/terms.</p>
+          <p className="text-sm text-muted-foreground">
+            Manage academic sessions/terms. Each session is tagged with the semester (sub-list code) active in
+            Semester Configuration at the time it was created.
+          </p>
         </div>
         <Button onClick={openCreate}>
           <Plus className="mr-2 h-4 w-4" />

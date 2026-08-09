@@ -121,8 +121,11 @@ model AcademicSession {
   name      String
   startDate DateTime @map("start_date")
   endDate   DateTime @map("end_date")
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  // Snapshot of SemesterConfig.currentSubList at creation time - ties this
+  // session to the semester-cycle it belongs to.
+  subListCode String?  @map("sub_list_code")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
 
   quizzes Quiz[]
 

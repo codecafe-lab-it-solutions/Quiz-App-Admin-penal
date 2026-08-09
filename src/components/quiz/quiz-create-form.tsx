@@ -41,11 +41,6 @@ interface SectionOption {
   name: string;
 }
 
-interface SessionOption {
-  id: number;
-  name: string;
-}
-
 interface StudentOption {
   roll: string;
   name: string;
@@ -63,7 +58,6 @@ export function QuizCreateForm({ role }: { role: "faculty" | "admin" }) {
   const [facultyRoll, setFacultyRoll] = useState("");
   const [title, setTitle] = useState("");
   const [courseCode, setCourseCode] = useState("");
-  const [sessionId, setSessionId] = useState("");
   const [buildingId, setBuildingId] = useState("");
   const [startTime, setStartTime] = useState(
     toLocalInputValue(new Date(Date.now() + 60 * 60 * 1000)),
@@ -98,11 +92,6 @@ export function QuizCreateForm({ role }: { role: "faculty" | "admin" }) {
     `/api/faculty/buildings`,
     (url: string) => fetcher<{ items: BuildingOption[] }>(url),
   );
-  const { data: sessionsData } = useSWR(
-    `/api/faculty/sessions`,
-    (url: string) => fetcher<{ items: SessionOption[] }>(url),
-  );
-
   const courses = (coursesData?.items ?? []).filter((c) => c.courseId !== null);
   const buildings = buildingsData?.items ?? [];
   const selectedCourse = courses.find((c) => c.subCode === courseCode);
@@ -198,7 +187,6 @@ export function QuizCreateForm({ role }: { role: "faculty" | "admin" }) {
         title: title.trim(),
         courseId: course.courseId,
         sectionIds: activeSectionIds,
-        ...(sessionId ? { sessionId: Number(sessionId) } : {}),
         buildingId: Number(buildingId),
         startTime: new Date(startTime).toISOString(),
         endTime: new Date(endTime).toISOString(),
@@ -355,22 +343,6 @@ export function QuizCreateForm({ role }: { role: "faculty" | "admin" }) {
               ))}
             </div>
           )}
-        </div>
-
-        <div className="space-y-1.5">
-          <Label>Session (optional)</Label>
-          <Select value={sessionId} onValueChange={setSessionId}>
-            <SelectTrigger className="max-w-xs">
-              <SelectValue placeholder="Map to an upcoming session" />
-            </SelectTrigger>
-            <SelectContent>
-              {(sessionsData?.items ?? []).map((s) => (
-                <SelectItem key={s.id} value={String(s.id)}>
-                  {s.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
         </div>
 
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
