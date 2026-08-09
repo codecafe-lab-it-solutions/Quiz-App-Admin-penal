@@ -7,6 +7,7 @@ export const attendanceReportQuerySchema = z.object({
   search: z.string().trim().optional(),
   from: z.coerce.date().optional(),
   to: z.coerce.date().optional(),
+  sortOrder: z.enum(["asc", "desc"]).default("desc"),
   page: z.coerce.number().int().min(1).default(1),
   pageSize: z.coerce.number().int().min(1).max(200).default(20),
   export: z.enum(["excel", "pdf"]).optional(),

@@ -56,6 +56,7 @@ export function FacultyAttendance() {
   const [search, setSearch] = useState("");
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
+  const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
 
   const { data: courseData } = useSWR("/api/faculty/courses", (url: string) =>
     apiClient.get<{ items: CourseCatalogEntry[] }>(url)
@@ -73,6 +74,7 @@ export function FacultyAttendance() {
     if (search) params.set("search", search);
     if (from) params.set("from", from);
     if (to) params.set("to", to);
+    params.set("sortOrder", sortOrder);
     if (extra) Object.entries(extra).forEach(([k, v]) => params.set(k, v));
     return params;
   };
@@ -167,6 +169,18 @@ export function FacultyAttendance() {
           <div className="space-y-1.5">
             <Label>To</Label>
             <Input type="date" value={to} onChange={(e) => { setTo(e.target.value); setPage(1); }} />
+          </div>
+          <div className="space-y-1.5">
+            <Label>Sort by date</Label>
+            <Select value={sortOrder} onValueChange={(v) => { setSortOrder(v as "asc" | "desc"); setPage(1); }}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="desc">Newest first</SelectItem>
+                <SelectItem value="asc">Oldest first</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
         </CardContent>
       </Card>

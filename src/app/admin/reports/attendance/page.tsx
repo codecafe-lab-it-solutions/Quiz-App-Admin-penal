@@ -72,6 +72,7 @@ export default function AttendanceReportPage() {
   const [selectedStudents, setSelectedStudents] = useState<StudentOption[]>([]);
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
+  const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
 
   const { data: courseData } = useSWR(
     "/api/admin/courses?pageSize=200",
@@ -102,6 +103,7 @@ export default function AttendanceReportPage() {
     if (search) params.set("search", search);
     if (from) params.set("from", from);
     if (to) params.set("to", to);
+    params.set("sortOrder", sortOrder);
     selectedStudentRolls.forEach((roll) => params.append("studentRoll", roll));
     if (extra) Object.entries(extra).forEach(([k, v]) => params.set(k, v));
     return params;
@@ -343,6 +345,24 @@ export default function AttendanceReportPage() {
                 setPage(1);
               }}
             />
+          </div>
+          <div className="space-y-1.5">
+            <Label>Sort by date</Label>
+            <Select
+              value={sortOrder}
+              onValueChange={(v) => {
+                setSortOrder(v as "asc" | "desc");
+                setPage(1);
+              }}
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="desc">Newest first</SelectItem>
+                <SelectItem value="asc">Oldest first</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
         </CardContent>
       </Card>

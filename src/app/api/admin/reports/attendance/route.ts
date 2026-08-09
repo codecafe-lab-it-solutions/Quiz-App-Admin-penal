@@ -51,7 +51,7 @@ export async function GET(req: NextRequest) {
 
     const baseQuery = {
       where,
-      orderBy: { date: "desc" as const },
+      orderBy: { date: query.sortOrder },
       include: {
         course: { select: { id: true, name: true, code: true } },
         quiz: {

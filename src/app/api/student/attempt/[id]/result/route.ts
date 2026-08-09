@@ -83,6 +83,10 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
       })
       .filter((q): q is NonNullable<typeof q> => q !== null);
 
+    const unattemptedCount = questionResults.filter((q) => q.yourAnswer.isSkipped).length;
+    const correctCount = questionResults.filter((q) => q.isCorrect === true).length;
+    const incorrectCount = questionResults.filter((q) => q.isCorrect === false).length;
+
     return ok({
       attemptId,
       quizId: attempt.quizId,
@@ -92,6 +96,12 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
       marksObtained: result.marksObtained,
       percentage: result.percentage,
       publishedAt: result.publishedAt,
+      summary: {
+        totalQuestions: questionResults.length,
+        correctCount,
+        incorrectCount,
+        unattemptedCount,
+      },
       questions: questionResults,
     });
   } catch (error) {

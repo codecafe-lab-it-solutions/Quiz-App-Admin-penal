@@ -5,12 +5,29 @@ import { useRouter } from "next/navigation";
 import useSWR from "swr";
 import { toast } from "sonner";
 import { apiClient, ApiClientError, downloadFile } from "@/lib/api-client";
-import { formatDateTime } from "@/lib/format-date";
+import { formatDateTime, toLocalDateTimeInputValue } from "@/lib/format-date";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { DataTable, DataTableColumn } from "@/components/admin/data-table";
 import { ConfirmDialog } from "@/components/admin/confirm-dialog";
 import {
@@ -26,14 +43,22 @@ interface QuizDetail {
   status: "draft" | "scheduled" | "live" | "completed";
   startTime: string;
   endTime: string;
+  durationMinutes: number;
   totalMarks: number;
   randomize: boolean;
   negativeMarking: boolean;
+  allowSkipSwitch: boolean;
+  requireLocation: boolean;
   course: { id: number; name: string; code: string };
   sections: { section: { id: number; name: string } }[];
-  building: { name: string };
+  building: { id: number; name: string };
   questions: (QuestionRow & { id: number })[];
   _count: { allotments: number };
+}
+
+interface BuildingOption {
+  id: number;
+  name: string;
 }
 
 interface AttemptEntry {
@@ -109,6 +134,20 @@ export function QuizManagement({
   const [checkedRolls, setCheckedRolls] = useState<Set<string> | null>(null);
   const [allotting, setAllotting] = useState(false);
   const [importing, setImporting] = useState(false);
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [savingDetails, setSavingDetails] = useState(false);
+  const [editForm, setEditForm] = useState({
+    title: "",
+    buildingId: "",
+    startTime: "",
+    endTime: "",
+    durationMinutes: "",
+    totalMarks: "",
+    randomize: true,
+    negativeMarking: false,
+    allowSkipSwitch: true,
+    requireLocation: true,
+  });
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const {
@@ -117,6 +156,10 @@ export function QuizManagement({
     mutate,
   } = useSWR(`/api/faculty/quiz/${quizId}`, (url: string) =>
     fetcher<QuizDetail>(url),
+  );
+  const { data: buildingsData } = useSWR(
+    editDialogOpen ? `/api/faculty/buildings` : null,
+    (url: string) => fetcher<{ items: BuildingOption[] }>(url),
   );
   const { data: subjectiveData, mutate: mutateSubjective } = useSWR(
     quiz?.status === "completed"
@@ -176,7 +219,10 @@ export function QuizManagement({
         url,
       ),
   );
-  const candidates = candidatesData?.items ?? [];
+  // Allotment already happens as part of Create Quiz - this list only
+  // surfaces students who joined a linked section afterward and were never
+  // allotted, so this card doesn't look like a duplicate of that step.
+  const candidates = (candidatesData?.items ?? []).filter((c) => !c.allotted);
   // Default: everyone checked. Once the faculty/admin touches a box, their
   // selection takes over instead of re-defaulting on every refetch.
   const effectiveChecked =
@@ -217,6 +263,63 @@ export function QuizManagement({
       toast.error(
         error instanceof ApiClientError ? error.message : "Failed to stop quiz",
       );
+    }
+  };
+
+  const openEditDialog = () => {
+    setEditForm({
+      title: quiz.title,
+      buildingId: String(quiz.building.id),
+      startTime: toLocalDateTimeInputValue(quiz.startTime),
+      endTime: toLocalDateTimeInputValue(quiz.endTime),
+      durationMinutes: String(quiz.durationMinutes),
+      totalMarks: String(quiz.totalMarks),
+      randomize: quiz.randomize,
+      negativeMarking: quiz.negativeMarking,
+      allowSkipSwitch: quiz.allowSkipSwitch,
+      requireLocation: quiz.requireLocation,
+    });
+    setEditDialogOpen(true);
+  };
+
+  const handleSaveDetails = async () => {
+    if (!editForm.title.trim()) {
+      toast.error("Title is required");
+      return;
+    }
+    const duration = Number(editForm.durationMinutes);
+    const marks = Number(editForm.totalMarks);
+    if (!Number.isFinite(duration) || duration <= 0) {
+      toast.error("Duration must be a positive number of minutes");
+      return;
+    }
+    if (!Number.isFinite(marks) || marks <= 0) {
+      toast.error("Total marks must be a positive number");
+      return;
+    }
+    setSavingDetails(true);
+    try {
+      await apiClient.patch(`/api/faculty/quiz/${quizId}`, {
+        title: editForm.title.trim(),
+        buildingId: Number(editForm.buildingId),
+        startTime: new Date(editForm.startTime).toISOString(),
+        endTime: new Date(editForm.endTime).toISOString(),
+        durationMinutes: duration,
+        totalMarks: marks,
+        randomize: editForm.randomize,
+        negativeMarking: editForm.negativeMarking,
+        allowSkipSwitch: editForm.allowSkipSwitch,
+        requireLocation: editForm.requireLocation,
+      });
+      toast.success("Quiz details updated");
+      setEditDialogOpen(false);
+      mutate();
+    } catch (error) {
+      toast.error(
+        error instanceof ApiClientError ? error.message : "Failed to update quiz details",
+      );
+    } finally {
+      setSavingDetails(false);
     }
   };
 
@@ -515,6 +618,12 @@ export function QuizManagement({
                 Stop
               </Button>
             )}
+            {canEditQuestions && (
+              <Button size="sm" variant="outline" onClick={openEditDialog}>
+                <Pencil className="mr-2 h-4 w-4" />
+                Edit Details
+              </Button>
+            )}
             <Button size="sm" variant="outline" onClick={handleDuplicate}>
               <Copy className="mr-2 h-4 w-4" />
               Duplicate
@@ -603,19 +712,16 @@ export function QuizManagement({
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-lg">
-            Allot Students ({allottedCount} allotted)
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          {candidates.length === 0 ? (
+      {quiz.status !== "completed" && candidates.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg">Add More Students</CardTitle>
             <p className="text-sm text-muted-foreground">
-              No students found in this quiz&apos;s linked section(s) yet -
-              check section membership under Master Data → Sections.
+              {allottedCount} student(s) were already allotted when this quiz was created. These joined a
+              linked section afterward and haven&apos;t been allotted yet.
             </p>
-          ) : (
+          </CardHeader>
+          <CardContent className="space-y-3">
             <div className="max-h-72 space-y-1 overflow-y-auto rounded-md border p-2">
               {candidates.map((c) => (
                 <div
@@ -635,21 +741,15 @@ export function QuizManagement({
                       <span className="text-muted-foreground">({c.roll})</span>
                     </label>
                   </div>
-                  {c.allotted && (
-                    <Badge variant="secondary">already allotted</Badge>
-                  )}
                 </div>
               ))}
             </div>
-          )}
-          <Button
-            onClick={handleAllot}
-            disabled={allotting || candidates.length === 0}
-          >
-            {allotting ? "Allotting..." : "Allot Quiz"}
-          </Button>
-        </CardContent>
-      </Card>
+            <Button onClick={handleAllot} disabled={allotting}>
+              {allotting ? "Allotting..." : "Allot Selected"}
+            </Button>
+          </CardContent>
+        </Card>
+      )}
 
       {quiz.status === "completed" && resultsData && (
         <ResultsReportCard data={resultsData} />
@@ -700,6 +800,137 @@ export function QuizManagement({
         editing={editingQuestion}
         onSaved={mutate}
       />
+
+      <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Edit Quiz Details</DialogTitle>
+            <DialogDescription>
+              Update the quiz&apos;s title, timing, building, and rules. Course, sections, and questions aren&apos;t
+              editable here.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-1.5">
+              <Label htmlFor="edit-title">Title</Label>
+              <Input
+                id="edit-title"
+                value={editForm.title}
+                onChange={(e) => setEditForm((f) => ({ ...f, title: e.target.value }))}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Building</Label>
+              <Select
+                value={editForm.buildingId}
+                onValueChange={(v) => setEditForm((f) => ({ ...f, buildingId: v }))}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select a building" />
+                </SelectTrigger>
+                <SelectContent>
+                  {(buildingsData?.items ?? []).map((b) => (
+                    <SelectItem key={b.id} value={String(b.id)}>
+                      {b.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+              <div className="space-y-1.5">
+                <Label htmlFor="edit-start">Start Time</Label>
+                <Input
+                  id="edit-start"
+                  type="datetime-local"
+                  value={editForm.startTime}
+                  onChange={(e) => setEditForm((f) => ({ ...f, startTime: e.target.value }))}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="edit-end">End Time</Label>
+                <Input
+                  id="edit-end"
+                  type="datetime-local"
+                  value={editForm.endTime}
+                  onChange={(e) => setEditForm((f) => ({ ...f, endTime: e.target.value }))}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="edit-duration">Duration (minutes)</Label>
+                <Input
+                  id="edit-duration"
+                  type="number"
+                  min={1}
+                  value={editForm.durationMinutes}
+                  onChange={(e) => setEditForm((f) => ({ ...f, durationMinutes: e.target.value }))}
+                />
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="edit-marks">Total Marks</Label>
+              <Input
+                id="edit-marks"
+                type="number"
+                min={1}
+                className="max-w-xs"
+                value={editForm.totalMarks}
+                onChange={(e) => setEditForm((f) => ({ ...f, totalMarks: e.target.value }))}
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="flex items-center justify-between rounded-md border p-3">
+                <Label htmlFor="edit-randomize" className="text-sm font-normal">
+                  Randomize order
+                </Label>
+                <Switch
+                  id="edit-randomize"
+                  checked={editForm.randomize}
+                  onCheckedChange={(v) => setEditForm((f) => ({ ...f, randomize: v }))}
+                />
+              </div>
+              <div className="flex items-center justify-between rounded-md border p-3">
+                <Label htmlFor="edit-negative" className="text-sm font-normal">
+                  Negative marking
+                </Label>
+                <Switch
+                  id="edit-negative"
+                  checked={editForm.negativeMarking}
+                  onCheckedChange={(v) => setEditForm((f) => ({ ...f, negativeMarking: v }))}
+                />
+              </div>
+              <div className="flex items-center justify-between rounded-md border p-3">
+                <Label htmlFor="edit-skip" className="text-sm font-normal">
+                  Allow skip/switch
+                </Label>
+                <Switch
+                  id="edit-skip"
+                  checked={editForm.allowSkipSwitch}
+                  onCheckedChange={(v) => setEditForm((f) => ({ ...f, allowSkipSwitch: v }))}
+                />
+              </div>
+              <div className="flex items-center justify-between rounded-md border p-3">
+                <Label htmlFor="edit-location" className="text-sm font-normal">
+                  Require GPS
+                </Label>
+                <Switch
+                  id="edit-location"
+                  checked={editForm.requireLocation}
+                  onCheckedChange={(v) => setEditForm((f) => ({ ...f, requireLocation: v }))}
+                />
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setEditDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleSaveDetails} disabled={savingDetails}>
+              {savingDetails ? "Saving..." : "Save Changes"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

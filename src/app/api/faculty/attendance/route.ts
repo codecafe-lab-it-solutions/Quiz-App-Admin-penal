@@ -15,6 +15,7 @@ const querySchema = z.object({
   search: z.string().trim().optional(),
   from: z.coerce.date().optional(),
   to: z.coerce.date().optional(),
+  sortOrder: z.enum(["asc", "desc"]).default("desc"),
   page: z.coerce.number().int().min(1).default(1),
   pageSize: z.coerce.number().int().min(1).max(100).default(20),
   export: z.enum(["excel", "pdf"]).optional(),
@@ -54,7 +55,7 @@ export async function GET(req: NextRequest) {
 
     const baseQuery = {
       where,
-      orderBy: { date: "desc" as const },
+      orderBy: { date: query.sortOrder },
       include: {
         course: { select: { id: true, name: true, code: true } },
         quiz: { select: { id: true, title: true, sections: { include: { section: { select: { id: true, name: true } } } } } },

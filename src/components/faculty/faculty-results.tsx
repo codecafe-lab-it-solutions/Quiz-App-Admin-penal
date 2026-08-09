@@ -68,6 +68,7 @@ export function FacultyResults() {
   const [search, setSearch] = useState("");
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
+  const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
 
   const { data: courseData } = useSWR("/api/faculty/courses", (url) =>
     apiClient.get<{ items: CourseCatalogEntry[] }>(url),
@@ -85,6 +86,7 @@ export function FacultyResults() {
     if (search) params.set("search", search);
     if (from) params.set("from", from);
     if (to) params.set("to", to);
+    params.set("sortOrder", sortOrder);
     return params;
   };
 
@@ -287,6 +289,19 @@ export function FacultyResults() {
                 }}
               />
             </div>
+          </div>
+
+          <div className="space-y-1.5">
+            <Label>Sort by published date</Label>
+            <Select value={sortOrder} onValueChange={(value) => { setSortOrder(value as "asc" | "desc"); setPage(1); }}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="desc">Newest first</SelectItem>
+                <SelectItem value="asc">Oldest first</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
         </CardContent>
       </Card>

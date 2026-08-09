@@ -53,6 +53,7 @@ export function StudentAttendance() {
   const [search, setSearch] = useState("");
   const [from, setFrom] = useState(todayInputValue());
   const [to, setTo] = useState(todayInputValue());
+  const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
 
   const buildParams = (extra?: Record<string, string>) => {
     const params = new URLSearchParams({ page: String(page), pageSize: "10" });
@@ -61,6 +62,7 @@ export function StudentAttendance() {
     if (search) params.set("search", search);
     if (from) params.set("from", from);
     if (to) params.set("to", to);
+    params.set("sortOrder", sortOrder);
     if (extra) Object.entries(extra).forEach(([k, v]) => params.set(k, v));
     return params;
   };
@@ -183,6 +185,18 @@ export function StudentAttendance() {
           <div className="space-y-1.5">
             <Label>To</Label>
             <Input type="date" value={to} onChange={(e) => { setTo(e.target.value); setPage(1); }} />
+          </div>
+          <div className="space-y-1.5">
+            <Label>Sort by date</Label>
+            <Select value={sortOrder} onValueChange={(v) => { setSortOrder(v as "asc" | "desc"); setPage(1); }}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="desc">Newest first</SelectItem>
+                <SelectItem value="asc">Oldest first</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
           <div className="sm:col-span-5">
             <Button variant="ghost" size="sm" onClick={clearFilters}>

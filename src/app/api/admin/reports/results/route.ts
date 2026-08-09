@@ -43,7 +43,7 @@ export async function GET(req: NextRequest) {
 
     const baseQuery = {
       where,
-      orderBy: { publishedAt: "desc" as const },
+      orderBy: { publishedAt: query.sortOrder },
       include: {
         quiz: {
           select: {

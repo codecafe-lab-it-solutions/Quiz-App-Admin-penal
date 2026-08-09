@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { ok, handleApiError, ApiError } from "@/lib/api-response";
 import { getAuthUser, requireRole } from "@/lib/auth";
 import { idParamSchema } from "@/lib/validators/common";
+import { loadAccessibleQuiz } from "@/lib/quiz-access";
 
 export async function POST(
   req: NextRequest,
@@ -10,11 +11,12 @@ export async function POST(
 ) {
   try {
     const user = getAuthUser(req);
-    // Starting a quiz is admin-only from the web panel - faculty and
-    // students both start a quiz only via the mobile app.
-    requireRole(user, "admin");
+    // Starting a quiz is a faculty action (from the mobile app, on their own
+    // quiz) or an admin override; students can never start one.
+    requireRole(user, "faculty", "admin");
 
     const { id } = idParamSchema.parse(params);
+    await loadAccessibleQuiz(user, id);
     const quiz = await prisma.quiz.findFirst({
       where: { id, deletedAt: null },
       include: { _count: { select: { questions: true } } },
