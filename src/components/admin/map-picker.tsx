@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, useCallback } from "react";
+import { useRef, useState, useCallback, useEffect } from "react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
@@ -16,11 +16,46 @@ const CENTER = SIZE / 2;
 const METERS_PER_PIXEL = 4;
 const MAX_RADIUS_PX = CENTER - 20;
 
+/**
+ * A number <input> can't be a plain controlled `value={someNumber}` here:
+ * backspacing to empty makes `Number("")` evaluate to 0, which re-renders
+ * the field straight back to "0" before the next keystroke ever lands -
+ * you can never clear it to type a new value. This keeps the *displayed*
+ * text as its own state (so "", "-", "28." can exist mid-edit) and only
+ * pushes a value up to the parent once the text parses to a real number.
+ * It re-syncs from the external `value` prop only when that prop actually
+ * changes elsewhere (map drag, opening the edit dialog) - never while the
+ * user is mid-keystroke, since typing invalid/empty text never changes it.
+ */
+function useSyncedNumberText(value: number, onCommit: (n: number) => void) {
+  const [text, setText] = useState(() => String(value));
+
+  useEffect(() => {
+    if (Number(text) !== value) setText(String(value));
+    // Only re-sync when the external value changes, not on every keystroke.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [value]);
+
+  return {
+    text,
+    onChange: (e: React.ChangeEvent<HTMLInputElement>) => {
+      const raw = e.target.value;
+      setText(raw);
+      const n = Number(raw);
+      if (raw.trim() !== "" && !Number.isNaN(n)) onCommit(n);
+    },
+  };
+}
+
 export function MapPicker({ latitude, longitude, radiusMeters, onChange }: MapPickerProps) {
   const svgRef = useRef<SVGSVGElement>(null);
   const [dragging, setDragging] = useState(false);
 
   const radiusPx = Math.min(MAX_RADIUS_PX, Math.max(6, radiusMeters / METERS_PER_PIXEL));
+
+  const latField = useSyncedNumberText(latitude, (n) => onChange({ latitude: n, longitude, radiusMeters }));
+  const lngField = useSyncedNumberText(longitude, (n) => onChange({ latitude, longitude: n, radiusMeters }));
+  const radiusField = useSyncedNumberText(radiusMeters, (n) => onChange({ latitude, longitude, radiusMeters: n }));
 
   const updateRadiusFromPointer = useCallback(
     (clientX: number, clientY: number) => {
@@ -44,8 +79,8 @@ export function MapPicker({ latitude, longitude, radiusMeters, onChange }: MapPi
           <Input
             type="number"
             step="0.0000001"
-            value={latitude}
-            onChange={(e) => onChange({ latitude: Number(e.target.value), longitude, radiusMeters })}
+            value={latField.text}
+            onChange={latField.onChange}
           />
         </div>
         <div className="space-y-1.5">
@@ -53,8 +88,8 @@ export function MapPicker({ latitude, longitude, radiusMeters, onChange }: MapPi
           <Input
             type="number"
             step="0.0000001"
-            value={longitude}
-            onChange={(e) => onChange({ latitude, longitude: Number(e.target.value), radiusMeters })}
+            value={lngField.text}
+            onChange={lngField.onChange}
           />
         </div>
         <div className="space-y-1.5">
@@ -63,8 +98,8 @@ export function MapPicker({ latitude, longitude, radiusMeters, onChange }: MapPi
             type="number"
             min={10}
             max={1000}
-            value={radiusMeters}
-            onChange={(e) => onChange({ latitude, longitude, radiusMeters: Number(e.target.value) })}
+            value={radiusField.text}
+            onChange={radiusField.onChange}
           />
         </div>
       </div>

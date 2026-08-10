@@ -8,6 +8,7 @@ import {
   getStudentByRoll,
   getStudentCourses,
   getCourseRegistrations,
+  getRecentRegistrations,
   createStudentCourseMapping,
 } from "@/lib/legacy-db";
 import { getCurrentSubList } from "@/lib/config";
@@ -65,11 +66,19 @@ export async function GET(req: NextRequest) {
         subCode: c.subCode,
         batch: student.batch,
       }));
-      return ok({ items: await attachSections(rows) });
+      return ok({ items: await attachSections(rows), isDefault: false });
     }
 
-    const items = await getCourseRegistrations(courseCode!, subList);
-    return ok({ items: await attachSections(items) });
+    if (courseCode) {
+      const items = await getCourseRegistrations(courseCode, subList);
+      return ok({ items: await attachSections(items), isDefault: false });
+    }
+
+    // No search yet - show a bounded "recently registered" default list
+    // (see getRecentRegistrations) so the page reads as live and connected
+    // rather than blank.
+    const recent = await getRecentRegistrations(subList, 20);
+    return ok({ items: await attachSections(recent), isDefault: true });
   } catch (error) {
     return handleApiError(error);
   }

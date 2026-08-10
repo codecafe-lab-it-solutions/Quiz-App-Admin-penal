@@ -37,6 +37,7 @@ interface Registration {
 
 interface ListResponse {
   items: Registration[];
+  isDefault: boolean;
 }
 
 const fetcher = (url: string) => apiClient.get<ListResponse>(url);
@@ -54,14 +55,17 @@ export default function StudentMappingPage() {
   const [submitting, setSubmitting] = useState(false);
 
   // Roll search takes priority if both are somehow filled - mirrors the API contract.
+  // No search term still fires - the route returns a bounded "recently
+  // registered" default list instead of nothing, so the page shows real,
+  // interconnected data immediately.
   const query = roll.trim()
     ? `roll=${encodeURIComponent(roll.trim())}`
     : courseCode.trim()
       ? `courseCode=${encodeURIComponent(courseCode.trim())}`
-      : null;
+      : "";
 
   const { data, isLoading, mutate } = useSWR(
-    query ? `/api/admin/mapping/student-course-section?${query}` : null,
+    `/api/admin/mapping/student-course-section?${query}`,
     fetcher,
   );
 
@@ -126,9 +130,10 @@ export default function StudentMappingPage() {
             Student ↔ Course Mapping
           </h1>
           <p className="text-sm text-muted-foreground">
-            Live registrations synced from the university system. Search by
-            student roll or course code - this spans ~60 per-batch tables, so an
-            unfiltered list isn't shown.
+            Live registrations synced from the university system - this spans
+            ~60 per-batch tables, so it starts with a bounded recent list
+            rather than a full unfiltered dump; search a roll or course code
+            to look up a specific one.
           </p>
         </div>
         <Button onClick={openCreate}>
@@ -141,8 +146,7 @@ export default function StudentMappingPage() {
         <CardHeader>
           <CardTitle>Search registrations</CardTitle>
           <CardDescription>
-            Provide a student roll to see their courses, or a course code to see
-            who's registered.
+            Search by student roll or course code, or browse the most recently registered mappings below.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -173,18 +177,17 @@ export default function StudentMappingPage() {
             </div>
           </div>
 
-          {query ? (
-            <DataTable
-              columns={columns}
-              rows={data?.items ?? []}
-              rowKey={(r) => `${r.roll}-${r.subCode}`}
-              loading={isLoading}
-            />
-          ) : (
+          {!query && data?.isDefault && (
             <p className="text-sm text-muted-foreground">
-              Enter a roll or course code to see registrations.
+              No search yet — showing the most recently registered mappings. Search a roll or course code to narrow this down.
             </p>
           )}
+          <DataTable
+            columns={columns}
+            rows={data?.items ?? []}
+            rowKey={(r) => `${r.roll}-${r.subCode}`}
+            loading={isLoading}
+          />
         </CardContent>
       </Card>
 

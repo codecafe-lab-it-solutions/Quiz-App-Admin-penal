@@ -579,6 +579,9 @@ async function resolveBatchTable(batch: string): Promise<string | null> {
 const REG_ROLL_COLUMN = "stu_roll";
 const REG_SUB_CODE_COLUMN = "sub_code";
 const REG_SUB_LIST_COLUMN = "sub_list";
+// Confirmed real auto-increment PK (see prisma/migrations/20260810090000_legacy_reg_table_full_parity) -
+// only used to order "most recently registered first" for getRecentRegistrations.
+const REG_PK_COLUMN = "reg_sr";
 
 export async function getStudentCourses(roll: string, batch: string, subList: string): Promise<StudentCourseRow[]> {
   const tableName = await resolveBatchTable(batch);
@@ -616,6 +619,32 @@ export async function getCourseRegistrations(courseCode: string, subList: string
   }
 
   return results;
+}
+
+// Bounded default listing for the admin mapping page - a handful of the most
+// recently registered rows per active batch table, so the page shows real
+// data immediately instead of only after a search (the per-table LIMIT keeps
+// this cheap even as more batch tables get registered over time).
+const RECENT_PER_TABLE_LIMIT = 10;
+
+export async function getRecentRegistrations(subList: string, limit: number): Promise<(StudentCourseRow & { batch: string })[]> {
+  const registry = (await listBatchRegistry()).filter((r) => r.isActive);
+  const results: (StudentCourseRow & { batch: string })[] = [];
+
+  for (const entry of registry) {
+    if (!SAFE_TABLE_NAME.test(entry.tableName)) continue;
+    try {
+      const rows = await prisma.$queryRawUnsafe<Record<string, string>[]>(
+        `SELECT \`${REG_ROLL_COLUMN}\` AS roll, \`${REG_SUB_CODE_COLUMN}\` AS sub_code FROM \`${entry.tableName}\` WHERE \`${REG_SUB_LIST_COLUMN}\` = ? ORDER BY \`${REG_PK_COLUMN}\` DESC LIMIT ${RECENT_PER_TABLE_LIMIT}`,
+        subList
+      );
+      results.push(...rows.map((r) => ({ roll: r.roll, subCode: r.sub_code, batch: entry.batchName })));
+    } catch (error) {
+      console.error(`getRecentRegistrations: query against ${entry.tableName} failed`, error);
+    }
+  }
+
+  return results.slice(0, limit);
 }
 
 export async function createStudentCourseMapping(data: {
