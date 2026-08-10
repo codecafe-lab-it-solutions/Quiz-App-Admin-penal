@@ -248,7 +248,6 @@ export function FacultyResults() {
               <SelectContent>
                 <SelectItem value="all">All statuses</SelectItem>
                 <SelectItem value="pending">Pending</SelectItem>
-                <SelectItem value="declared">Declared</SelectItem>
                 <SelectItem value="published">Published</SelectItem>
               </SelectContent>
             </Select>

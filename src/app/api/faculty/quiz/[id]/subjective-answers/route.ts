@@ -7,7 +7,7 @@ import { getStudentNamesByRolls } from "@/lib/legacy-db";
 
 // Lists every subjective (open-ended) answer for a quiz's submitted attempts,
 // ungraded first, so a faculty member can work through manual grading before
-// declaring results (see the ungraded-answer gate in declare-result).
+// publishing results (see the ungraded-answer gate in publish-result).
 export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
   try {
     const user = getAuthUser(req);

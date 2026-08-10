@@ -34,6 +34,8 @@ interface Student {
   batch: string;
   semNow: string;
   status: number; // 1-Active, 2-Inactive
+  category: string | null;
+  section: string | null;
 }
 
 interface ListResponse<T> {
@@ -50,7 +52,10 @@ const schema = z.object({
   password: z.string().optional(),
   major: z.string().trim().min(1, "Major is required"),
   batch: z.string().trim().min(1, "Batch is required"),
-  semNow: z.string().trim().min(1, "Semester is required"),
+  semNow: z.string().trim().regex(/^\d+$/, "Semester must be a whole number"),
+  // Required on create only (enforced in onSubmit, since it doesn't apply to
+  // editing an existing student) - Major + Section becomes their default section.
+  section: z.string().trim().optional(),
 });
 type FormValues = z.infer<typeof schema>;
 
@@ -74,7 +79,7 @@ export default function StudentListPage() {
 
   const openCreate = () => {
     setEditing(null);
-    reset({ roll: "", name: "", email: "", password: "", major: "", batch: "", semNow: "" });
+    reset({ roll: "", name: "", email: "", password: "", major: "", batch: "", semNow: "", section: "" });
     setDialogOpen(true);
   };
 
@@ -108,6 +113,11 @@ export default function StudentListPage() {
       } else {
         if (!values.password || values.password.length < 6) {
           toast.error("Password must be at least 6 characters");
+          setSubmitting(false);
+          return;
+        }
+        if (!values.section || !values.section.trim()) {
+          toast.error("Section is required");
           setSubmitting(false);
           return;
         }
@@ -151,6 +161,8 @@ export default function StudentListPage() {
     { key: "major", header: "Major", render: (r) => r.major || "—" },
     { key: "batch", header: "Batch", render: (r) => r.batch || "—" },
     { key: "semNow", header: "Semester", render: (r) => r.semNow || "—" },
+    { key: "section", header: "Section", render: (r) => r.section || "—" },
+    { key: "category", header: "Category", render: (r) => r.category || "—" },
     {
       key: "status",
       header: "Status",
@@ -287,6 +299,15 @@ export default function StudentListPage() {
                 {errors.semNow && <p className="text-sm text-destructive">{errors.semNow.message}</p>}
               </div>
             </div>
+            {!editing && (
+              <div className="space-y-1.5">
+                <Label htmlFor="section">Section</Label>
+                <Input id="section" {...register("section")} placeholder="e.g. A" />
+                <p className="text-xs text-muted-foreground">
+                  Major + Section becomes this student&apos;s default section (e.g. &quot;CSE-A&quot;).
+                </p>
+              </div>
+            )}
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>
                 Cancel

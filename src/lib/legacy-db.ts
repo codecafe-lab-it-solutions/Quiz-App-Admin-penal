@@ -38,6 +38,9 @@ export interface LegacyStudent {
   regStatus: string | null;
   attnOk: string | null;
   stuStatus: string | null;
+  // App-owned Section membership (2026-08-10 MOM), not a legacy column -
+  // comma-joined names if the student is in more than one section, null if none.
+  section: string | null;
 }
 
 export interface FacultyCourseMapping {
@@ -123,7 +126,8 @@ export async function getFacultyByRoll(roll: string): Promise<LegacyFaculty | nu
 export async function getStudentByRoll(roll: string): Promise<LegacyStudent | null> {
   const rows = await prisma.$queryRaw<
     {
-      roll: string; stu_name: string; user_email: string; major: string; batch: string; sem_now: string;
+      // sem_now is a real INT column - mysql2 returns a JS number for it.
+      roll: string; stu_name: string; user_email: string; major: string; batch: string; sem_now: number | null;
       status: number; reg_status: string | null; attn_ok: string | null; stu_status: string | null;
     }[]
   >`
@@ -138,14 +142,16 @@ export async function getStudentByRoll(roll: string): Promise<LegacyStudent | nu
   `;
   const row = rows[0];
   if (!row) return null;
+  const sections = await getSectionNamesByRolls([row.roll]);
   return {
     roll: row.roll,
     name: row.stu_name,
     email: row.user_email,
     major: row.major ?? "",
     batch: row.batch ?? "",
-    semNow: row.sem_now ?? "",
+    semNow: row.sem_now == null ? "" : String(row.sem_now),
     status: row.status,
+    section: sections.get(row.roll) ?? null,
     regStatus: row.reg_status,
     attnOk: row.attn_ok,
     stuStatus: row.stu_status,
@@ -180,6 +186,25 @@ export async function getStudentNamesByRolls(rolls: string[]): Promise<Map<strin
   return new Map(rows.map((r) => [r.stuRoll, r.stuName]));
 }
 
+// App-owned Section membership (2026-08-10 MOM) - joined in for the admin
+// student list/detail views. Comma-joins names for students in more than
+// one section (e.g. a Major+Section default plus a course-driven merged
+// section); excludes rows a human has explicitly removed.
+export async function getSectionNamesByRolls(rolls: string[]): Promise<Map<string, string>> {
+  if (rolls.length === 0) return new Map();
+  const rows = await prisma.sectionStudent.findMany({
+    where: { studentRoll: { in: [...new Set(rolls)] }, source: { not: "manual_removed" } },
+    include: { section: { select: { name: true } } },
+  });
+  const byRoll = new Map<string, string[]>();
+  for (const row of rows) {
+    const names = byRoll.get(row.studentRoll) ?? [];
+    names.push(row.section.name);
+    byRoll.set(row.studentRoll, names);
+  }
+  return new Map([...byRoll.entries()].map(([roll, names]) => [roll, names.join(", ")]));
+}
+
 export async function getFacultyNamesByRolls(rolls: string[]): Promise<Map<string, string>> {
   if (rolls.length === 0) return new Map();
   const rows = await prisma.isrFacultyTbl.findMany({ where: { roll: { in: [...new Set(rolls)] } } });
@@ -200,8 +225,8 @@ export async function listFaculty(params: { search?: string; page: number; pageS
     : Prisma.empty;
 
   const [items, countRows] = await Promise.all([
-    prisma.$queryRaw<{ roll: string; name: string; user_email: string; status: number; dept: string | null }[]>(Prisma.sql`
-      SELECT f.roll AS roll, f.name AS name, l.user_email AS user_email, l.status AS status, f.dept AS dept
+    prisma.$queryRaw<{ roll: string; name: string; user_email: string; status: number; dept: string | null; fac_status: string | null }[]>(Prisma.sql`
+      SELECT f.roll AS roll, f.name AS name, l.user_email AS user_email, l.status AS status, f.dept AS dept, f.fac_status AS fac_status
       FROM isr_faculty_tbl f
       JOIN isr_login_tbl l ON l.user_roll = f.roll AND l.user_type = 'FAC'
       ${whereClause}
@@ -217,7 +242,7 @@ export async function listFaculty(params: { search?: string; page: number; pageS
   ]);
 
   return {
-    items: items.map((r) => ({ roll: r.roll, name: r.name, email: r.user_email, status: r.status, dept: r.dept })),
+    items: items.map((r) => ({ roll: r.roll, name: r.name, email: r.user_email, status: r.status, dept: r.dept, facStatus: r.fac_status })),
     total: Number(countRows[0]?.total ?? 0),
   };
 }
@@ -249,10 +274,11 @@ export async function listStudents(params: {
 
   const [items, countRows] = await Promise.all([
     prisma.$queryRaw<
-      { roll: string; stu_name: string; user_email: string; major: string; batch: string; sem_now: string; status: number }[]
+      // sem_now is a real INT column - mysql2 returns a JS number for it.
+      { roll: string; stu_name: string; user_email: string; major: string; batch: string; sem_now: number | null; status: number; category: string | null }[]
     >(Prisma.sql`
       SELECT d.stu_roll AS roll, d.stu_name AS stu_name, l.user_email AS user_email, l.status AS status,
-             m.major AS major, m.batch AS batch, m.sem_now AS sem_now
+             m.major AS major, m.batch AS batch, m.sem_now AS sem_now, d.category AS category
       FROM isr_stu_data_tbl d
       JOIN isr_login_tbl l ON l.user_roll = d.stu_roll AND l.user_type = 'STU'
       LEFT JOIN isr_stu_main_tbl m ON m.roll = d.stu_roll
@@ -269,6 +295,8 @@ export async function listStudents(params: {
     `),
   ]);
 
+  const sections = await getSectionNamesByRolls(items.map((r) => r.roll));
+
   return {
     items: items.map((r) => ({
       roll: r.roll,
@@ -276,8 +304,10 @@ export async function listStudents(params: {
       email: r.user_email,
       major: r.major ?? "",
       batch: r.batch ?? "",
-      semNow: r.sem_now ?? "",
+      semNow: r.sem_now == null ? "" : String(r.sem_now),
       status: r.status,
+      category: r.category,
+      section: sections.get(r.roll) ?? null,
     })),
     total: Number(countRows[0]?.total ?? 0),
   };
@@ -379,13 +409,16 @@ export async function createStudent(data: {
     }),
     prisma.isrStuDataTbl.create({ data: { stuRoll: data.roll, stuName: data.name } }),
     prisma.isrStuMainTbl.create({
-      data: { roll: data.roll, major: data.major, name: data.name, batch: data.batch, semNow: data.semNow },
+      // isr_stu_main_tbl.sem_now is a real INT column - convert at this boundary
+      // so every app-facing surface (forms, validators, API types) can keep
+      // treating the semester value as a string.
+      data: { roll: data.roll, major: data.major, name: data.name, batch: data.batch, semNow: Number(data.semNow) },
     }),
   ]);
 
   return {
     roll: data.roll, name: data.name, email: data.email, major: data.major, batch: data.batch, semNow: data.semNow,
-    status: 1, regStatus: null, attnOk: null, stuStatus: null,
+    status: 1, section: null, regStatus: null, attnOk: null, stuStatus: null,
   };
 }
 
@@ -422,14 +455,14 @@ export async function updateStudent(
         ...(data.name ? { name: data.name } : {}),
         ...(data.major ? { major: data.major } : {}),
         ...(data.batch ? { batch: data.batch } : {}),
-        ...(data.semNow ? { semNow: data.semNow } : {}),
+        ...(data.semNow ? { semNow: Number(data.semNow) } : {}),
       },
       create: {
         roll,
         name: data.name ?? "",
         major: data.major ?? "",
         batch: data.batch ?? "",
-        semNow: data.semNow ?? "",
+        semNow: data.semNow ? Number(data.semNow) : 0,
       },
     });
   }

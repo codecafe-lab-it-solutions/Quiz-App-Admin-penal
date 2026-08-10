@@ -57,6 +57,17 @@ export async function PATCH(
 
     const { sectionIds, ...rest } = quizUpdateSchema.parse(await req.json());
 
+    // Faculty reassignment is an admin-only action (2026-08-10 MOM) - a
+    // faculty member reassigning their own quiz away isn't part of this
+    // request, so it's blocked here rather than left to the UI to hide.
+    if (rest.facultyRoll !== undefined) {
+      if (user.role !== "admin") {
+        throw new ApiError(403, "Only an admin can reassign a quiz to another faculty member");
+      }
+      const faculty = await prisma.isrFacultyTbl.findUnique({ where: { roll: rest.facultyRoll } });
+      if (!faculty) throw new ApiError(404, "No faculty found for this roll number");
+    }
+
     const quiz = await prisma.$transaction(async (tx) => {
       if (sectionIds) {
         await tx.quizSection.deleteMany({

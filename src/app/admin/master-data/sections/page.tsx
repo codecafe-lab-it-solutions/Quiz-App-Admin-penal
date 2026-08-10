@@ -25,6 +25,7 @@ import {
 } from "@/components/ui/dialog";
 import { Plus, Pencil, Trash2, Users } from "lucide-react";
 import { SectionMembersDialog } from "./section-members-dialog";
+import { StudentPicker } from "./student-picker";
 
 interface Course {
   id: number;
@@ -58,6 +59,7 @@ export default function SectionsPage() {
   const [editing, setEditing] = useState<Section | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [membersSection, setMembersSection] = useState<Section | null>(null);
+  const [selectedStudents, setSelectedStudents] = useState<Set<string>>(new Set());
 
   const params = new URLSearchParams({ page: String(page), pageSize: "10", search });
   const { data, isLoading, mutate } = useSWR(`/api/admin/sections?${params.toString()}`, fetcher);
@@ -76,6 +78,7 @@ export default function SectionsPage() {
 
   const openCreate = () => {
     setEditing(null);
+    setSelectedStudents(new Set());
     reset({ name: "", courseIds: [] });
     setDialogOpen(true);
   };
@@ -93,7 +96,7 @@ export default function SectionsPage() {
         await apiClient.patch(`/api/admin/sections/${editing.id}`, values);
         toast.success("Section updated");
       } else {
-        await apiClient.post("/api/admin/sections", values);
+        await apiClient.post("/api/admin/sections", { ...values, studentRolls: [...selectedStudents] });
         toast.success("Section created");
       }
       setDialogOpen(false);
@@ -175,11 +178,13 @@ export default function SectionsPage() {
       )}
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className={editing ? "sm:max-w-md" : "sm:max-w-lg"}>
           <DialogHeader>
             <DialogTitle>{editing ? "Edit Section" : "Add Section"}</DialogTitle>
             <DialogDescription>
-              {editing ? "Update this section." : "Create a section. Selecting multiple courses merges their rosters (e.g. combined batches)."}
+              {editing
+                ? "Update this section."
+                : "Create a section. Selecting multiple courses merges their rosters (e.g. combined batches). Selected students are added directly on save."}
             </DialogDescription>
           </DialogHeader>
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-4" noValidate>
@@ -206,6 +211,12 @@ export default function SectionsPage() {
               </div>
               {errors.courseIds && <p className="text-sm text-destructive">{errors.courseIds.message}</p>}
             </div>
+            {!editing && (
+              <div className="space-y-1.5">
+                <Label>Students</Label>
+                <StudentPicker selected={selectedStudents} onChange={setSelectedStudents} />
+              </div>
+            )}
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>
                 Cancel

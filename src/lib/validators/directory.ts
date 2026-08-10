@@ -14,7 +14,12 @@ export const studentCreateSchema = z.object({
   password: z.string().min(6, "Password must be at least 6 characters"),
   major: z.string().trim().min(1, "Major is required"),
   batch: z.string().trim().min(1, "Batch is required"),
-  semNow: z.string().trim().min(1, "Semester is required"),
+  // isr_stu_main_tbl.sem_now is a real INT column in the legacy database, so
+  // this must be a plain numeric string (no "Final", "III", etc.).
+  semNow: z.string().trim().regex(/^\d+$/, "Semester must be a whole number"),
+  // Major + Section is this student's default section (2026-08-10 MOM) -
+  // app-owned, not a legacy column; see assignStudentToDefaultSection.
+  section: z.string().trim().min(1, "Section is required"),
 });
 
 export const facultyUpdateSchema = z.object({
@@ -29,7 +34,7 @@ export const studentUpdateSchema = z.object({
   password: z.string().min(6, "Password must be at least 6 characters").optional(),
   major: z.string().trim().min(1, "Major is required").optional(),
   batch: z.string().trim().min(1, "Batch is required").optional(),
-  semNow: z.string().trim().min(1, "Semester is required").optional(),
+  semNow: z.string().trim().regex(/^\d+$/, "Semester must be a whole number").optional(),
 });
 
 export const loginStatusUpdateSchema = z.object({

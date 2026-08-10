@@ -94,8 +94,8 @@ async function ensureStudent(data: { roll: string; name: string; email: string; 
   });
   return prisma.isrStuMainTbl.upsert({
     where: { roll: data.roll },
-    update: { major: data.major, batch: data.batch, semNow: data.semNow, name: data.name },
-    create: { roll: data.roll, major: data.major, batch: data.batch, semNow: data.semNow, name: data.name },
+    update: { major: data.major, batch: data.batch, semNow: Number(data.semNow), name: data.name },
+    create: { roll: data.roll, major: data.major, batch: data.batch, semNow: Number(data.semNow), name: data.name },
   });
 }
 
@@ -109,8 +109,11 @@ async function ensureFacultyCourseMapping(data: { sem: string; subList: string; 
 
 // isr_reg_<batch>_tbl is a dynamic, per-batch table (see BatchTableRegistry /
 // src/lib/legacy-db.ts) - not a Prisma model, so it's created with raw SQL.
-// Column names (`stu_roll`, `sub_code`, `sub_list`) match the confirmed
-// real legacy schema legacy-db.ts reads/writes everywhere it touches this table.
+// Column set matches the confirmed real isr_reg_<batch>_tbl export exactly
+// (reg_sr, b1_sem, sem, sub_list, sub_code, stu_roll, grade, grade_flag,
+// sub_flag, frozen, rs_flag, rs_ref) - legacy-db.ts only reads/writes
+// stu_roll/sub_code/sub_list, but the rest are kept for full structural
+// parity with production (see prisma/migrations/20260810090000_legacy_reg_table_full_parity).
 async function ensureBatchRegistrationTable(batchName: string, tableName: string) {
   // Self-healing: this exact table is entirely owned/created by this seed
   // script (never real legacy data - a real isr_reg_<batch>_tbl in
@@ -131,10 +134,18 @@ async function ensureBatchRegistrationTable(batchName: string, tableName: string
 
   await prisma.$executeRawUnsafe(`
     CREATE TABLE IF NOT EXISTS \`${tableName}\` (
-      id INT AUTO_INCREMENT PRIMARY KEY,
-      stu_roll VARCHAR(50) NOT NULL,
+      reg_sr INT AUTO_INCREMENT PRIMARY KEY,
+      b1_sem INT NULL,
+      sem INT NULL,
+      sub_list VARCHAR(20) NOT NULL,
       sub_code VARCHAR(50) NOT NULL,
-      sub_list VARCHAR(20) NOT NULL
+      stu_roll VARCHAR(50) NOT NULL,
+      grade CHAR(2) NULL,
+      grade_flag CHAR(1) NULL,
+      sub_flag CHAR(1) NULL DEFAULT 'Y',
+      frozen CHAR(1) NULL DEFAULT 'N',
+      rs_flag VARCHAR(5) NULL DEFAULT 'N',
+      rs_ref INT NULL DEFAULT 0
     )
   `);
   await prisma.batchTableRegistry.upsert({

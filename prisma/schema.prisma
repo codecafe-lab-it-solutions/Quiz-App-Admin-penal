@@ -224,6 +224,22 @@ model IsrLoginTbl {
   // 1-Active, 2-Inactive (isr_login_tbl.status per confirmed legacy column list).
   status       Int     @default(1)
 
+  // Remaining columns, confirmed against the real isr_login_tbl export, added
+  // for full structural parity with the legacy table — so this app's own copy
+  // has the same columns whether DATABASE_URL points at a local placeholder
+  // or the real production legacy database.
+  userPkId       Int?      @map("user_pk_id") // real auto-increment PK; app looks rows up by user_roll everywhere, this is informational only
+  userMobile     String?   @map("user_mobile")
+  refPassword    String?   @map("ref_password")
+  centreLocation String?   @map("centre_location")
+  programName    String?   @map("program_name")
+  batch          String?
+  branch         String? // Department Id of DUGC/DPGC
+  userPermission String?   @map("user_permission")
+  healthId       String?   @map("health_id")
+  loginFlag      String?   @map("login_flag") @default("Y")
+  timestamp      DateTime? @default(now())
+
   @@map("isr_login_tbl")
 }
 
@@ -238,6 +254,24 @@ model IsrFacultyTbl {
   facStatus String? @map("fac_status") // R-Regular, V-Visiting, P-PFD, T-Temporary
   address  String? @db.Text
 
+  // Remaining columns for full structural parity with the real isr_faculty_tbl.
+  sr                   Int?      // real auto-increment PK; app looks up by roll everywhere
+  dob                  DateTime? @db.Date
+  password             String?
+  email                String? // this table's own email column — distinct from isr_login_tbl.user_email
+  newPassword          String?   @map("new_password")
+  requestStatus        Int?      @map("request_status") // 1-Confirm, 2-Pending
+  role                 String?
+  feedbackView         String?   @map("feedback_view") @default("N")
+  invigilatorStatus    Int?      @map("invigilator_status") @default(10)
+  unavailableDatesinvi String?   @map("unavailable_datesinvi") @db.Text
+  dateOfJoining        DateTime? @map("date_of_joining") @db.Date
+  dateOfExit           DateTime? @map("date_of_exit") @db.Date
+  payLevel             Int?      @map("pay_level") @default(0)
+  payLevelId           Int?      @map("pay_level_id") @db.UnsignedInt
+  hometownCity         String?   @map("hometown_city")
+  hometownState        String?   @map("hometown_state")
+
   @@map("isr_faculty_tbl")
 }
 
@@ -245,6 +279,82 @@ model IsrStuDataTbl {
   stuRoll String  @id @map("stu_roll")
   stuName String  @map("stu_name")
   mobile  String?
+
+  // Remaining columns for full structural parity with the real isr_stu_data_tbl
+  // — a ~60-column personal/family/hostel profile. Kept read-only; none of
+  // these are surfaced on admin list views by default (several are sensitive
+  // — Aadhaar, bank details, parent contact info). Pull individual fields
+  // into a detail view deliberately, on request.
+  dataSr                 Int?      @map("data_sr") // real auto-increment PK; app looks up by stu_roll everywhere
+  uniqueCode             String?   @map("unique_code")
+  stuSr                  Int?      @map("stu_sr")
+  email                  String?
+  joiningYear            Int?      @map("joining_year")
+  centreLocation         String?   @map("centre_location")
+  localAddress           String?   @map("local_address")
+  homeAddress            String?   @map("home_address")
+  homePhone              String?   @map("home_phone")
+  contactPerson          String?   @map("contact_person")
+  bloodGroup             String?   @map("blood_group")
+  stuHindiname           String?   @map("stu_hindiname")
+  stuGender              String?   @map("stu_gender")
+  nationality            String?
+  personalContactnumber  String?   @map("personal_contactnumber")
+  dateBirth              String?   @map("date_birth")
+  aadhaarCard            String?   @map("aadhaar_card")
+  jacRegistrationNumber  String?   @map("jac_registration_number")
+  channelAdmission       String?   @map("channel_admission")
+  scoreCard              String?   @map("score_card")
+  awardLetters           String?   @map("award_letters")
+  category               String?
+  pd                     String?
+  km                     String?
+  religion               String?
+  lastSchoolname         String?   @map("last_schoolname") @db.Text
+  schoolCity             String?   @map("school_city")
+  schoolPincode          String?   @map("school_pincode")
+  schoolState            String?   @map("school_state")
+  schoolBoard            String?   @map("school_board")
+  percentageinTwelve     String?   @map("percentagein_twelve")
+  houseNumber            String?   @map("house_number")
+  homeLandmark           String?   @map("home_landmark")
+  homeArea               String?   @map("home_area")
+  homeCity               String?   @map("home_city")
+  homePincode            String?   @map("home_pincode")
+  homeState              String?   @map("home_state")
+  homeCountry            String?   @map("home_country")
+  fatherName             String?   @map("father_name")
+  fathernameHindi        String?   @map("fathername_hindi")
+  fatherOccupation       String?   @map("father_occupation")
+  fatherCompanyname      String?   @map("father_companyname")
+  fatherDesignation      String?   @map("father_designation")
+  fatherContactnumber    String?   @map("father_contactnumber")
+  fatherEmailid          String?   @map("father_emailid")
+  motherName             String?   @map("mother_name")
+  motherOccupation       String?   @map("mother_occupation")
+  motherCompanyname      String?   @map("mother_companyname")
+  motherDesignation      String?   @map("mother_designation")
+  motherContactnumber    String?   @map("mother_contactnumber")
+  motherEmailid          String?   @map("mother_emailid")
+  annualFamilyincome     String?   @map("annual_familyincome")
+  emergencyPhonenumber   String?   @map("emergency_phonenumber")
+  // Real column is NOT NULL with no default - kept optional here so this
+  // app's create/update flows (which don't currently collect it) don't break;
+  // supply a value before inserting against the real legacy table, or the
+  // INSERT will be rejected there.
+  emergencyName          String?   @map("emergency_name")
+  bankName               String?   @map("bank_name")
+  bankIfsc               String?   @map("bank_ifsc")
+  bankAccountnumber      String?   @map("bank_accountnumber")
+  lastUpdate             DateTime? @map("last_update")
+  permanentAddress       String?   @map("permanent_address") @db.Text
+  correspondenceAddress  String?   @map("correspondence_address") @db.Text
+  hostelAddress          String?   @map("hostel_address") @db.Text
+  hostelId               Int?      @map("hostel_id")
+  roomNumber             String?   @map("room_number")
+  bedCode                String?   @map("bed_code")
+  hostelAssignDate       DateTime? @map("hostel_assign_date") @db.Date
+  hostelValidityDate     DateTime? @map("hostel_validity_date") @db.Date
 
   @@map("isr_stu_data_tbl")
 }
@@ -254,23 +364,49 @@ model IsrStuMainTbl {
   major        String
   name         String
   batch        String
-  semNow       String  @map("sem_now")
+  // Real column is INT, not VARCHAR (isr_stu_main_tbl.sem_now) — kept as a
+  // number to match the legacy type exactly; every app-facing surface
+  // (forms, API types) still treats it as a string and converts at this
+  // boundary, see getStudentByRoll/createStudent/updateStudent.
+  semNow       Int     @map("sem_now")
   // Confirmed academic-status columns, surfaced read-only in admin/student views.
   regStatus    String? @map("reg_status")
   attnOk       String? @map("attn_ok")
   stuStatus    String? @map("stu_status")
 
+  // Remaining columns for full structural parity with the real isr_stu_main_tbl.
+  sr            Int?      // real auto-increment PK; app looks up by roll everywhere
+  dob           String?
+  password      String?
+  phdCategory   String?   @map("phd_category")
+  feeOk         String?   @map("fee_OK") @default("Y")
+  cgpaOk        String?   @map("cgpa_OK") @default("Y")
+  hostelStatus  String    @map("hostel_status") @default("N")
+  lateUpto      Int?      @map("late_upto") @default(0)
+  presentStatus String?   @map("present_status") @default("N")
+  presentRemark String?   @map("present_remark") @db.Text
+  newPassword   String?   @map("new_password")
+  requestStatus Int?      @map("request_status")
+
   @@map("isr_stu_main_tbl")
 }
 
-// PK assumed autoincrement surrogate — unconfirmed, see spec open item #3.
+// PK confirmed as `avai_sr` from the real isr_sub_available_tbl export — the
+// Prisma field is still called `id` (existing code already reads/writes it
+// as such), @map just points it at the real column name.
 model IsrSubAvailableTbl {
-  id      Int    @id @default(autoincrement())
+  id      Int    @id @default(autoincrement()) @map("avai_sr")
   sem     String
   subList String @map("sub_list") // semester-cycle code, e.g. "C2" — admin-configurable "current" value
   subCode String @map("sub_code")
   facRoll String @map("fac_roll")
   branch  String
+
+  // Remaining columns for full structural parity with the real table.
+  b1Sem   Int?    @map("b1_sem")
+  semList String? @map("sem_list")
+  slot    String?
+  facOrder Int    @map("fac_order") @default(1)
 
   @@map("isr_sub_available_tbl")
 }
@@ -278,9 +414,11 @@ model IsrSubAvailableTbl {
 // Full curriculum/course catalog — read-only. Resolves a bare sub_code (from
 // isr_sub_available_tbl / isr_reg_<batch>_tbl) into a human-readable title,
 // credits and branch for course-list screens (§4.6 of the integration spec).
-// PK assumed autoincrement surrogate, matching the isr_sub_available_tbl pattern.
+// PK confirmed as `sr` from the real isr_curriculum_tbl export — the Prisma
+// field is still called `id` (existing code already reads it as such), @map
+// just points it at the real column name.
 model IsrCurriculumTbl {
-  id         Int     @id @default(autoincrement())
+  id         Int     @id @default(autoincrement()) @map("sr")
   subList    String  @map("sub_list")
   bsmsBranch String  @map("bsms_branch")
   bsmsCode   String  @map("bsms_code") // course code, joins to sub_code elsewhere
@@ -290,6 +428,14 @@ model IsrCurriculumTbl {
   p          Int     @default(0)
   bsmsCredit Int     @default(0) @map("bsms_credit")
   sem        String?
+
+  // Remaining columns for full structural parity with the real table.
+  sp        String?
+  deptCore  String? @map("dept_core")
+  deptElec  String? @map("dept_elec")
+  elecNum   String? @map("elec_num")
+  openElec  String? @map("open_elec")
+  deptMinor String? @map("dept_minor")
 
   @@index([bsmsCode])
   @@map("isr_curriculum_tbl")

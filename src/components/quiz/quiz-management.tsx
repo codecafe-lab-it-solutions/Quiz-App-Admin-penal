@@ -50,6 +50,7 @@ interface QuizDetail {
   allowSkipSwitch: boolean;
   requireLocation: boolean;
   course: { id: number; name: string; code: string };
+  facultyRoll: string;
   sections: { section: { id: number; name: string } }[];
   building: { id: number; name: string };
   questions: (QuestionRow & { id: number })[];
@@ -138,6 +139,7 @@ export function QuizManagement({
   const [savingDetails, setSavingDetails] = useState(false);
   const [editForm, setEditForm] = useState({
     title: "",
+    facultyRoll: "",
     buildingId: "",
     startTime: "",
     endTime: "",
@@ -168,7 +170,7 @@ export function QuizManagement({
     (url: string) =>
       fetcher<{ items: SubjectiveAnswer[]; ungradedCount: number }>(url),
   );
-  const { data: resultsData } = useSWR(
+  const { data: resultsData, mutate: mutateResults } = useSWR(
     quiz?.status === "completed" ? `/api/faculty/quiz/${quizId}/results` : null,
     (url: string) =>
       fetcher<{
@@ -269,6 +271,7 @@ export function QuizManagement({
   const openEditDialog = () => {
     setEditForm({
       title: quiz.title,
+      facultyRoll: quiz.facultyRoll,
       buildingId: String(quiz.building.id),
       startTime: toLocalDateTimeInputValue(quiz.startTime),
       endTime: toLocalDateTimeInputValue(quiz.endTime),
@@ -297,10 +300,18 @@ export function QuizManagement({
       toast.error("Total marks must be a positive number");
       return;
     }
+    if (role === "admin" && !editForm.facultyRoll.trim()) {
+      toast.error("Faculty roll is required");
+      return;
+    }
     setSavingDetails(true);
     try {
       await apiClient.patch(`/api/faculty/quiz/${quizId}`, {
         title: editForm.title.trim(),
+        // Reassignment is admin-only server-side too; only send it as admin
+        // so a faculty member's save never trips the 403 for a field they
+        // can't see or touch.
+        ...(role === "admin" ? { facultyRoll: editForm.facultyRoll.trim() } : {}),
         buildingId: Number(editForm.buildingId),
         startTime: new Date(editForm.startTime).toISOString(),
         endTime: new Date(editForm.endTime).toISOString(),
@@ -499,21 +510,6 @@ export function QuizManagement({
     }
   };
 
-  const handleDeclareResult = async () => {
-    try {
-      const result = await apiClient.post<{ declaredCount: number }>(
-        `/api/faculty/quiz/${quizId}/declare-result`,
-      );
-      toast.success(`Declared results for ${result.declaredCount} student(s)`);
-    } catch (error) {
-      toast.error(
-        error instanceof ApiClientError
-          ? error.message
-          : "Failed to declare results",
-      );
-    }
-  };
-
   const handlePublishResult = async () => {
     try {
       const result = await apiClient.post<{ publishedCount: number }>(
@@ -522,6 +518,7 @@ export function QuizManagement({
       toast.success(
         `Published results for ${result.publishedCount} student(s)`,
       );
+      mutateResults();
     } catch (error) {
       toast.error(
         error instanceof ApiClientError
@@ -767,9 +764,6 @@ export function QuizManagement({
               )}
             </CardTitle>
             <div className="flex gap-2">
-              <Button size="sm" variant="outline" onClick={handleDeclareResult}>
-                Declare Result
-              </Button>
               <Button size="sm" onClick={handlePublishResult}>
                 Publish Result
               </Button>
@@ -819,6 +813,20 @@ export function QuizManagement({
                 onChange={(e) => setEditForm((f) => ({ ...f, title: e.target.value }))}
               />
             </div>
+            {role === "admin" && (
+              <div className="space-y-1.5">
+                <Label htmlFor="edit-faculty-roll">Faculty roll</Label>
+                <Input
+                  id="edit-faculty-roll"
+                  value={editForm.facultyRoll}
+                  onChange={(e) => setEditForm((f) => ({ ...f, facultyRoll: e.target.value }))}
+                  placeholder="e.g. FAC2025001"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Reassign this quiz to a different faculty member — allowed even while the quiz is live.
+                </p>
+              </div>
+            )}
             <div className="space-y-1.5">
               <Label>Building</Label>
               <Select
@@ -1071,7 +1079,6 @@ function ResultsReportCard({
     { label: "Submitted", value: data.summary.submittedCount },
     { label: "Not attempted", value: data.summary.notAttemptedCount },
     { label: "Absent", value: data.summary.absentCount },
-    { label: "Declared", value: data.summary.declaredCount },
     { label: "Published", value: data.summary.publishedCount },
     { label: "Needs grading", value: data.summary.ungradedCount },
   ];

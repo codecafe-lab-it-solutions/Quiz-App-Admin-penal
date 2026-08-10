@@ -4,6 +4,7 @@ import { getAuthUser, requireRole } from "@/lib/auth";
 import { paginationSchema, paginationMeta } from "@/lib/validators/common";
 import { studentCreateSchema } from "@/lib/validators/directory";
 import { listStudents, createStudent } from "@/lib/legacy-db";
+import { assignStudentToDefaultSection } from "@/lib/section-sync";
 
 // Student master data is sourced live from the legacy isr_login_tbl /
 // isr_stu_data_tbl / isr_stu_main_tbl tables. POST writes directly into
@@ -33,10 +34,11 @@ export async function POST(req: NextRequest) {
     const user = getAuthUser(req);
     requireRole(user, "admin");
 
-    const body = studentCreateSchema.parse(await req.json());
-    const student = await createStudent(body);
+    const { section: sectionCode, ...studentData } = studentCreateSchema.parse(await req.json());
+    const student = await createStudent(studentData);
+    const section = await assignStudentToDefaultSection(studentData.major, sectionCode, studentData.roll);
 
-    return created(student);
+    return created({ ...student, section: section.name });
   } catch (error) {
     return handleApiError(error);
   }

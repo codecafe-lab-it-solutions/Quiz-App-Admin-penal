@@ -3,9 +3,6 @@ import {
   Users,
   GraduationCap,
   Link2,
-  Building2,
-  BookOpen,
-  CalendarRange,
   LayoutGrid,
   MapPin,
   Radio,
@@ -53,12 +50,9 @@ export const ADMIN_NAV_GROUPS: NavGroup[] = [
   {
     title: "Master Data",
     items: [
-      { label: "Courses", href: "/admin/master-data/courses", icon: BookOpen },
-      {
-        label: "Sessions",
-        href: "/admin/master-data/sessions",
-        icon: CalendarRange,
-      },
+      // Courses and Sessions menu items hidden per 2026-08-10 MOM (Sachin) -
+      // routes still exist (/admin/master-data/courses, /sessions), just not
+      // linked from the nav.
       {
         label: "Sections",
         href: "/admin/master-data/sections",

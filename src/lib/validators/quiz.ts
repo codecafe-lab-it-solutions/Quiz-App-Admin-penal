@@ -31,6 +31,11 @@ export type QuizCreateInput = z.infer<typeof quizCreateSchema>;
 
 export const quizUpdateSchema = z.object({
   title: z.string().trim().min(3).optional(),
+  // Faculty reassignment (2026-08-10 MOM) - admin-only in the UI, but not
+  // role-gated here since the route already requires faculty|admin for the
+  // whole PATCH; deliberately allowed even on a live quiz, same as every
+  // other field on this schema.
+  facultyRoll: z.string().trim().min(1).optional(),
   courseId: z.coerce.number().int().positive().optional(),
   sectionIds: z.array(z.coerce.number().int().positive()).min(1).optional(),
   sessionId: z.coerce.number().int().positive().optional(),

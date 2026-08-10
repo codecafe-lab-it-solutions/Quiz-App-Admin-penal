@@ -100,6 +100,23 @@ export async function syncSection(sectionId: number): Promise<void> {
   await Promise.all([syncSectionStudents(sectionId), syncSectionFaculty(sectionId)]);
 }
 
+/**
+ * Resolves a student's default section from Major + Section (per the
+ * 2026-08-10 MOM), finding an existing section named e.g. "CSE-A" or
+ * creating one, then adding the student to it as a manual member. A brand
+ * new section created this way has no linked courses, so course-roster
+ * resync never touches it - membership here is stable until an admin
+ * changes it directly.
+ */
+export async function assignStudentToDefaultSection(major: string, sectionCode: string, roll: string) {
+  const name = `${major.trim()}-${sectionCode.trim()}`;
+  const section =
+    (await prisma.section.findFirst({ where: { name } })) ??
+    (await prisma.section.create({ data: { name } }));
+  await addManualSectionStudent(section.id, roll);
+  return section;
+}
+
 /** Manually add a roll to a section, overriding any future auto-sync. */
 export async function addManualSectionStudent(sectionId: number, roll: string) {
   return prisma.sectionStudent.upsert({

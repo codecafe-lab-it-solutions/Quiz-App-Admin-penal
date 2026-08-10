@@ -31,7 +31,16 @@ interface Faculty {
   name: string;
   email: string;
   status: number; // 1-Active, 2-Inactive
+  dept: string | null;
+  facStatus: string | null; // R-Regular, V-Visiting, P-PFD, T-Temporary
 }
+
+const FAC_STATUS_LABEL: Record<string, string> = {
+  R: "Regular",
+  V: "Visiting",
+  P: "PFD",
+  T: "Temporary",
+};
 
 interface ListResponse<T> {
   items: T[];
@@ -131,6 +140,8 @@ export default function FacultyListPage() {
     { key: "name", header: "Name", render: (r) => <span className="font-medium">{r.name}</span> },
     { key: "email", header: "Email", render: (r) => r.email },
     { key: "roll", header: "Roll", render: (r) => r.roll },
+    { key: "dept", header: "Department", render: (r) => r.dept || "—" },
+    { key: "facStatus", header: "Type", render: (r) => (r.facStatus ? FAC_STATUS_LABEL[r.facStatus] ?? r.facStatus : "—") },
     {
       key: "status",
       header: "Status",

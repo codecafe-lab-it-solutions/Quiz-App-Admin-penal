@@ -28,6 +28,9 @@ export const sessionUpdateSchema = sessionBaseSchema.partial();
 export const sectionSchema = z.object({
   name: z.string().trim().min(1, "Section name is required"),
   courseIds: z.array(z.coerce.number().int().positive()).min(1, "Select at least one course"),
+  // Direct student selection at section-creation time (2026-08-10 MOM) -
+  // optional so existing callers (and section edits) are unaffected.
+  studentRolls: z.array(z.string().trim().min(1)).optional().default([]),
 });
 export type SectionInput = z.infer<typeof sectionSchema>;
 
@@ -35,6 +38,11 @@ export const sectionMemberSchema = z.object({
   roll: z.string().trim().min(1, "Roll number is required"),
 });
 export type SectionMemberInput = z.infer<typeof sectionMemberSchema>;
+
+export const sectionBulkMemberSchema = z.object({
+  rolls: z.array(z.string().trim().min(1)).min(1, "Select at least one student"),
+});
+export type SectionBulkMemberInput = z.infer<typeof sectionBulkMemberSchema>;
 
 export const buildingSchema = z.object({
   name: z.string().trim().min(2, "Building name is required"),
