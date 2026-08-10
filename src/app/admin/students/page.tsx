@@ -294,7 +294,7 @@ export default function StudentListPage() {
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div className="space-y-1.5">
                 <Label htmlFor="roll">Roll</Label>
-                <Input id="roll" {...register("roll")} placeholder="e.g. R2025001" disabled={!!editing} />
+                <Input id="roll" {...register("roll")} placeholder="e.g. 25PE3001" disabled={!!editing} />
                 {errors.roll && <p className="text-sm text-destructive">{errors.roll.message}</p>}
               </div>
               <div className="space-y-1.5">
@@ -321,12 +321,12 @@ export default function StudentListPage() {
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
               <div className="space-y-1.5">
                 <Label htmlFor="major">Major</Label>
-                <Input id="major" {...register("major")} placeholder="e.g. CSE" />
+                <Input id="major" {...register("major")} placeholder="e.g. PE" />
                 {errors.major && <p className="text-sm text-destructive">{errors.major.message}</p>}
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="batch">Batch</Label>
-                <Input id="batch" {...register("batch")} placeholder="e.g. 2025" />
+                <Input id="batch" {...register("batch")} placeholder="e.g. btechpeg25" />
                 {errors.batch && <p className="text-sm text-destructive">{errors.batch.message}</p>}
               </div>
               <div className="space-y-1.5">

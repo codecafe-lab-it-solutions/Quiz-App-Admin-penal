@@ -869,7 +869,7 @@ export function QuizManagement({
                   id="edit-faculty-roll"
                   value={editForm.facultyRoll}
                   onChange={(e) => setEditForm((f) => ({ ...f, facultyRoll: e.target.value }))}
-                  placeholder="e.g. FAC2025001"
+                  placeholder="e.g. RF0223"
                 />
                 <p className="text-xs text-muted-foreground">
                   Reassign this quiz to a different faculty member — allowed even while the quiz is live.

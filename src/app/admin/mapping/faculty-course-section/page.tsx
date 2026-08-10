@@ -239,7 +239,7 @@ export default function FacultyMappingPage() {
               <Input
                 id="facRoll"
                 {...register("facRoll")}
-                placeholder="e.g. F2025001"
+                placeholder="e.g. RF0223"
               />
               {errors.facRoll && (
                 <p className="text-sm text-destructive">
@@ -252,7 +252,7 @@ export default function FacultyMappingPage() {
               <Input
                 id="subCode"
                 {...register("subCode")}
-                placeholder="e.g. CS201"
+                placeholder="e.g. PE202"
               />
               {errors.subCode && (
                 <p className="text-sm text-destructive">
@@ -266,7 +266,7 @@ export default function FacultyMappingPage() {
                 <Input
                   id="branch"
                   {...register("branch")}
-                  placeholder="e.g. CSE"
+                  placeholder="e.g. DPE"
                 />
                 {errors.branch && (
                   <p className="text-sm text-destructive">

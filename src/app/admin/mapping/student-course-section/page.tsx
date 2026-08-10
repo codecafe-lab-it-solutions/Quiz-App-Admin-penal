@@ -193,7 +193,7 @@ export default function StudentMappingPage() {
                   setRoll(e.target.value);
                   if (e.target.value) setCourseCode("");
                 }}
-                placeholder="e.g. R2025001"
+                placeholder="e.g. 25PE3001"
               />
             </div>
             <div className="space-y-1.5">
@@ -205,7 +205,7 @@ export default function StudentMappingPage() {
                   setCourseCode(e.target.value);
                   if (e.target.value) setRoll("");
                 }}
-                placeholder="e.g. CS201"
+                placeholder="e.g. PE202"
               />
             </div>
           </div>
@@ -243,7 +243,7 @@ export default function StudentMappingPage() {
               <Input
                 id="mappingRoll"
                 {...register("roll")}
-                placeholder="e.g. R2025001"
+                placeholder="e.g. 25PE3001"
               />
               {errors.roll && (
                 <p className="text-sm text-destructive">
@@ -256,7 +256,7 @@ export default function StudentMappingPage() {
               <Input
                 id="mappingSubCode"
                 {...register("subCode")}
-                placeholder="e.g. CS201"
+                placeholder="e.g. PE202"
               />
               {errors.subCode && (
                 <p className="text-sm text-destructive">

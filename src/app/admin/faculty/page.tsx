@@ -236,7 +236,7 @@ export default function FacultyListPage() {
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-4" noValidate>
             <div className="space-y-1.5">
               <Label htmlFor="roll">Roll</Label>
-              <Input id="roll" {...register("roll")} placeholder="e.g. F2025001" disabled={!!editing} />
+              <Input id="roll" {...register("roll")} placeholder="e.g. RF0223" disabled={!!editing} />
               {errors.roll && <p className="text-sm text-destructive">{errors.roll.message}</p>}
             </div>
             <div className="space-y-1.5">
