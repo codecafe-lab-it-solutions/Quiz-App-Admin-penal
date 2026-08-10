@@ -558,6 +558,12 @@ export async function createFacultyCourseMapping(data: {
   return { id: row.id, sem: data.sem, subList: data.subList, subCode: data.subCode, facRoll: data.facRoll, facultyName: faculty.name, branch: data.branch };
 }
 
+export async function deleteFacultyCourseMapping(id: number): Promise<void> {
+  const existing = await prisma.isrSubAvailableTbl.findUnique({ where: { id } });
+  if (!existing) throw new ApiError(404, "Mapping not found");
+  await prisma.isrSubAvailableTbl.delete({ where: { id } });
+}
+
 // ---------------------------------------------------------------------------
 // Student <-> Course mapping (isr_reg_<batch>_tbl) - dynamic table, allow-listed
 // ---------------------------------------------------------------------------
@@ -679,6 +685,22 @@ export async function createStudentCourseMapping(data: {
   );
 
   return { roll: data.roll, subCode: data.subCode, batch: student.batch };
+}
+
+export async function deleteStudentCourseMapping(roll: string, subCode: string, subList: string): Promise<void> {
+  const student = await getStudentByRoll(roll);
+  if (!student || !student.batch) throw new ApiError(404, "No student found for this roll number, or the student has no batch on record");
+
+  const tableName = await resolveBatchTable(student.batch);
+  if (!tableName) throw new ApiError(400, `No registration table is configured for batch "${student.batch}"`);
+
+  const result = await prisma.$executeRawUnsafe(
+    `DELETE FROM \`${tableName}\` WHERE \`${REG_ROLL_COLUMN}\` = ? AND \`${REG_SUB_CODE_COLUMN}\` = ? AND \`${REG_SUB_LIST_COLUMN}\` = ?`,
+    roll,
+    subCode,
+    subList
+  );
+  if (Number(result) === 0) throw new ApiError(404, "Registration not found");
 }
 
 // ---------------------------------------------------------------------------

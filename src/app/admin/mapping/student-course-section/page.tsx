@@ -26,7 +26,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Plus } from "lucide-react";
+import { ConfirmDialog } from "@/components/admin/confirm-dialog";
+import { Plus, Trash2 } from "lucide-react";
 
 interface Registration {
   roll: string;
@@ -100,6 +101,20 @@ export default function StudentMappingPage() {
     }
   };
 
+  const handleDelete = async (r: Registration) => {
+    try {
+      await apiClient.delete(
+        `/api/admin/mapping/student-course-section/${encodeURIComponent(r.roll)}/${encodeURIComponent(r.subCode)}`,
+      );
+      toast.success("Registration deleted");
+      mutate();
+    } catch (error) {
+      toast.error(
+        error instanceof ApiClientError ? error.message : "Delete failed",
+      );
+    }
+  };
+
   const columns: DataTableColumn<Registration>[] = [
     { key: "roll", header: "Student roll", render: (r) => r.roll },
     {
@@ -120,6 +135,24 @@ export default function StudentMappingPage() {
           },
         ]
       : []),
+    {
+      key: "actions",
+      header: "",
+      className: "text-right",
+      render: (r) => (
+        <ConfirmDialog
+          trigger={
+            <Button variant="ghost" size="icon">
+              <Trash2 className="h-4 w-4 text-destructive" />
+            </Button>
+          }
+          title="Delete registration?"
+          description={`Remove ${r.roll}'s registration for ${r.subCode}? This cannot be undone.`}
+          confirmLabel="Delete"
+          onConfirm={() => handleDelete(r)}
+        />
+      ),
+    },
   ];
 
   return (

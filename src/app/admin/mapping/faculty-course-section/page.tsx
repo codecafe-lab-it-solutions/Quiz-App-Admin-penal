@@ -35,7 +35,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Plus } from "lucide-react";
+import { ConfirmDialog } from "@/components/admin/confirm-dialog";
+import { Plus, Trash2 } from "lucide-react";
 
 interface Mapping {
   id: number;
@@ -125,6 +126,18 @@ export default function FacultyMappingPage() {
     }
   };
 
+  const handleDelete = async (id: number) => {
+    try {
+      await apiClient.delete(`/api/admin/mapping/faculty-course-section/${id}`);
+      toast.success("Mapping deleted");
+      mutate();
+    } catch (error) {
+      toast.error(
+        error instanceof ApiClientError ? error.message : "Delete failed",
+      );
+    }
+  };
+
   const columns: DataTableColumn<Mapping>[] = [
     {
       key: "faculty",
@@ -141,6 +154,24 @@ export default function FacultyMappingPage() {
         r.sections.length > 0
           ? r.sections.map((section) => section.name).join(", ")
           : "—",
+    },
+    {
+      key: "actions",
+      header: "",
+      className: "text-right",
+      render: (r) => (
+        <ConfirmDialog
+          trigger={
+            <Button variant="ghost" size="icon">
+              <Trash2 className="h-4 w-4 text-destructive" />
+            </Button>
+          }
+          title="Delete mapping?"
+          description={`Remove ${r.facultyName ?? r.facRoll} from ${r.subCode}? This cannot be undone.`}
+          confirmLabel="Delete"
+          onConfirm={() => handleDelete(r.id)}
+        />
+      ),
     },
   ];
 

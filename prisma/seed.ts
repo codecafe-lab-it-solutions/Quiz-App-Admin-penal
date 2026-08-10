@@ -376,10 +376,15 @@ async function main() {
 
   console.log("Creating one section per real course and syncing rosters from the real legacy data (this covers all of them, so it takes a minute)...");
 
+  // The real dump has no section/slot concept at all (isr_sub_available_tbl's
+  // `slot` and `sem_list` columns are NULL on every real row for the active
+  // cycle - checked directly) - Section is purely this app's own construct.
+  // With exactly one section per real course, the honest name is the real
+  // course code itself, not an invented "A" that implies a B that doesn't exist.
   const sections = new Map<string, Awaited<ReturnType<typeof ensureSection>>>();
   for (const c of discovered) {
     const course = courses.get(c.subCode)!;
-    const section = await ensureSection("A", [course.id]);
+    const section = await ensureSection(c.subCode, [course.id]);
     sections.set(c.subCode, section);
     // syncSection reads SemesterConfig.currentSubList + BatchTableRegistry -
     // both now pointed at the real data - and pulls the real faculty (from
