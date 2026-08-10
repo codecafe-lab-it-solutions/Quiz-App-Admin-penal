@@ -56,29 +56,32 @@ async function ensureSection(name: string, courseIds: number[]) {
 // (only btechpeg23/24/25 are included - see the "legacy-db-mapping"
 // artifact, section 07) have no real course registration to sync a section
 // from. Rather than leave them with no section, this groups them by their
-// real Major + Batch (both present on every isr_stu_main_tbl row) into a
-// section named e.g. "CSE-btechcse25" - real data, just not course-level
-// like the students whose batch does have a registration table.
+// real Major + current Semester (both present on every isr_stu_main_tbl
+// row) into a section named e.g. "CSE-5" - grouping by semester rather
+// than admission batch, since sem_now genuinely varies within a batch
+// (confirmed against the real data - e.g. batch "20ce0" has students at
+// both semester 12 and 13), so it's a closer match to "who's actually
+// taking classes together right now" than the batch/admission-year was.
 async function ensureFallbackSectionsForUnregisteredStudents() {
   const [allStudents, coveredRolls] = await Promise.all([
-    prisma.isrStuMainTbl.findMany({ select: { roll: true, major: true, batch: true } }),
+    prisma.isrStuMainTbl.findMany({ select: { roll: true, major: true, semNow: true } }),
     prisma.sectionStudent.findMany({ where: { source: { not: "manual_removed" } }, select: { studentRoll: true } }),
   ]);
   const covered = new Set(coveredRolls.map((r) => r.studentRoll));
   const uncovered = allStudents.filter((s) => !covered.has(s.roll));
 
-  const byKey = new Map<string, { major: string; batch: string; rolls: string[] }>();
+  const byKey = new Map<string, { major: string; semNow: number; rolls: string[] }>();
   for (const s of uncovered) {
-    const key = `${s.major}-${s.batch}`;
-    const entry = byKey.get(key) ?? { major: s.major, batch: s.batch, rolls: [] };
+    const key = `${s.major}-${s.semNow}`;
+    const entry = byKey.get(key) ?? { major: s.major, semNow: s.semNow, rolls: [] };
     entry.rolls.push(s.roll);
     byKey.set(key, entry);
   }
 
   let sectionCount = 0;
   let studentCount = 0;
-  for (const { major, batch, rolls } of byKey.values()) {
-    const section = await ensureCourselessSection(`${major}-${batch}`);
+  for (const { major, semNow, rolls } of byKey.values()) {
+    const section = await ensureCourselessSection(`${major}-${semNow}`);
     for (const roll of rolls) {
       await addManualSectionStudent(section.id, roll);
     }
@@ -397,9 +400,9 @@ async function main() {
   const totalFacultyLinked = await prisma.sectionFaculty.count({ where: { source: { not: "manual_removed" } } });
   console.log(`  Synced ${courses.size} sections from real data - ${totalRostered} real student memberships, ${totalFacultyLinked} real faculty memberships.`);
 
-  console.log("Grouping students with no registration table (batches other than btechpeg23/24/25) into Major+Batch fallback sections...");
+  console.log("Grouping students with no registration table (batches other than btechpeg23/24/25) into Major+Semester fallback sections...");
   const fallback = await ensureFallbackSectionsForUnregisteredStudents();
-  console.log(`  ${fallback.studentCount} students across ${fallback.sectionCount} fallback sections (e.g. "CSE-btechcse25") - real major/batch data, no course-level registration available for them in the dump.`);
+  console.log(`  ${fallback.studentCount} students across ${fallback.sectionCount} fallback sections (e.g. "CSE-5") - real major/semester data, no course-level registration available for them in the dump.`);
 
   console.log("Seeding demo quizzes in every status, against real courses/sections/faculty/students...");
 
