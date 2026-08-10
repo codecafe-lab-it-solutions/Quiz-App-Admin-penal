@@ -31,7 +31,11 @@ export async function GET(req: NextRequest) {
     const { roll, courseCode } = parsed.data;
     const subList = await getCurrentSubList();
 
-    const attachSections = async <T extends { roll: string }>(items: T[]) => {
+    // A student's Sections column must be scoped to the specific course each
+    // row represents, not their entire combined section list - a student
+    // registered for both CS201 and CS301 should see their CS301 section
+    // only on the CS301 row, not repeated on every one of their rows.
+    const attachSections = async <T extends { roll: string; subCode: string }>(items: T[]) => {
       const studentRolls = [...new Set(items.map((item) => item.roll))];
       if (studentRolls.length === 0) {
         return items.map((item) => ({ ...item, sections: [] }));
@@ -39,19 +43,33 @@ export async function GET(req: NextRequest) {
 
       const sectionRows = await prisma.sectionStudent.findMany({
         where: { studentRoll: { in: studentRolls } },
-        include: { section: { select: { id: true, name: true } } },
+        include: {
+          section: {
+            select: {
+              id: true,
+              name: true,
+              courses: { select: { course: { select: { code: true } } } },
+            },
+          },
+        },
       });
 
       const sectionsByRoll = sectionRows.reduce((map, row) => {
         const existing = map.get(row.studentRoll) ?? [];
-        existing.push(row.section);
+        existing.push({
+          id: row.section.id,
+          name: row.section.name,
+          courseCodes: row.section.courses.map((c) => c.course.code),
+        });
         map.set(row.studentRoll, existing);
         return map;
-      }, new Map<string, { id: number; name: string }[]>());
+      }, new Map<string, { id: number; name: string; courseCodes: string[] }[]>());
 
       return items.map((item) => ({
         ...item,
-        sections: sectionsByRoll.get(item.roll) ?? [],
+        sections: (sectionsByRoll.get(item.roll) ?? [])
+          .filter((s) => s.courseCodes.includes(item.subCode))
+          .map((s) => ({ id: s.id, name: s.name })),
       }));
     };
 
