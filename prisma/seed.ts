@@ -1,6 +1,6 @@
 import { PrismaClient } from "@prisma/client";
 import bcrypt from "bcryptjs";
-import { syncSection } from "@/lib/section-sync";
+import { syncSection, addManualSectionStudent } from "@/lib/section-sync";
 import { importRealLegacyData } from "./import-legacy-data";
 
 const prisma = new PrismaClient();
@@ -50,6 +50,53 @@ async function ensureSection(name: string, courseIds: number[]) {
   );
   if (existing) return existing;
   return prisma.section.create({ data: { name, courses: { create: courseIds.map((courseId) => ({ courseId })) } } });
+}
+
+// Students whose batch has no isr_reg_<batch>_tbl in the real dump at all
+// (only btechpeg23/24/25 are included - see the "legacy-db-mapping"
+// artifact, section 07) have no real course registration to sync a section
+// from. Rather than leave them with no section, this groups them by their
+// real Major + Batch (both present on every isr_stu_main_tbl row) into a
+// section named e.g. "CSE-btechcse25" - real data, just not course-level
+// like the students whose batch does have a registration table.
+async function ensureFallbackSectionsForUnregisteredStudents() {
+  const [allStudents, coveredRolls] = await Promise.all([
+    prisma.isrStuMainTbl.findMany({ select: { roll: true, major: true, batch: true } }),
+    prisma.sectionStudent.findMany({ where: { source: { not: "manual_removed" } }, select: { studentRoll: true } }),
+  ]);
+  const covered = new Set(coveredRolls.map((r) => r.studentRoll));
+  const uncovered = allStudents.filter((s) => !covered.has(s.roll));
+
+  const byKey = new Map<string, { major: string; batch: string; rolls: string[] }>();
+  for (const s of uncovered) {
+    const key = `${s.major}-${s.batch}`;
+    const entry = byKey.get(key) ?? { major: s.major, batch: s.batch, rolls: [] };
+    entry.rolls.push(s.roll);
+    byKey.set(key, entry);
+  }
+
+  let sectionCount = 0;
+  let studentCount = 0;
+  for (const { major, batch, rolls } of byKey.values()) {
+    const section = await ensureCourselessSection(`${major}-${batch}`);
+    for (const roll of rolls) {
+      await addManualSectionStudent(section.id, roll);
+    }
+    sectionCount++;
+    studentCount += rolls.length;
+  }
+  return { sectionCount, studentCount };
+}
+
+// ensureSection's "match on name + exact course set" logic can never find a
+// zero-course section (its query filters `courses: { some: { courseId: {
+// in: [] } } }`, which matches nothing) - this is the course-less variant
+// fallback sections need, so re-running the seed doesn't create a fresh
+// duplicate section every time.
+async function ensureCourselessSection(name: string) {
+  const existing = await prisma.section.findFirst({ where: { name, courses: { none: {} } } });
+  if (existing) return existing;
+  return prisma.section.create({ data: { name } });
 }
 
 async function ensureBuilding(data: { name: string; latitude: number; longitude: number; radiusMeters: number }) {
@@ -223,16 +270,48 @@ async function ensureQuestionAndAllotments(params: {
 // "legacy-db-mapping" artifact, section 07, for the full query.
 // ---------------------------------------------------------------------------
 
-const REAL_COURSES = [
-  { code: "MA222", name: "Applied Mathematics-III", department: "Common Engineering (Core)", credits: 11, facRoll: "RF0009" },
-  { code: "ECE102", name: "Fundamentals of Electronics Engineering", department: "Common Engineering (Core)", credits: 13, facRoll: "RF0259" },
-  { code: "ME211", name: "Fluid Machinery", department: "Mechanical Engineering", credits: 9, facRoll: "RF0205" },
-  { code: "PE202", name: "Fundamentals of Mechanical Engineering", department: "Petroleum Engineering", credits: 9, facRoll: "RF0223" },
-  { code: "PE221", name: "Introductory Geosciences", department: "Petroleum Engineering", credits: 6, facRoll: "RF0028" },
-  { code: "PE241", name: "Reservoir Engineering I", department: "Petroleum Engineering", credits: 11, facRoll: "RF0210" },
-  { code: "PE331", name: "Offshore Oil and Gas Technology", department: "Petroleum Engineering", credits: 9, facRoll: "RF0240" },
-  { code: "PE402", name: "Health, Safety and Environment", department: "Petroleum Engineering", credits: 2, facRoll: "RF0141" },
-] as const;
+// PE241/PE331/ECE102/PE202 (used further down to build one demo quiz each)
+// were picked because they have both real faculty and a healthy number of
+// real registered students, so each quiz has a real roster to allot - not
+// because they're special otherwise. Every other real, connectable course
+// still gets a proper Course + Section (see discoverRealCourses() below),
+// just without a demo quiz built on top of it.
+
+interface DiscoveredCourse {
+  subCode: string;
+  title: string;
+  branch: string;
+  credits: number;
+}
+
+// Every course code that's actually connectable in the real, imported data
+// for the active cycle (SemesterConfig.currentSubList) - has a real faculty
+// assignment (isr_sub_available_tbl) and/or real student registrations
+// (any of the isr_reg_btechpeg<batch>_tbl tables). This is what "every
+// student/faculty row shows a real Section, not a dash" actually requires -
+// a curated handful of courses leaves everyone else's real registrations
+// pointing at a course this app's own catalog doesn't have yet.
+async function discoverRealCourses(subList: string): Promise<DiscoveredCourse[]> {
+  return prisma.$queryRawUnsafe<DiscoveredCourse[]>(
+    `
+    SELECT
+      all_codes.sub_code AS subCode,
+      COALESCE(MIN(c.title), all_codes.sub_code) AS title,
+      COALESCE(MIN(c.bsms_branch), MIN(sa.branch), 'General') AS branch,
+      COALESCE(MIN(c.bsms_credit), 0) AS credits
+    FROM (
+      SELECT sub_code FROM isr_sub_available_tbl WHERE sub_list = ? AND fac_roll IS NOT NULL AND sub_code IS NOT NULL
+      UNION SELECT sub_code FROM isr_reg_btechpeg23_tbl WHERE sub_list = ? AND sub_code IS NOT NULL
+      UNION SELECT sub_code FROM isr_reg_btechpeg24_tbl WHERE sub_list = ? AND sub_code IS NOT NULL
+      UNION SELECT sub_code FROM isr_reg_btechpeg25_tbl WHERE sub_list = ? AND sub_code IS NOT NULL
+    ) all_codes
+    LEFT JOIN isr_curriculum_tbl c ON c.bsms_code = all_codes.sub_code AND c.sub_list = ?
+    LEFT JOIN isr_sub_available_tbl sa ON sa.sub_code = all_codes.sub_code AND sa.sub_list = ?
+    GROUP BY all_codes.sub_code
+    `,
+    subList, subList, subList, subList, subList, subList
+  );
+}
 
 async function main() {
   await ensureAdminUser({
@@ -251,8 +330,6 @@ async function main() {
     console.log("  Loaded:", importResult.counts);
   }
 
-  await ensureSemesterConfig();
-
   console.log("Clearing previously-seeded app-domain data (quizzes/sections/courses tied to the old synthetic rolls)...");
   // Quiz cascades to Question/QuestionOption/QuestionFormula/QuizAllotment/
   // QuizAttempt/StudentAnswer/AntiCheatEvent/GeofenceLog/Attendance/Result/
@@ -266,23 +343,30 @@ async function main() {
   await prisma.department.deleteMany({});
   await prisma.academicSession.deleteMany({});
 
-  console.log("Building the Course/Department catalog from real, verified-interconnected courses...");
+  console.log("Discovering every real, connectable course for the active cycle...");
+  const currentSubList = (await ensureSemesterConfig()).currentSubList;
+  const discovered = await discoverRealCourses(currentSubList);
+  console.log(`  Found ${discovered.length} real course codes with a real faculty assignment and/or real student registrations.`);
+
+  console.log("Building the Course/Department catalog from every one of them (not a curated sample)...");
 
   const departmentIds = new Map<string, number>();
-  for (const dept of new Set(REAL_COURSES.map((c) => c.department))) {
-    const row = await ensureDepartment(dept);
-    departmentIds.set(dept, row.id);
+  for (const branch of new Set(discovered.map((c) => c.branch))) {
+    const row = await ensureDepartment(branch);
+    departmentIds.set(branch, row.id);
   }
 
   const courses = new Map<string, Awaited<ReturnType<typeof ensureCourse>>>();
-  for (const c of REAL_COURSES) {
+  for (const c of discovered) {
     const course = await ensureCourse({
-      name: c.name,
-      code: c.code,
-      departmentId: departmentIds.get(c.department)!,
-      credits: c.credits,
+      name: c.title,
+      code: c.subCode,
+      departmentId: departmentIds.get(c.branch)!,
+      // MIN() on an INT column comes back as a JS bigint via the raw query
+      // driver - coerce to a plain number for the Int column.
+      credits: Number(c.credits),
     });
-    courses.set(c.code, course);
+    courses.set(c.subCode, course);
   }
 
   const session = await ensureSession("C2 Semester", new Date("2025-07-01"), new Date("2025-12-15"));
@@ -290,13 +374,13 @@ async function main() {
   const mainBlock = await ensureBuilding({ name: "Main Academic Block", latitude: 28.6139, longitude: 77.209, radiusMeters: 40 });
   const engBlock = await ensureBuilding({ name: "Engineering Block", latitude: 28.6145, longitude: 77.2101, radiusMeters: 50 });
 
-  console.log("Creating one section per real course and syncing rosters from the real legacy data...");
+  console.log("Creating one section per real course and syncing rosters from the real legacy data (this covers all of them, so it takes a minute)...");
 
   const sections = new Map<string, Awaited<ReturnType<typeof ensureSection>>>();
-  for (const c of REAL_COURSES) {
-    const course = courses.get(c.code)!;
+  for (const c of discovered) {
+    const course = courses.get(c.subCode)!;
     const section = await ensureSection("A", [course.id]);
-    sections.set(c.code, section);
+    sections.set(c.subCode, section);
     // syncSection reads SemesterConfig.currentSubList + BatchTableRegistry -
     // both now pointed at the real data - and pulls the real faculty (from
     // isr_sub_available_tbl) and real registered students (from the three
@@ -304,14 +388,13 @@ async function main() {
     await syncSection(section.id);
   }
 
-  const rosterCounts = await Promise.all(
-    REAL_COURSES.map(async (c) => {
-      const section = sections.get(c.code)!;
-      const count = await prisma.sectionStudent.count({ where: { sectionId: section.id, source: { not: "manual_removed" } } });
-      return `${c.code}: ${count} students`;
-    })
-  );
-  console.log("  Rosters synced from real registrations -", rosterCounts.join(", "));
+  const totalRostered = await prisma.sectionStudent.count({ where: { source: { not: "manual_removed" } } });
+  const totalFacultyLinked = await prisma.sectionFaculty.count({ where: { source: { not: "manual_removed" } } });
+  console.log(`  Synced ${courses.size} sections from real data - ${totalRostered} real student memberships, ${totalFacultyLinked} real faculty memberships.`);
+
+  console.log("Grouping students with no registration table (batches other than btechpeg23/24/25) into Major+Batch fallback sections...");
+  const fallback = await ensureFallbackSectionsForUnregisteredStudents();
+  console.log(`  ${fallback.studentCount} students across ${fallback.sectionCount} fallback sections (e.g. "CSE-btechcse25") - real major/batch data, no course-level registration available for them in the dump.`);
 
   console.log("Seeding demo quizzes in every status, against real courses/sections/faculty/students...");
 
@@ -389,7 +472,7 @@ async function main() {
   console.log(`Super admin login: ${process.env.SEED_ADMIN_EMAIL ?? "admin@example.com"} / (see SEED_ADMIN_PASSWORD in .env)`);
   console.log(`Every imported real account's password: ${DEMO_PASSWORD} (override with SEED_DEMO_PASSWORD in .env)`);
   console.log("  Admin:   ops.admin@example.com");
-  console.log(`  Faculty: any real roll from isr_faculty_tbl (e.g. ${REAL_COURSES[0].facRoll}) - look up its email in isr_login_tbl`);
+  console.log("  Faculty: any real roll from isr_faculty_tbl (e.g. RF0223, teaching the live quiz below) - look up its email in isr_login_tbl");
   console.log(`  Student: any real roll registered in isr_reg_btechpeg23/24/25_tbl for sub_list='C2'`);
   console.log("  Live now: \"Mechanical Engineering Fundamentals Live Test\" - visible on Admin > Live Tracking");
 }
