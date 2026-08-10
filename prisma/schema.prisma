@@ -395,12 +395,15 @@ model IsrStuMainTbl {
 // Prisma field is still called `id` (existing code already reads/writes it
 // as such), @map just points it at the real column name.
 model IsrSubAvailableTbl {
-  id      Int    @id @default(autoincrement()) @map("avai_sr")
-  sem     String
-  subList String @map("sub_list") // semester-cycle code, e.g. "C2" — admin-configurable "current" value
-  subCode String @map("sub_code")
-  facRoll String @map("fac_roll")
-  branch  String
+  id      Int     @id @default(autoincrement()) @map("avai_sr")
+  // Confirmed nullable on the real table (`DEFAULT NULL`) - this schema
+  // wrongly carried these over as required before the real export was
+  // available to check against; real rows do have a null fac_roll.
+  sem     String?
+  subList String? @map("sub_list") @default("c1") // semester-cycle code, e.g. "C2" — admin-configurable "current" value
+  subCode String? @map("sub_code")
+  facRoll String? @map("fac_roll")
+  branch  String?
 
   // Remaining columns for full structural parity with the real table.
   b1Sem   Int?    @map("b1_sem")

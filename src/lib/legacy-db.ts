@@ -499,17 +499,20 @@ export async function getFacultyCourseMappings(
 ) {
   const offset = (params.page - 1) * params.pageSize;
 
+  // facRoll is nullable on the real table (a mapping row with no faculty
+  // assigned yet) - excluded here since a null-faculty row isn't a "who
+  // teaches this course" fact worth listing.
   const rows = await prisma.isrSubAvailableTbl.findMany({
-    where: { subList, ...(params.facultyRoll ? { facRoll: params.facultyRoll } : {}) },
+    where: { subList, facRoll: params.facultyRoll ?? { not: null } },
     orderBy: { subCode: "asc" },
     skip: offset,
     take: params.pageSize,
   });
   const total = await prisma.isrSubAvailableTbl.count({
-    where: { subList, ...(params.facultyRoll ? { facRoll: params.facultyRoll } : {}) },
+    where: { subList, facRoll: params.facultyRoll ?? { not: null } },
   });
 
-  const facultyRolls = [...new Set(rows.map((r) => r.facRoll))];
+  const facultyRolls = [...new Set(rows.map((r) => r.facRoll!))];
   const facultyNames = facultyRolls.length
     ? await prisma.isrFacultyTbl.findMany({ where: { roll: { in: facultyRolls } } })
     : [];
@@ -517,12 +520,12 @@ export async function getFacultyCourseMappings(
 
   const items: FacultyCourseMapping[] = rows.map((r) => ({
     id: r.id,
-    sem: r.sem,
-    subList: r.subList,
-    subCode: r.subCode,
-    facRoll: r.facRoll,
-    facultyName: nameByRoll.get(r.facRoll) ?? null,
-    branch: r.branch,
+    sem: r.sem ?? "",
+    subList: r.subList ?? "",
+    subCode: r.subCode ?? "",
+    facRoll: r.facRoll!,
+    facultyName: nameByRoll.get(r.facRoll!) ?? null,
+    branch: r.branch ?? "",
   }));
 
   return { items, total };
@@ -552,7 +555,7 @@ export async function createFacultyCourseMapping(data: {
     data: { sem: data.sem, subList: data.subList, subCode: data.subCode, facRoll: data.facRoll, branch: data.branch },
   });
 
-  return { id: row.id, sem: row.sem, subList: row.subList, subCode: row.subCode, facRoll: row.facRoll, facultyName: faculty.name, branch: row.branch };
+  return { id: row.id, sem: data.sem, subList: data.subList, subCode: data.subCode, facRoll: data.facRoll, facultyName: faculty.name, branch: data.branch };
 }
 
 // ---------------------------------------------------------------------------
@@ -685,10 +688,13 @@ export async function createStudentCourseMapping(data: {
 // ---------------------------------------------------------------------------
 
 export async function getFacultyCourseCatalog(facultyRoll: string, subList: string): Promise<CourseCatalogEntry[]> {
-  const mappings = await prisma.isrSubAvailableTbl.findMany({
+  const rows = await prisma.isrSubAvailableTbl.findMany({
     where: { facRoll: facultyRoll, subList },
     orderBy: { subCode: "asc" },
   });
+  // subCode is nullable on the real table - a mapping row without one isn't
+  // a course this catalog can resolve, so it's excluded here.
+  const mappings = rows.filter((m): m is typeof m & { subCode: string } => m.subCode !== null);
   if (mappings.length === 0) return [];
 
   const codes = [...new Set(mappings.map((m) => m.subCode))];
@@ -715,7 +721,7 @@ export async function getFacultyCourseCatalog(facultyRoll: string, subList: stri
       title: c?.title ?? appCourse?.name ?? null,
       branch: c?.bsmsBranch ?? m.branch ?? null,
       credits: c?.bsmsCredit ?? appCourse?.credits ?? null,
-      facRoll: m.facRoll,
+      facRoll: m.facRoll!,
       facultyName: faculty?.name ?? null,
       courseId: appCourse?.id ?? null,
       sections: appCourse?.sectionCourses.map((sc) => sc.section) ?? [],

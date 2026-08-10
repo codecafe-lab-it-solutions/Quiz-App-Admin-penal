@@ -39,10 +39,10 @@ async function getDesiredFacultyRolls(sectionId: number): Promise<Set<string>> {
   const subList = await getCurrentSubList();
   const codes = courses.map((c) => c.course.code);
   const mappings = await prisma.isrSubAvailableTbl.findMany({
-    where: { subCode: { in: codes }, subList },
+    where: { subCode: { in: codes }, subList, facRoll: { not: null } },
     select: { facRoll: true },
   });
-  return new Set(mappings.map((m) => m.facRoll));
+  return new Set(mappings.map((m) => m.facRoll!));
 }
 
 async function reconcile(
