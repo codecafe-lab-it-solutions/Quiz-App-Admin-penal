@@ -1,9 +1,11 @@
 import { NextRequest } from "next/server";
+import { prisma } from "@/lib/db";
 import { ok, handleApiError, ApiError } from "@/lib/api-response";
 import { getAuthUser, requireRole } from "@/lib/auth";
 import { studentUpdateSchema } from "@/lib/validators/directory";
 import { getStudentByRoll, getStudentCourses, updateStudent, deleteStudent } from "@/lib/legacy-db";
 import { getCurrentSubList } from "@/lib/config";
+import { assignStudentToDefaultSection, addManualSectionStudent } from "@/lib/section-sync";
 
 // Student master data is sourced live from the legacy isr_* tables. The
 // [id] segment is the legacy roll number, not a numeric app-owned id -
@@ -30,8 +32,18 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     const user = getAuthUser(req);
     requireRole(user, "admin");
 
-    const body = studentUpdateSchema.parse(await req.json());
-    const student = await updateStudent(params.id, body);
+    const { section: sectionCode, sectionId, ...rest } = studentUpdateSchema.parse(await req.json());
+    const student = await updateStudent(params.id, rest);
+
+    // Optional section change (2026-08-10 MOM) - additive only: adds the
+    // student to this section without removing them from any other.
+    if (sectionId) {
+      const existing = await prisma.section.findUnique({ where: { id: sectionId } });
+      if (!existing) throw new ApiError(404, "Section not found");
+      await addManualSectionStudent(sectionId, params.id);
+    } else if (sectionCode?.trim()) {
+      await assignStudentToDefaultSection(student.major, sectionCode, params.id);
+    }
 
     return ok(student);
   } catch (error) {

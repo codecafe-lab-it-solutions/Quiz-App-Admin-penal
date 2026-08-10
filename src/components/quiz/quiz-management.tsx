@@ -62,6 +62,17 @@ interface BuildingOption {
   name: string;
 }
 
+interface CourseOption {
+  subCode: string;
+  title: string | null;
+  courseId: number | null;
+}
+
+interface SectionOption {
+  id: number;
+  name: string;
+}
+
 interface AttemptEntry {
   student: { roll: string; name: string };
   allotmentStatus: "allotted" | "attempted" | "absent";
@@ -150,6 +161,8 @@ export function QuizManagement({
     allowSkipSwitch: true,
     requireLocation: true,
   });
+  const [editCourseCode, setEditCourseCode] = useState("");
+  const [editSectionIds, setEditSectionIds] = useState<number[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const {
@@ -163,6 +176,30 @@ export function QuizManagement({
     editDialogOpen ? `/api/faculty/buildings` : null,
     (url: string) => fetcher<{ items: BuildingOption[] }>(url),
   );
+  // Course/section pickers for the edit dialog mirror the create form: the
+  // course list is scoped to whichever faculty the quiz is currently
+  // assigned to (editable above, for admins), and sections are scoped to
+  // the chosen course.
+  const editCoursesUrl = editDialogOpen
+    ? role === "admin"
+      ? editForm.facultyRoll
+        ? `/api/faculty/courses?facultyRoll=${encodeURIComponent(editForm.facultyRoll)}`
+        : null
+      : `/api/faculty/courses`
+    : null;
+  const { data: editCoursesData, isLoading: editCoursesLoading } = useSWR(
+    editCoursesUrl,
+    (url: string) => fetcher<{ items: CourseOption[] }>(url),
+  );
+  const editCourses = (editCoursesData?.items ?? []).filter((c) => c.courseId !== null);
+  const editSelectedCourse = editCourses.find((c) => c.subCode === editCourseCode);
+  const { data: editSectionsData } = useSWR(
+    editDialogOpen && editSelectedCourse?.courseId
+      ? `/api/faculty/sections?courseId=${editSelectedCourse.courseId}`
+      : null,
+    (url: string) => fetcher<{ items: SectionOption[] }>(url),
+  );
+  const editSections = editSectionsData?.items ?? [];
   const { data: subjectiveData, mutate: mutateSubjective } = useSWR(
     quiz?.status === "completed"
       ? `/api/faculty/quiz/${quizId}/subjective-answers`
@@ -282,6 +319,8 @@ export function QuizManagement({
       allowSkipSwitch: quiz.allowSkipSwitch,
       requireLocation: quiz.requireLocation,
     });
+    setEditCourseCode(quiz.course.code);
+    setEditSectionIds(quiz.sections.map((s) => s.section.id));
     setEditDialogOpen(true);
   };
 
@@ -304,6 +343,14 @@ export function QuizManagement({
       toast.error("Faculty roll is required");
       return;
     }
+    if (!editSelectedCourse || editSelectedCourse.courseId === null) {
+      toast.error("Select a valid course");
+      return;
+    }
+    if (editSectionIds.length === 0) {
+      toast.error("Select at least one section");
+      return;
+    }
     setSavingDetails(true);
     try {
       await apiClient.patch(`/api/faculty/quiz/${quizId}`, {
@@ -312,6 +359,8 @@ export function QuizManagement({
         // so a faculty member's save never trips the 403 for a field they
         // can't see or touch.
         ...(role === "admin" ? { facultyRoll: editForm.facultyRoll.trim() } : {}),
+        courseId: editSelectedCourse.courseId,
+        sectionIds: editSectionIds,
         buildingId: Number(editForm.buildingId),
         startTime: new Date(editForm.startTime).toISOString(),
         endTime: new Date(editForm.endTime).toISOString(),
@@ -800,8 +849,8 @@ export function QuizManagement({
           <DialogHeader>
             <DialogTitle>Edit Quiz Details</DialogTitle>
             <DialogDescription>
-              Update the quiz&apos;s title, timing, building, and rules. Course, sections, and questions aren&apos;t
-              editable here.
+              Update the quiz&apos;s title, course, sections, timing, building, and rules — allowed even while the
+              quiz is live. Questions aren&apos;t editable here.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
@@ -827,6 +876,54 @@ export function QuizManagement({
                 </p>
               </div>
             )}
+            <div className="space-y-1.5">
+              <Label>Course</Label>
+              <Select value={editCourseCode} onValueChange={setEditCourseCode}>
+                <SelectTrigger>
+                  <SelectValue placeholder={editCoursesLoading ? "Loading..." : "Select a course"} />
+                </SelectTrigger>
+                <SelectContent>
+                  {editCourses.map((c) => (
+                    <SelectItem key={c.subCode} value={c.subCode}>
+                      {c.title ?? c.subCode} ({c.subCode})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Sections</Label>
+              {!editCourseCode && (
+                <p className="text-xs text-muted-foreground">Select a course first.</p>
+              )}
+              {editCourseCode && editSections.length === 0 && (
+                <p className="text-xs text-muted-foreground">
+                  No sections linked to this course yet.
+                </p>
+              )}
+              {editSections.length > 0 && (
+                <div className="max-h-40 space-y-2 overflow-y-auto rounded-md border p-3">
+                  {editSections.map((section) => (
+                    <div key={section.id} className="flex items-center gap-2">
+                      <Checkbox
+                        checked={editSectionIds.includes(section.id)}
+                        onCheckedChange={(checked) => {
+                          setEditSectionIds((prev) =>
+                            checked === true
+                              ? prev.includes(section.id) ? prev : [...prev, section.id]
+                              : prev.filter((id) => id !== section.id)
+                          );
+                        }}
+                        id={`edit-section-${section.id}`}
+                      />
+                      <label htmlFor={`edit-section-${section.id}`} className="text-sm">
+                        {section.name}
+                      </label>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
             <div className="space-y-1.5">
               <Label>Building</Label>
               <Select

@@ -1,10 +1,11 @@
 import { NextRequest } from "next/server";
-import { ok, created, handleApiError } from "@/lib/api-response";
+import { prisma } from "@/lib/db";
+import { ok, created, handleApiError, ApiError } from "@/lib/api-response";
 import { getAuthUser, requireRole } from "@/lib/auth";
 import { paginationSchema, paginationMeta } from "@/lib/validators/common";
 import { studentCreateSchema } from "@/lib/validators/directory";
 import { listStudents, createStudent } from "@/lib/legacy-db";
-import { assignStudentToDefaultSection } from "@/lib/section-sync";
+import { assignStudentToDefaultSection, addManualSectionStudent } from "@/lib/section-sync";
 
 // Student master data is sourced live from the legacy isr_login_tbl /
 // isr_stu_data_tbl / isr_stu_main_tbl tables. POST writes directly into
@@ -34,11 +35,22 @@ export async function POST(req: NextRequest) {
     const user = getAuthUser(req);
     requireRole(user, "admin");
 
-    const { section: sectionCode, ...studentData } = studentCreateSchema.parse(await req.json());
+    const { section: sectionCode, sectionId, ...studentData } = studentCreateSchema.parse(await req.json());
     const student = await createStudent(studentData);
-    const section = await assignStudentToDefaultSection(studentData.major, sectionCode, studentData.roll);
 
-    return created({ ...student, section: section.name });
+    let sectionName: string;
+    if (sectionId) {
+      const existing = await prisma.section.findUnique({ where: { id: sectionId } });
+      if (!existing) throw new ApiError(404, "Section not found");
+      await addManualSectionStudent(sectionId, studentData.roll);
+      sectionName = existing.name;
+    } else {
+      // Validated by studentCreateSchema's refine: sectionCode is present when sectionId isn't.
+      const section = await assignStudentToDefaultSection(studentData.major, sectionCode!, studentData.roll);
+      sectionName = section.name;
+    }
+
+    return created({ ...student, section: sectionName });
   } catch (error) {
     return handleApiError(error);
   }

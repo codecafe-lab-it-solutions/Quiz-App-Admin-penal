@@ -23,8 +23,22 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { ChevronRight, Pencil, Plus, Power, PowerOff, Trash2 } from "lucide-react";
+
+interface SectionOption {
+  id: number;
+  name: string;
+}
+
+const NEW_SECTION = "__new__";
 
 interface Student {
   roll: string;
@@ -65,10 +79,16 @@ export default function StudentListPage() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<Student | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [sectionChoice, setSectionChoice] = useState<string>(NEW_SECTION);
 
   const params = new URLSearchParams({ page: String(page), pageSize: "10", search });
 
   const { data, isLoading, mutate } = useSWR(`/api/admin/students?${params.toString()}`, fetcher);
+  const { data: sectionsData } = useSWR(
+    dialogOpen ? "/api/admin/sections?pageSize=200" : null,
+    (url: string) => apiClient.get<{ items: SectionOption[] }>(url)
+  );
+  const sections = sectionsData?.items ?? [];
 
   const {
     register,
@@ -79,12 +99,17 @@ export default function StudentListPage() {
 
   const openCreate = () => {
     setEditing(null);
+    setSectionChoice(NEW_SECTION);
     reset({ roll: "", name: "", email: "", password: "", major: "", batch: "", semNow: "", section: "" });
     setDialogOpen(true);
   };
 
   const openEdit = (student: Student) => {
     setEditing(student);
+    // Left unchanged unless the admin actively picks/types a section below -
+    // a student can belong to more than one section, so there's no single
+    // "current" value to preselect here.
+    setSectionChoice(NEW_SECTION);
     reset({
       roll: student.roll,
       name: student.name,
@@ -93,11 +118,21 @@ export default function StudentListPage() {
       major: student.major,
       batch: student.batch,
       semNow: student.semNow,
+      section: "",
     });
     setDialogOpen(true);
   };
 
   const onSubmit = async (values: FormValues) => {
+    // sectionChoice is either an existing section's id (as a string) or the
+    // NEW_SECTION sentinel, in which case values.section (typed code) applies.
+    const sectionFields =
+      sectionChoice !== NEW_SECTION
+        ? { sectionId: Number(sectionChoice) }
+        : values.section?.trim()
+          ? { section: values.section.trim() }
+          : {};
+
     setSubmitting(true);
     try {
       if (editing) {
@@ -108,6 +143,7 @@ export default function StudentListPage() {
           major: values.major,
           batch: values.batch,
           semNow: values.semNow,
+          ...sectionFields,
         });
         toast.success("Student updated");
       } else {
@@ -116,12 +152,12 @@ export default function StudentListPage() {
           setSubmitting(false);
           return;
         }
-        if (!values.section || !values.section.trim()) {
+        if (Object.keys(sectionFields).length === 0) {
           toast.error("Section is required");
           setSubmitting(false);
           return;
         }
-        await apiClient.post("/api/admin/students", values);
+        await apiClient.post("/api/admin/students", { ...values, ...sectionFields });
         toast.success("Student added");
       }
       setDialogOpen(false);
@@ -299,15 +335,32 @@ export default function StudentListPage() {
                 {errors.semNow && <p className="text-sm text-destructive">{errors.semNow.message}</p>}
               </div>
             </div>
-            {!editing && (
-              <div className="space-y-1.5">
-                <Label htmlFor="section">Section</Label>
-                <Input id="section" {...register("section")} placeholder="e.g. A" />
-                <p className="text-xs text-muted-foreground">
-                  Major + Section becomes this student&apos;s default section (e.g. &quot;CSE-A&quot;).
-                </p>
-              </div>
-            )}
+            <div className="space-y-1.5">
+              <Label>Section</Label>
+              <Select value={sectionChoice} onValueChange={setSectionChoice}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select a section" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={NEW_SECTION}>+ Create new section</SelectItem>
+                  {sections.map((s) => (
+                    <SelectItem key={s.id} value={String(s.id)}>
+                      {s.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {sectionChoice === NEW_SECTION && (
+                <>
+                  <Input id="section" {...register("section")} placeholder="e.g. A" />
+                  <p className="text-xs text-muted-foreground">
+                    {editing
+                      ? "Major + Section becomes a section this student is added to (e.g. \"CSE-A\") - leave blank to keep unchanged."
+                      : 'Major + Section becomes this student\'s default section (e.g. "CSE-A").'}
+                  </p>
+                </>
+              )}
+            </div>
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>
                 Cancel
