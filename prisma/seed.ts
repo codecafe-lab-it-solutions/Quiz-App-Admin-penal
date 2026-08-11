@@ -390,16 +390,46 @@ async function ensureFacultyCourseSectionLinks(subList: string) {
   const realMajors = await getRealMajors();
   const rows = await prisma.isrSubAvailableTbl.findMany({
     where: { subList, facRoll: { not: null }, subCode: { not: null }, sem: { not: null } },
-    select: { subCode: true, branch: true, facRoll: true, sem: true },
+    select: { id: true, subCode: true, branch: true, facRoll: true, sem: true },
   });
 
   const sectionNames = new Set<string>();
   for (const row of rows) {
     const major = resolveMajorFromBranch(row.branch ?? "", realMajors);
+    const name = `${major.trim()}_${row.sem!.trim()}`;
     await assignFacultyToDefaultSection(major, row.sem!, row.subCode!, row.facRoll!, subList);
-    sectionNames.add(`${major.trim()}_${row.sem!.trim()}`);
+    // Backfill the app-added isr_sub_available_tbl.section column for rows
+    // imported straight from the dump (createFacultyCourseMapping sets this
+    // for rows created through the admin panel, but the real dump's INSERTs
+    // obviously predate that column).
+    await prisma.isrSubAvailableTbl.update({ where: { id: row.id }, data: { section: name } });
+    sectionNames.add(name);
   }
   return { rowCount: rows.length, sectionCount: sectionNames.size };
+}
+
+// Pure label backfill for isr_sub_available_tbl.section across EVERY real
+// sub_list (not just the current cycle) - e.g. old "c1" rows the dump also
+// carries. Deliberately does NOT call assignFacultyToDefaultSection or touch
+// Section/SectionFaculty/SectionCourse: those must stay scoped to the
+// current cycle only (see ensureFacultyCourseSectionLinks) - a past cycle's
+// faculty must never get pulled into a *current* section's membership just
+// because their old row now has a label. This only ever writes the column.
+async function backfillSectionColumnAcrossAllCycles(): Promise<number> {
+  const realMajors = await getRealMajors();
+  const rows = await prisma.isrSubAvailableTbl.findMany({
+    where: { branch: { not: null }, sem: { not: null } },
+    select: { id: true, branch: true, sem: true },
+  });
+
+  for (const row of rows) {
+    const major = resolveMajorFromBranch(row.branch!, realMajors);
+    await prisma.isrSubAvailableTbl.update({
+      where: { id: row.id },
+      data: { section: `${major.trim()}_${row.sem!.trim()}` },
+    });
+  }
+  return rows.length;
 }
 
 async function main() {
@@ -446,6 +476,10 @@ async function main() {
   console.log(
     `  ${facultyMappingLinks.rowCount} real faculty-course mapping rows processed, ${facultyMappingLinks.sectionCount} Major_Semester sections linked.`
   );
+
+  console.log("Labeling isr_sub_available_tbl.section for every real cycle (not just the current one) - display-only, no section membership changes...");
+  const labeledRows = await backfillSectionColumnAcrossAllCycles();
+  console.log(`  ${labeledRows} rows labeled.`);
 
   const session = await ensureSession("C2 Semester", new Date("2025-07-01"), new Date("2025-12-15"));
 

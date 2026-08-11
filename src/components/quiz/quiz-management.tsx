@@ -193,10 +193,18 @@ export function QuizManagement({
   );
   const editCourses = (editCoursesData?.items ?? []).filter((c) => c.courseId !== null);
   const editSelectedCourse = editCourses.find((c) => c.subCode === editCourseCode);
-  const { data: editSectionsData } = useSWR(
+  // Scoped server-side to sections the selected faculty actually teaches
+  // (not every section a shared course happens to touch system-wide).
+  const editSectionsUrl =
     editDialogOpen && editSelectedCourse?.courseId
-      ? `/api/faculty/sections?courseId=${editSelectedCourse.courseId}`
-      : null,
+      ? role === "admin"
+        ? editForm.facultyRoll
+          ? `/api/faculty/sections?courseId=${editSelectedCourse.courseId}&facultyRoll=${encodeURIComponent(editForm.facultyRoll)}`
+          : null
+        : `/api/faculty/sections?courseId=${editSelectedCourse.courseId}`
+      : null;
+  const { data: editSectionsData } = useSWR(
+    editSectionsUrl,
     (url: string) => fetcher<{ items: SectionOption[] }>(url),
   );
   const editSections = editSectionsData?.items ?? [];

@@ -98,11 +98,19 @@ export function QuizCreateForm({ role }: { role: "faculty" | "admin" }) {
 
   // Every section linked to the chosen course is auto-included (no manual
   // section picking) - the visible/interactive part is just which students
-  // to allot, sourced from the union of those sections' membership.
+  // to allot, sourced from the union of those sections' membership. Scoped
+  // server-side to sections the selected faculty actually teaches (not
+  // every section a shared course happens to touch system-wide) - see the
+  // GET route.
+  const sectionsUrl = selectedCourse?.courseId
+    ? role === "admin"
+      ? facultyRoll
+        ? `/api/faculty/sections?courseId=${selectedCourse.courseId}&facultyRoll=${encodeURIComponent(facultyRoll)}`
+        : null
+      : `/api/faculty/sections?courseId=${selectedCourse.courseId}`
+    : null;
   const { data: sectionsData } = useSWR(
-    selectedCourse?.courseId
-      ? `/api/faculty/sections?courseId=${selectedCourse.courseId}`
-      : null,
+    sectionsUrl,
     (url: string) => fetcher<{ items: SectionOption[] }>(url),
   );
   const sections = sectionsData?.items ?? [];

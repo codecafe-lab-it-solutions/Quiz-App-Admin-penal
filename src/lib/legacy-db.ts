@@ -60,9 +60,15 @@ export interface StudentCourseRow {
 }
 
 export interface CourseCatalogEntry {
+  // The real isr_sub_available_tbl row id (avai_sr) this entry comes from -
+  // needed because the same faculty can teach the same subCode under
+  // several different branches (e.g. a shared elective), each its own row
+  // with its own section, so subCode alone doesn't uniquely identify one.
+  id: number;
   subCode: string;
   title: string | null;
   branch: string | null;
+  sem: string | null;
   credits: number | null;
   facRoll: string;
   facultyName: string | null;
@@ -73,6 +79,10 @@ export interface CourseCatalogEntry {
   // Sections linked to this course (Master Data > Sections) - empty until an
   // admin creates one, since quiz creation now requires picking a section.
   sections: { id: number; name: string }[];
+  // This row's own real Major_Semester section (isr_sub_available_tbl.section
+  // - see resolveMajorFromBranch/assignFacultyToDefaultSection), independent
+  // of whether a Course/SectionCourse link exists in the app's own catalog.
+  section: string | null;
 }
 
 export interface CourseRosterEntry {
@@ -591,7 +601,16 @@ export async function createFacultyCourseMapping(data: {
   if (alreadyMapped) throw new ApiError(409, "This faculty is already mapped to this course for the current cycle");
 
   const row = await prisma.isrSubAvailableTbl.create({
-    data: { sem: data.sem, subList: data.subList, subCode: data.subCode, facRoll: data.facRoll, branch: data.branch },
+    data: {
+      sem: data.sem,
+      subList: data.subList,
+      subCode: data.subCode,
+      facRoll: data.facRoll,
+      branch: data.branch,
+      // App-added column (see schema.prisma) - this row's own branch+sem
+      // deterministically resolve to exactly one section, set once here.
+      section: `${data.major}_${data.sem}`,
+    },
   });
 
   return {
@@ -863,26 +882,41 @@ export async function getFacultyCourseCatalog(facultyRoll: string, subList: stri
       select: { id: true, code: true, name: true, credits: true, sectionCourses: { include: { section: { select: { id: true, name: true } } } } },
     }),
   ]);
+  // Keyed by (code, branch) - a shared course (e.g. "CDC") has one real
+  // curriculum row PER branch, each with its own sem/credits. A plain
+  // by-code Map would collapse all of those down to whichever one happened
+  // to load last, so every row for that course would show the same wrong
+  // branch/sem/title regardless of its own real isr_sub_available_tbl.branch.
+  const byCodeAndBranch = new Map(curriculum.map((c) => [`${c.bsmsCode}::${c.bsmsBranch}`, c]));
   const byCode = new Map(curriculum.map((c) => [c.bsmsCode, c]));
   const appCourseByCode = new Map(appCourses.map((c) => [c.code, c]));
   const faculty = await getFacultyByRoll(facultyRoll);
 
   return mappings.map((m) => {
-    const c = byCode.get(m.subCode);
+    // Prefer the curriculum row matching this row's own real branch; fall
+    // back to any curriculum row for the code (better than nothing) only
+    // when there's no exact branch match.
+    const c = byCodeAndBranch.get(`${m.subCode}::${m.branch}`) ?? byCode.get(m.subCode);
     const appCourse = appCourseByCode.get(m.subCode);
     return {
+      id: m.id,
       subCode: m.subCode,
       // The legacy curriculum table (isr_curriculum_tbl) is the primary
       // source, but it's sparsely populated in practice - fall back to the
       // admin-managed local Course catalog (Master Data > Courses) rather
       // than showing a blank name/credit count when that lookup misses.
       title: c?.title ?? appCourse?.name ?? null,
-      branch: c?.bsmsBranch ?? m.branch ?? null,
+      // This row's own real branch/sem always win over curriculum - they're
+      // the authoritative source for THIS specific mapping row, not a
+      // course-wide generality.
+      branch: m.branch ?? c?.bsmsBranch ?? null,
+      sem: m.sem ?? c?.sem ?? null,
       credits: c?.bsmsCredit ?? appCourse?.credits ?? null,
       facRoll: m.facRoll!,
       facultyName: faculty?.name ?? null,
       courseId: appCourse?.id ?? null,
       sections: appCourse?.sectionCourses.map((sc) => sc.section) ?? [],
+      section: m.section,
     };
   });
 }

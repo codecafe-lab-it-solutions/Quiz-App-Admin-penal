@@ -388,6 +388,15 @@ model IsrStuMainTbl {
   newPassword   String?   @map("new_password")
   requestStatus Int?      @map("request_status")
 
+  // App-added, NOT part of the real university dump - a denormalized,
+  // comma-joined list of every Section (Major_Semester) this student
+  // currently belongs to (see section_students), kept in sync by
+  // refreshStudentSectionColumn (section-sync.ts) on every membership
+  // change and rewritten after every legacy re-import, since
+  // importRealLegacyData() truncates this table from the raw dump (which
+  // has no such column) on every reseed.
+  section String? @db.Text
+
   @@map("isr_stu_main_tbl")
 }
 
@@ -410,6 +419,15 @@ model IsrSubAvailableTbl {
   semList String? @map("sem_list")
   slot    String?
   facOrder Int    @map("fac_order") @default(1)
+
+  // App-added, NOT part of the real university dump - the single
+  // Major_Semester section this specific mapping row resolves to (branch
+  // normalized to the real major - see resolveMajorFromBranch - combined
+  // with sem). Set once at creation (createFacultyCourseMapping /
+  // ensureFacultyCourseSectionLinks) since each row's own branch+sem never
+  // changes after that; rewritten after every legacy re-import, same reason
+  // as IsrStuMainTbl.section.
+  section String?
 
   @@map("isr_sub_available_tbl")
 }

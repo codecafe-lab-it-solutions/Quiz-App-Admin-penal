@@ -68,10 +68,23 @@ interface BranchSemOption {
   major: string;
 }
 
+// One entry per real isr_sub_available_tbl row for a faculty - `id` is that
+// row's own id, since the same course can repeat under different branches
+// (e.g. a shared elective taught to several majors), each its own section.
+interface FacultyCourseEntry {
+  id: number;
+  subCode: string;
+  title: string | null;
+  branch: string | null;
+  sem: string | null;
+  section: string | null;
+}
+
 const fetcher = (url: string) => apiClient.get<ListResponse>(url);
 const facultyFetcher = (url: string) => apiClient.get<{ items: FacultyOption[] }>(url);
 const courseFetcher = (url: string) => apiClient.get<{ items: CourseOption[] }>(url);
 const branchSemFetcher = (url: string) => apiClient.get<{ items: BranchSemOption[] }>(url);
+const facultyCoursesFetcher = (url: string) => apiClient.get<{ items: FacultyCourseEntry[] }>(url);
 
 const schema = z.object({
   facRoll: z.string().trim().min(1, "Faculty is required"),
@@ -161,6 +174,45 @@ export default function FacultyMappingPage() {
     .map((o) => ({ value: o.sem, label: `Semester ${o.sem}` }));
 
   const selectedMajor = branchSemOptions.find((o) => o.branch === branch && o.sem === sem)?.major ?? null;
+
+  // Read-only "Look up Section" tool - separate from Add Mapping above.
+  // Faculty -> only the courses that faculty already has a real
+  // isr_sub_available_tbl row for -> the Section is read directly off that
+  // exact row (isr_sub_available_tbl.section), not re-derived.
+  const [lookupFacRoll, setLookupFacRoll] = useState<string | null>(null);
+  const [lookupFacSearch, setLookupFacSearch] = useState("");
+  const lookupFacSearchDebounced = useDebouncedValue(lookupFacSearch, 250);
+  const { data: lookupFacData, isLoading: lookupFacLoading } = useSWR(
+    `/api/admin/faculty?search=${encodeURIComponent(lookupFacSearchDebounced)}&pageSize=20`,
+    facultyFetcher,
+  );
+  const lookupFacOptions: SearchableSelectOption[] = (lookupFacData?.items ?? []).map((f) => ({
+    value: f.roll,
+    label: `${f.name} (${f.roll})`,
+  }));
+
+  const [lookupCourseId, setLookupCourseId] = useState<string | null>(null);
+  const [lookupCourseSearch, setLookupCourseSearch] = useState("");
+  const { data: lookupCoursesData, isLoading: lookupCoursesLoading } = useSWR(
+    lookupFacRoll ? `/api/faculty/courses?facultyRoll=${encodeURIComponent(lookupFacRoll)}` : null,
+    facultyCoursesFetcher,
+  );
+  const lookupCourseEntries = lookupCoursesData?.items ?? [];
+  const lookupCourseOptions: SearchableSelectOption[] = lookupCourseEntries
+    .filter((e) =>
+      `${e.subCode} ${e.title ?? ""}`.toLowerCase().includes(lookupCourseSearch.trim().toLowerCase())
+    )
+    .map((e) => ({
+      value: String(e.id),
+      label: `${e.subCode}${e.title && e.title !== e.subCode ? ` - ${e.title}` : ""} (${e.branch ?? "—"}, Sem ${e.sem ?? "—"})`,
+    }));
+  const selectedLookupEntry = lookupCourseEntries.find((e) => String(e.id) === lookupCourseId) ?? null;
+
+  const handleLookupFacultyChange = (v: string) => {
+    setLookupFacRoll(v);
+    setLookupCourseId(null);
+    setLookupCourseSearch("");
+  };
 
   const openCreate = () => {
     reset({ facRoll: "", subCode: "", branch: "", sem: "" });
@@ -258,6 +310,68 @@ export default function FacultyMappingPage() {
           </Button>
         </div>
       </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Look up Section</CardTitle>
+          <CardDescription>
+            Pick a Faculty, then one of the courses they actually teach (per real isr_sub_available_tbl
+            rows) - the Section shown is read directly off that exact row. Read-only, doesn&apos;t create
+            or change anything.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div className="space-y-1.5">
+              <Label>Faculty</Label>
+              <SearchableSelect
+                value={lookupFacRoll}
+                onValueChange={handleLookupFacultyChange}
+                options={lookupFacOptions}
+                search={lookupFacSearch}
+                onSearchChange={setLookupFacSearch}
+                placeholder="Select faculty"
+                searchPlaceholder="Search by name, roll, email..."
+                loading={lookupFacLoading}
+                emptyText="No faculty found."
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Course</Label>
+              <SearchableSelect
+                value={lookupCourseId}
+                onValueChange={setLookupCourseId}
+                options={lookupCourseOptions}
+                search={lookupCourseSearch}
+                onSearchChange={setLookupCourseSearch}
+                placeholder={lookupFacRoll ? "Select course" : "Pick a faculty first"}
+                searchPlaceholder="Search course code or title..."
+                loading={lookupFacRoll ? lookupCoursesLoading : false}
+                disabled={!lookupFacRoll}
+                emptyText="This faculty has no real course mappings for the current cycle."
+              />
+            </div>
+          </div>
+          {selectedLookupEntry && (
+            <div className="rounded-md border bg-muted/40 p-3 text-sm">
+              <p>
+                <span className="text-muted-foreground">Course:</span> {selectedLookupEntry.subCode}
+                {selectedLookupEntry.title && selectedLookupEntry.title !== selectedLookupEntry.subCode
+                  ? ` - ${selectedLookupEntry.title}`
+                  : ""}
+              </p>
+              <p>
+                <span className="text-muted-foreground">Branch:</span> {selectedLookupEntry.branch ?? "—"}
+                {"  ·  "}
+                <span className="text-muted-foreground">Semester:</span> {selectedLookupEntry.sem ?? "—"}
+              </p>
+              <p className="mt-1 font-medium">
+                Section: {selectedLookupEntry.section ?? "— (not resolved for this row yet)"}
+              </p>
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>

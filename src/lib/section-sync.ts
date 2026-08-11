@@ -9,6 +9,35 @@ function sectionMajorFromName(name: string): string {
 }
 
 /**
+ * Keeps isr_stu_main_tbl.section (a denormalized, comma-joined copy of a
+ * student's real section_students membership - see the column comment in
+ * schema.prisma) in sync. Called after every write to section_students so
+ * the legacy table's column is never stale, regardless of which flow
+ * triggered the change (default-section assignment, Manage Members,
+ * course-roster auto-sync, ...). A single correlated UPDATE handles the
+ * whole batch of rolls at once rather than one query per roll.
+ */
+export async function refreshStudentSectionColumn(rolls: string[]): Promise<void> {
+  const uniqueRolls = [...new Set(rolls)];
+  if (uniqueRolls.length === 0) return;
+  const placeholders = uniqueRolls.map(() => "?").join(",");
+  await prisma.$executeRawUnsafe(
+    `UPDATE isr_stu_main_tbl m
+     LEFT JOIN (
+       SELECT ss.student_roll AS roll, GROUP_CONCAT(s.name ORDER BY s.name SEPARATOR ', ') AS names
+       FROM section_students ss
+       JOIN sections s ON s.id = ss.section_id
+       WHERE ss.source != 'manual_removed' AND ss.student_roll IN (${placeholders})
+       GROUP BY ss.student_roll
+     ) agg ON agg.roll = m.roll
+     SET m.section = agg.names
+     WHERE m.roll IN (${placeholders})`,
+    ...uniqueRolls,
+    ...uniqueRolls
+  );
+}
+
+/**
  * Keeps SectionStudent/SectionFaculty in step with the legacy rosters of a
  * section's linked courses, without ever clobbering a manual override:
  *  - rows with source "auto" are pure system state, freely added/removed
@@ -99,6 +128,12 @@ export async function syncSectionStudents(sectionId: number): Promise<void> {
     (roll) => prisma.sectionStudent.create({ data: { sectionId, studentRoll: roll, source: "auto" } }),
     (roll) => prisma.sectionStudent.deleteMany({ where: { sectionId, studentRoll: roll, source: "auto" } })
   );
+
+  // Every roll that was desired or already present had its membership in
+  // this section either confirmed or changed - refresh isr_stu_main_tbl for
+  // all of them (harmless no-op for the ones that didn't actually change).
+  const touchedRolls = [...new Set([...desired, ...existing.map((e) => e.studentRoll)])];
+  await refreshStudentSectionColumn(touchedRolls);
 }
 
 export async function syncSectionFaculty(sectionId: number): Promise<void> {
@@ -315,24 +350,27 @@ export async function createOrExtendSection(courseIds: number[], studentRolls: s
 
 /** Manually add a roll to a section, overriding any future auto-sync. */
 export async function addManualSectionStudent(sectionId: number, roll: string) {
-  return prisma.sectionStudent.upsert({
+  const result = await prisma.sectionStudent.upsert({
     where: { sectionId_studentRoll: { sectionId, studentRoll: roll } },
     update: { source: "manual_added" },
     create: { sectionId, studentRoll: roll, source: "manual_added" },
   });
+  await refreshStudentSectionColumn([roll]);
+  return result;
 }
 
 /** Manually remove a roll from a section; records the exclusion if the roll is still on the roster, otherwise just deletes the row. */
 export async function removeManualSectionStudent(sectionId: number, roll: string) {
   const desired = await getDesiredStudentRolls(sectionId);
-  if (desired.has(roll)) {
-    return prisma.sectionStudent.upsert({
-      where: { sectionId_studentRoll: { sectionId, studentRoll: roll } },
-      update: { source: "manual_removed" },
-      create: { sectionId, studentRoll: roll, source: "manual_removed" },
-    });
-  }
-  return prisma.sectionStudent.deleteMany({ where: { sectionId, studentRoll: roll } });
+  const result = desired.has(roll)
+    ? await prisma.sectionStudent.upsert({
+        where: { sectionId_studentRoll: { sectionId, studentRoll: roll } },
+        update: { source: "manual_removed" },
+        create: { sectionId, studentRoll: roll, source: "manual_removed" },
+      })
+    : await prisma.sectionStudent.deleteMany({ where: { sectionId, studentRoll: roll } });
+  await refreshStudentSectionColumn([roll]);
+  return result;
 }
 
 export async function addManualSectionFaculty(sectionId: number, roll: string) {
