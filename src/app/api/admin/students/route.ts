@@ -35,7 +35,7 @@ export async function POST(req: NextRequest) {
     const user = getAuthUser(req);
     requireRole(user, "admin");
 
-    const { section: sectionCode, sectionId, ...studentData } = studentCreateSchema.parse(await req.json());
+    const { sectionId, ...studentData } = studentCreateSchema.parse(await req.json());
     const student = await createStudent(studentData);
 
     let sectionName: string;
@@ -45,8 +45,9 @@ export async function POST(req: NextRequest) {
       await addManualSectionStudent(sectionId, studentData.roll);
       sectionName = existing.name;
     } else {
-      // Validated by studentCreateSchema's refine: sectionCode is present when sectionId isn't.
-      const section = await assignStudentToDefaultSection(studentData.major, sectionCode!, studentData.roll);
+      // No sectionId picked - derive the default section from this student's
+      // own real Major + Semester, not a typed code.
+      const section = await assignStudentToDefaultSection(studentData.major, studentData.semNow, studentData.roll);
       sectionName = section.name;
     }
 

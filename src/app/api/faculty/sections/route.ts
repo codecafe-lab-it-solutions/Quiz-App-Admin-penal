@@ -3,7 +3,8 @@ import { prisma } from "@/lib/db";
 import { ok, created, handleApiError } from "@/lib/api-response";
 import { getAuthUser, requireRole } from "@/lib/auth";
 import { sectionSchema } from "@/lib/validators/master-data";
-import { syncSection } from "@/lib/section-sync";
+import { getCurrentSubList } from "@/lib/config";
+import { syncSection, createOrExtendSection } from "@/lib/section-sync";
 
 // Section list for the quiz-creation section picker. Sections are primarily
 // admin-managed (Master Data > Sections) but faculty may also create/edit
@@ -36,14 +37,8 @@ export async function POST(req: NextRequest) {
     const user = getAuthUser(req);
     requireRole(user, "faculty", "admin");
 
-    const { name, courseIds } = sectionSchema.parse(await req.json());
-    const section = await prisma.section.create({
-      data: {
-        name,
-        courses: { create: courseIds.map((courseId) => ({ courseId })) },
-      },
-    });
-
+    const { courseIds } = sectionSchema.parse(await req.json());
+    const section = await createOrExtendSection(courseIds, [], await getCurrentSubList());
     await syncSection(section.id);
 
     return created(section);

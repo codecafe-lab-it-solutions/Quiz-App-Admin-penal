@@ -44,7 +44,6 @@ interface ListResponse<T> {
 }
 
 const schema = z.object({
-  name: z.string().trim().min(1, "Section name is required"),
   courseIds: z.array(z.number()).min(1, "Select at least one course"),
 });
 type FormValues = z.infer<typeof schema>;
@@ -65,7 +64,6 @@ export function FacultySections() {
     .map((c) => ({ id: c.courseId, code: c.subCode, name: c.title ?? c.subCode }));
 
   const {
-    register,
     handleSubmit,
     reset,
     watch,
@@ -73,7 +71,7 @@ export function FacultySections() {
     formState: { errors },
   } = useForm<FormValues>({
     resolver: zodResolver(schema),
-    defaultValues: { name: "", courseIds: [] },
+    defaultValues: { courseIds: [] },
   });
   const courseIds = watch("courseIds") ?? [];
 
@@ -84,13 +82,13 @@ export function FacultySections() {
 
   const openCreate = () => {
     setEditing(null);
-    reset({ name: "", courseIds: [] });
+    reset({ courseIds: [] });
     setDialogOpen(true);
   };
 
   const openEdit = (section: Section) => {
     setEditing(section);
-    reset({ name: section.name, courseIds: section.courses.map((c) => c.course.id) });
+    reset({ courseIds: section.courses.map((c) => c.course.id) });
     setDialogOpen(true);
   };
 
@@ -174,11 +172,20 @@ export function FacultySections() {
             </DialogDescription>
           </DialogHeader>
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-4" noValidate>
-            <div className="space-y-1.5">
-              <Label htmlFor="name">Section name</Label>
-              <Input id="name" placeholder="e.g. A" {...register("name")} />
-              {errors.name && <p className="text-sm text-destructive">{errors.name.message}</p>}
-            </div>
+            {editing ? (
+              <div className="space-y-1.5">
+                <Label>Section name</Label>
+                <Input value={editing.name} disabled />
+                <p className="text-xs text-muted-foreground">
+                  Derived from real data at creation - not editable directly.
+                </p>
+              </div>
+            ) : (
+              <p className="text-xs text-muted-foreground">
+                Section name is derived automatically from the first selected course&apos;s
+                branch + semester (real data) - not typed.
+              </p>
+            )}
             <div className="space-y-1.5">
               <Label>Courses</Label>
               <div className="max-h-48 space-y-2 overflow-y-auto rounded-md border p-3">

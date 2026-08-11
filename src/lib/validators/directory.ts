@@ -18,17 +18,12 @@ export const studentCreateSchema = z
     // isr_stu_main_tbl.sem_now is a real INT column in the legacy database, so
     // this must be a plain numeric string (no "Final", "III", etc.).
     semNow: z.string().trim().regex(/^\d+$/, "Semester must be a whole number"),
-    // Major + Section is this student's default section (2026-08-10 MOM) -
-    // app-owned, not a legacy column; see assignStudentToDefaultSection.
-    // Exactly one of these is expected: `section` (a new code, composed with
-    // major) from the dropdown's "+ Create new section" path, or `sectionId`
-    // (an existing section picked directly).
-    section: z.string().trim().optional(),
+    // Major + Semester is this student's default section (e.g. "CE-13") -
+    // app-owned, not a legacy column; see assignStudentToDefaultSection. Not
+    // a client-supplied field: when `sectionId` (an existing section picked
+    // directly) is omitted, the route derives the default section from this
+    // same major/semNow instead of a typed code.
     sectionId: z.coerce.number().int().positive().optional(),
-  })
-  .refine((data) => !!data.section?.trim() || !!data.sectionId, {
-    message: "Section is required",
-    path: ["section"],
   });
 
 export const facultyUpdateSchema = z.object({
@@ -45,9 +40,11 @@ export const studentUpdateSchema = z.object({
   batch: z.string().trim().min(1, "Batch is required").optional(),
   semNow: z.string().trim().regex(/^\d+$/, "Semester must be a whole number").optional(),
   // Optional section change (2026-08-10 MOM) - adds the student to this
-  // section without touching any section they're already in.
-  section: z.string().trim().optional(),
+  // section without touching any section they're already in. `sectionId`
+  // picks an existing section directly; `assignDefaultSection` opts into the
+  // real-data Major-SemesterNumber default instead of a typed code.
   sectionId: z.coerce.number().int().positive().optional(),
+  assignDefaultSection: z.boolean().optional(),
 });
 
 export const loginStatusUpdateSchema = z.object({

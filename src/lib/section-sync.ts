@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db";
+import { ApiError } from "@/lib/api-response";
 import { getCurrentSubList } from "@/lib/config";
 import { getCourseRegistrations } from "@/lib/legacy-db";
 
@@ -101,19 +102,110 @@ export async function syncSection(sectionId: number): Promise<void> {
 }
 
 /**
- * Resolves a student's default section from Major + Section (per the
- * 2026-08-10 MOM), finding an existing section named e.g. "CSE-A" or
- * creating one, then adding the student to it as a manual member. A brand
- * new section created this way has no linked courses, so course-roster
- * resync never touches it - membership here is stable until an admin
- * changes it directly.
+ * Resolves a student's default section from their real Major + current
+ * Semester (e.g. "CE-13") - the same Major-SemesterNumber cohort naming the
+ * seed's real-data sync uses (see ensureSectionByName in prisma/seed.ts) -
+ * finding an existing section with that name or creating one, then adding
+ * the student to it as a manual member. Deliberately not a typed/free-text
+ * code: an admin-invented label ("A") isn't grounded in anything real once
+ * you check the legacy dump (no section concept exists there at all - see
+ * the 2026-08-10 root-cause note), so the name always comes from the
+ * student's own major/semNow columns instead. A brand new section created
+ * this way has no linked courses, so course-roster resync never touches it -
+ * membership here is stable until an admin changes it directly.
  */
-export async function assignStudentToDefaultSection(major: string, sectionCode: string, roll: string) {
-  const name = `${major.trim()}-${sectionCode.trim()}`;
+export async function assignStudentToDefaultSection(major: string, semNow: string, roll: string) {
+  const name = `${major.trim()}-${semNow.trim()}`;
   const section =
     (await prisma.section.findFirst({ where: { name } })) ??
     (await prisma.section.create({ data: { name } }));
   await addManualSectionStudent(section.id, roll);
+  return section;
+}
+
+/**
+ * Derives a real-data section name for the Master Data > Sections page's
+ * manual "Add Section" flow, which (unlike assignStudentToDefaultSection)
+ * starts from courses/students rather than a single student record. Prefers
+ * the first selected student's own Major-SemesterNumber (most direct real
+ * data); when no students are selected yet, falls back to the first
+ * selected course's branch (its department, itself sourced from real
+ * curriculum/availability data - see prisma/seed.ts) and semester (looked up
+ * from the real isr_curriculum_tbl, falling back to isr_sub_available_tbl
+ * the same way getFacultyCourseCatalog does).
+ */
+export async function deriveSectionName(
+  courseIds: number[],
+  studentRolls: string[],
+  subList: string
+): Promise<string> {
+  if (studentRolls.length > 0) {
+    const student = await prisma.isrStuMainTbl.findUnique({
+      where: { roll: studentRolls[0] },
+      select: { major: true, semNow: true },
+    });
+    if (student) return `${student.major}-${student.semNow}`;
+  }
+
+  if (courseIds.length > 0) {
+    const course = await prisma.course.findUnique({
+      where: { id: courseIds[0] },
+      select: { code: true, department: { select: { name: true } } },
+    });
+    if (course) {
+      const curriculum = await prisma.isrCurriculumTbl.findFirst({
+        where: { bsmsCode: course.code, subList },
+        select: { bsmsBranch: true, sem: true },
+      });
+      const branch = curriculum?.bsmsBranch ?? course.department.name;
+      const sem =
+        curriculum?.sem ??
+        (
+          await prisma.isrSubAvailableTbl.findFirst({
+            where: { subCode: course.code, subList },
+            select: { sem: true },
+          })
+        )?.sem;
+      if (sem) return `${branch}-${sem}`;
+      return branch;
+    }
+  }
+
+  throw new ApiError(
+    400,
+    "Can't determine a section name from real data - select at least one course or student first"
+  );
+}
+
+/**
+ * Backs the admin and faculty "Add Section" flows: names the section from
+ * real data (deriveSectionName), then reuses an existing section with that
+ * name rather than creating a duplicate - e.g. picking a course already
+ * covered by the real "PE-7" cohort section just adds this course/students
+ * to that section, matching how the seed's cohort sync treats section names
+ * as unique-by-construction.
+ */
+export async function createOrExtendSection(courseIds: number[], studentRolls: string[], subList: string) {
+  const name = await deriveSectionName(courseIds, studentRolls, subList);
+
+  const existing = await prisma.section.findFirst({ where: { name } });
+  const section =
+    existing ??
+    (await prisma.section.create({
+      data: { name, courses: { create: courseIds.map((courseId) => ({ courseId })) } },
+    }));
+
+  if (existing) {
+    const existingCourseIds = new Set(
+      (await prisma.sectionCourse.findMany({ where: { sectionId: existing.id } })).map((c) => c.courseId)
+    );
+    const toAdd = courseIds.filter((id) => !existingCourseIds.has(id));
+    if (toAdd.length) {
+      await prisma.sectionCourse.createMany({ data: toAdd.map((courseId) => ({ sectionId: existing.id, courseId })) });
+    }
+  }
+
+  await Promise.all(studentRolls.map((roll) => addManualSectionStudent(section.id, roll)));
   return section;
 }
 

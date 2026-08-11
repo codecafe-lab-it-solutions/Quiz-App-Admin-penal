@@ -9,14 +9,16 @@ import {
   getStudentCourses,
   getCourseRegistrations,
   getRecentRegistrations,
+  getBatchRegistrations,
   createStudentCourseMapping,
 } from "@/lib/legacy-db";
 import { getCurrentSubList } from "@/lib/config";
 
 // Sourced live from the legacy per-batch isr_reg_<batch>_tbl tables. GET
-// never returns an unfiltered dump - a roll or course code is required so
-// this can't fan out across all ~60 batch tables at once. POST writes a new
-// registration row into the table for the student's batch.
+// never returns an unfiltered dump - a roll/course code search, or a
+// batch/section browse filter, keeps every branch bounded to a small number
+// of specific batch tables instead of fanning out across all ~60 at once.
+// POST writes a new registration row into the table for the student's batch.
 export async function GET(req: NextRequest) {
   try {
     const user = getAuthUser(req);
@@ -28,8 +30,22 @@ export async function GET(req: NextRequest) {
     if (!parsed.success) {
       return fail(400, "Provide either roll or courseCode to search");
     }
-    const { roll, courseCode } = parsed.data;
+    const { roll, courseCode, batch, sectionId } = parsed.data;
     const subList = await getCurrentSubList();
+
+    // Section browse filter - resolves once, reused by both the courseCode
+    // branch (as a post-filter) and the batch/section browse branch (as the
+    // roll scope for whichever batch tables those members are actually in).
+    const sectionRolls = sectionId
+      ? new Set(
+          (
+            await prisma.sectionStudent.findMany({
+              where: { sectionId },
+              select: { studentRoll: true },
+            })
+          ).map((r) => r.studentRoll),
+        )
+      : null;
 
     // A student's Sections column must be scoped to the specific course each
     // row represents, not their entire combined section list - a student
@@ -88,13 +104,49 @@ export async function GET(req: NextRequest) {
     }
 
     if (courseCode) {
-      const items = await getCourseRegistrations(courseCode, subList);
+      let items = await getCourseRegistrations(courseCode, subList);
+      if (batch) items = items.filter((i) => i.batch === batch);
+      if (sectionRolls) items = items.filter((i) => sectionRolls.has(i.roll));
       return ok({ items: await attachSections(items), isDefault: false });
     }
 
-    // No search yet - show a bounded "recently registered" default list
-    // (see getRecentRegistrations) so the page reads as live and connected
-    // rather than blank.
+    // Browse mode - a batch and/or section picked from a dropdown, with no
+    // exact roll/course code typed. Each branch below only ever queries the
+    // specific batch table(s) those choices actually point at, never all ~60.
+    if (batch) {
+      const rows = await getBatchRegistrations(batch, subList, {
+        rolls: sectionRolls ? [...sectionRolls] : undefined,
+        limit: 50,
+      });
+      const items = rows.map((r) => ({ ...r, batch }));
+      return ok({ items: await attachSections(items), isDefault: false });
+    }
+
+    if (sectionRolls) {
+      // No batch chosen - resolve each section member's real batch so only
+      // the handful of batch tables its members actually belong to get hit.
+      const members = await prisma.isrStuMainTbl.findMany({
+        where: { roll: { in: [...sectionRolls] } },
+        select: { roll: true, batch: true },
+      });
+      const rollsByBatch = new Map<string, string[]>();
+      for (const m of members) {
+        if (!m.batch) continue;
+        const list = rollsByBatch.get(m.batch) ?? [];
+        list.push(m.roll);
+        rollsByBatch.set(m.batch, list);
+      }
+      const items: { roll: string; subCode: string; batch: string }[] = [];
+      for (const [b, rolls] of rollsByBatch) {
+        const rows = await getBatchRegistrations(b, subList, { rolls });
+        items.push(...rows.map((r) => ({ ...r, batch: b })));
+      }
+      return ok({ items: await attachSections(items), isDefault: false });
+    }
+
+    // No search or filter yet - show a bounded "recently registered" default
+    // list (see getRecentRegistrations) so the page reads as live and
+    // connected rather than blank.
     const recent = await getRecentRegistrations(subList, 20);
     return ok({ items: await attachSections(recent), isDefault: true });
   } catch (error) {

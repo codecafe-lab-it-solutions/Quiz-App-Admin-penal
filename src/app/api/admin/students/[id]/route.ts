@@ -32,7 +32,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     const user = getAuthUser(req);
     requireRole(user, "admin");
 
-    const { section: sectionCode, sectionId, ...rest } = studentUpdateSchema.parse(await req.json());
+    const { sectionId, assignDefaultSection, ...rest } = studentUpdateSchema.parse(await req.json());
     const student = await updateStudent(params.id, rest);
 
     // Optional section change (2026-08-10 MOM) - additive only: adds the
@@ -41,8 +41,8 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
       const existing = await prisma.section.findUnique({ where: { id: sectionId } });
       if (!existing) throw new ApiError(404, "Section not found");
       await addManualSectionStudent(sectionId, params.id);
-    } else if (sectionCode?.trim()) {
-      await assignStudentToDefaultSection(student.major, sectionCode, params.id);
+    } else if (assignDefaultSection) {
+      await assignStudentToDefaultSection(student.major, student.semNow, params.id);
     }
 
     return ok(student);

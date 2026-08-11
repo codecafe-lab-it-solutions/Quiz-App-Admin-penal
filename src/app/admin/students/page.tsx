@@ -31,7 +31,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { ChevronRight, Pencil, Plus, Power, PowerOff, Trash2 } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
+import { ChevronRight, Pencil, Plus, Power, PowerOff, Trash2, X } from "lucide-react";
 
 interface SectionOption {
   id: number;
@@ -50,6 +51,7 @@ interface Student {
   status: number; // 1-Active, 2-Inactive
   category: string | null;
   section: string | null;
+  sections: { id: number; name: string }[];
 }
 
 interface ListResponse<T> {
@@ -67,9 +69,6 @@ const schema = z.object({
   major: z.string().trim().min(1, "Major is required"),
   batch: z.string().trim().min(1, "Batch is required"),
   semNow: z.string().trim().regex(/^\d+$/, "Semester must be a whole number"),
-  // Required on create only (enforced in onSubmit, since it doesn't apply to
-  // editing an existing student) - Major + Section becomes their default section.
-  section: z.string().trim().optional(),
 });
 type FormValues = z.infer<typeof schema>;
 
@@ -80,6 +79,15 @@ export default function StudentListPage() {
   const [editing, setEditing] = useState<Student | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [sectionChoice, setSectionChoice] = useState<string>(NEW_SECTION);
+  // Only meaningful on edit - on create, the default section always applies
+  // (matches the old "section required" behavior); on edit it's opt-in so a
+  // routine profile edit doesn't silently move the student into a section.
+  const [assignDefaultSection, setAssignDefaultSection] = useState(false);
+  // Sections queued for removal on Save - lets an edit properly reassign a
+  // student's section (remove the old one, add the new one) instead of only
+  // ever adding more.
+  const [removedSectionIds, setRemovedSectionIds] = useState<Set<number>>(new Set());
+  const currentSections = (editing?.sections ?? []).filter((s) => !removedSectionIds.has(s.id));
 
   const params = new URLSearchParams({ page: String(page), pageSize: "10", search });
 
@@ -94,22 +102,33 @@ export default function StudentListPage() {
     register,
     handleSubmit,
     reset,
+    watch,
     formState: { errors },
   } = useForm<FormValues>({ resolver: zodResolver(schema) });
+
+  // The default section is always Major-SemesterNumber, derived live from
+  // real data already on the form - never a typed/invented label.
+  const majorValue = watch("major");
+  const semNowValue = watch("semNow");
+  const derivedSectionName =
+    majorValue?.trim() && semNowValue?.trim() ? `${majorValue.trim()}-${semNowValue.trim()}` : null;
 
   const openCreate = () => {
     setEditing(null);
     setSectionChoice(NEW_SECTION);
-    reset({ roll: "", name: "", email: "", password: "", major: "", batch: "", semNow: "", section: "" });
+    setAssignDefaultSection(true);
+    reset({ roll: "", name: "", email: "", password: "", major: "", batch: "", semNow: "" });
     setDialogOpen(true);
   };
 
   const openEdit = (student: Student) => {
     setEditing(student);
-    // Left unchanged unless the admin actively picks/types a section below -
-    // a student can belong to more than one section, so there's no single
-    // "current" value to preselect here.
+    // Left unchanged unless the admin actively opts in below - a student can
+    // belong to more than one section, so there's no single "current" value
+    // to preselect here.
     setSectionChoice(NEW_SECTION);
+    setAssignDefaultSection(false);
+    setRemovedSectionIds(new Set());
     reset({
       roll: student.roll,
       name: student.name,
@@ -118,19 +137,16 @@ export default function StudentListPage() {
       major: student.major,
       batch: student.batch,
       semNow: student.semNow,
-      section: "",
     });
     setDialogOpen(true);
   };
 
   const onSubmit = async (values: FormValues) => {
-    // sectionChoice is either an existing section's id (as a string) or the
-    // NEW_SECTION sentinel, in which case values.section (typed code) applies.
     const sectionFields =
       sectionChoice !== NEW_SECTION
         ? { sectionId: Number(sectionChoice) }
-        : values.section?.trim()
-          ? { section: values.section.trim() }
+        : editing
+          ? { assignDefaultSection }
           : {};
 
     setSubmitting(true);
@@ -145,15 +161,15 @@ export default function StudentListPage() {
           semNow: values.semNow,
           ...sectionFields,
         });
+        await Promise.all(
+          [...removedSectionIds].map((id) =>
+            apiClient.delete(`/api/admin/sections/${id}/students/${encodeURIComponent(editing.roll)}`)
+          )
+        );
         toast.success("Student updated");
       } else {
         if (!values.password || values.password.length < 6) {
           toast.error("Password must be at least 6 characters");
-          setSubmitting(false);
-          return;
-        }
-        if (Object.keys(sectionFields).length === 0) {
-          toast.error("Section is required");
           setSubmitting(false);
           return;
         }
@@ -335,14 +351,38 @@ export default function StudentListPage() {
                 {errors.semNow && <p className="text-sm text-destructive">{errors.semNow.message}</p>}
               </div>
             </div>
+            {editing && (
+              <div className="space-y-1.5">
+                <Label>Current sections</Label>
+                {currentSections.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">Not in any section yet.</p>
+                ) : (
+                  <div className="flex flex-wrap gap-2">
+                    {currentSections.map((s) => (
+                      <Badge key={s.id} variant="secondary" className="gap-1 pr-1">
+                        {s.name}
+                        <button
+                          type="button"
+                          onClick={() => setRemovedSectionIds((prev) => new Set(prev).add(s.id))}
+                          className="ml-1 rounded-full hover:bg-muted-foreground/20"
+                          aria-label={`Remove from ${s.name}`}
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      </Badge>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
             <div className="space-y-1.5">
-              <Label>Section</Label>
+              <Label>{editing ? "Add a section" : "Section"}</Label>
               <Select value={sectionChoice} onValueChange={setSectionChoice}>
                 <SelectTrigger>
                   <SelectValue placeholder="Select a section" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value={NEW_SECTION}>+ Create new section</SelectItem>
+                  <SelectItem value={NEW_SECTION}>Default section (from Major + Semester)</SelectItem>
                   {sections.map((s) => (
                     <SelectItem key={s.id} value={String(s.id)}>
                       {s.name}
@@ -352,11 +392,22 @@ export default function StudentListPage() {
               </Select>
               {sectionChoice === NEW_SECTION && (
                 <>
-                  <Input id="section" {...register("section")} placeholder="e.g. A" />
+                  {editing && (
+                    <div className="flex items-center gap-2">
+                      <Checkbox
+                        id="assignDefaultSection"
+                        checked={assignDefaultSection}
+                        onCheckedChange={(checked) => setAssignDefaultSection(checked === true)}
+                      />
+                      <label htmlFor="assignDefaultSection" className="text-sm">
+                        Add to this section
+                      </label>
+                    </div>
+                  )}
                   <p className="text-xs text-muted-foreground">
-                    {editing
-                      ? "Major + Section becomes a section this student is added to (e.g. \"CSE-A\") - leave blank to keep unchanged."
-                      : 'Major + Section becomes this student\'s default section (e.g. "CSE-A").'}
+                    {derivedSectionName
+                      ? `Section: "${derivedSectionName}" - derived from Major + Semester, real data only.`
+                      : "Enter Major and Semester above to determine the section."}
                   </p>
                 </>
               )}

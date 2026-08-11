@@ -25,8 +25,10 @@ export const sessionSchema = sessionBaseSchema.refine((data) => data.endDate > d
 export type SessionInput = z.infer<typeof sessionSchema>;
 export const sessionUpdateSchema = sessionBaseSchema.partial();
 
+// No `name` field - a section's name is always derived from real data (its
+// courses' branch/semester, or its students' Major/Semester) by
+// deriveSectionName, never typed by an admin. See section-sync.ts.
 export const sectionSchema = z.object({
-  name: z.string().trim().min(1, "Section name is required"),
   courseIds: z.array(z.coerce.number().int().positive()).min(1, "Select at least one course"),
   // Direct student selection at section-creation time (2026-08-10 MOM) -
   // optional so existing callers (and section edits) are unaffected.

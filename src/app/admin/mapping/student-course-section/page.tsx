@@ -19,6 +19,13 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -41,7 +48,25 @@ interface ListResponse {
   isDefault: boolean;
 }
 
+interface CourseOption {
+  id: number;
+  name: string;
+  code: string;
+}
+interface SectionOption {
+  id: number;
+  name: string;
+}
+interface BatchOption {
+  batchName: string;
+  isActive: boolean;
+}
+
 const fetcher = (url: string) => apiClient.get<ListResponse>(url);
+const courseFetcher = (url: string) => apiClient.get<{ items: CourseOption[] }>(url);
+const sectionFetcher = (url: string) => apiClient.get<{ items: SectionOption[] }>(url);
+const semesterConfigFetcher = (url: string) =>
+  apiClient.get<{ batchRegistry: BatchOption[] }>(url);
 
 const schema = z.object({
   roll: z.string().trim().min(1, "Student roll is required"),
@@ -49,21 +74,36 @@ const schema = z.object({
 });
 type FormValues = z.infer<typeof schema>;
 
+const ALL = "__all__";
+
 export default function StudentMappingPage() {
   const [roll, setRoll] = useState("");
-  const [courseCode, setCourseCode] = useState("");
+  const [courseCode, setCourseCode] = useState(ALL);
+  const [batch, setBatch] = useState(ALL);
+  const [sectionId, setSectionId] = useState(ALL);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
-  // Roll search takes priority if both are somehow filled - mirrors the API contract.
-  // No search term still fires - the route returns a bounded "recently
-  // registered" default list instead of nothing, so the page shows real,
-  // interconnected data immediately.
-  const query = roll.trim()
-    ? `roll=${encodeURIComponent(roll.trim())}`
-    : courseCode.trim()
-      ? `courseCode=${encodeURIComponent(courseCode.trim())}`
-      : "";
+  const { data: courseData } = useSWR("/api/admin/courses?pageSize=200", courseFetcher);
+  const { data: sectionData } = useSWR("/api/admin/sections?pageSize=200", sectionFetcher);
+  const { data: semesterConfig } = useSWR("/api/admin/config/semester", semesterConfigFetcher);
+  const batches = (semesterConfig?.batchRegistry ?? []).filter((b) => b.isActive);
+
+  // Roll search takes priority - it's an exact student lookup, so it
+  // overrides any browse filters. Otherwise the course/batch/section
+  // dropdowns combine as filters on a bounded browse. No search or filter
+  // still fires - the route returns a bounded "recently registered" default
+  // list instead of nothing, so the page shows real, interconnected data
+  // immediately.
+  const params = new URLSearchParams();
+  if (roll.trim()) {
+    params.set("roll", roll.trim());
+  } else {
+    if (courseCode !== ALL) params.set("courseCode", courseCode);
+    if (batch !== ALL) params.set("batch", batch);
+    if (sectionId !== ALL) params.set("sectionId", sectionId);
+  }
+  const query = params.toString();
 
   const { data, isLoading, mutate } = useSWR(
     `/api/admin/mapping/student-course-section?${query}`,
@@ -89,7 +129,9 @@ export default function StudentMappingPage() {
       toast.success("Mapping added");
       setDialogOpen(false);
       // Show the result: switch the search to the roll just registered.
-      setCourseCode("");
+      setCourseCode(ALL);
+      setBatch(ALL);
+      setSectionId(ALL);
       setRoll(values.roll);
       mutate();
     } catch (error) {
@@ -126,7 +168,7 @@ export default function StudentMappingPage() {
           : "—",
     },
     { key: "subCode", header: "Course code", render: (r) => r.subCode },
-    ...(courseCode.trim()
+    ...(!roll.trim()
       ? [
           {
             key: "batch",
@@ -165,8 +207,8 @@ export default function StudentMappingPage() {
           <p className="text-sm text-muted-foreground">
             Live registrations synced from the university system - this spans
             ~60 per-batch tables, so it starts with a bounded recent list
-            rather than a full unfiltered dump; search a roll or course code
-            to look up a specific one.
+            rather than a full unfiltered dump; search an exact roll, or
+            browse by course/batch/section below.
           </p>
         </div>
         <Button onClick={openCreate}>
@@ -179,40 +221,101 @@ export default function StudentMappingPage() {
         <CardHeader>
           <CardTitle>Search registrations</CardTitle>
           <CardDescription>
-            Search by student roll or course code, or browse the most recently registered mappings below.
+            Search by an exact student roll, or browse by course/batch/section - combine the
+            three browse filters freely, or clear them (Any) to see the most recently
+            registered mappings.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <div className="space-y-1.5">
+            <Label htmlFor="roll">Student roll</Label>
+            <Input
+              id="roll"
+              value={roll}
+              onChange={(e) => {
+                setRoll(e.target.value);
+                if (e.target.value) {
+                  setCourseCode(ALL);
+                  setBatch(ALL);
+                  setSectionId(ALL);
+                }
+              }}
+              placeholder="e.g. 25PE3001"
+            />
+          </div>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
             <div className="space-y-1.5">
-              <Label htmlFor="roll">Student roll</Label>
-              <Input
-                id="roll"
-                value={roll}
-                onChange={(e) => {
-                  setRoll(e.target.value);
-                  if (e.target.value) setCourseCode("");
+              <Label>Course</Label>
+              <Select
+                value={courseCode}
+                onValueChange={(v) => {
+                  setCourseCode(v);
+                  if (v !== ALL) setRoll("");
                 }}
-                placeholder="e.g. 25PE3001"
-              />
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Any course" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={ALL}>Any course</SelectItem>
+                  {(courseData?.items ?? []).map((c) => (
+                    <SelectItem key={c.id} value={c.code}>
+                      {c.name} ({c.code})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="courseCode">Course code</Label>
-              <Input
-                id="courseCode"
-                value={courseCode}
-                onChange={(e) => {
-                  setCourseCode(e.target.value);
-                  if (e.target.value) setRoll("");
+              <Label>Batch</Label>
+              <Select
+                value={batch}
+                onValueChange={(v) => {
+                  setBatch(v);
+                  if (v !== ALL) setRoll("");
                 }}
-                placeholder="e.g. PE202"
-              />
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Any batch" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={ALL}>Any batch</SelectItem>
+                  {batches.map((b) => (
+                    <SelectItem key={b.batchName} value={b.batchName}>
+                      {b.batchName}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Section</Label>
+              <Select
+                value={sectionId}
+                onValueChange={(v) => {
+                  setSectionId(v);
+                  if (v !== ALL) setRoll("");
+                }}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Any section" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={ALL}>Any section</SelectItem>
+                  {(sectionData?.items ?? []).map((s) => (
+                    <SelectItem key={s.id} value={String(s.id)}>
+                      {s.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
           </div>
 
           {!query && data?.isDefault && (
             <p className="text-sm text-muted-foreground">
-              No search yet — showing the most recently registered mappings. Search a roll or course code to narrow this down.
+              No search or filter yet — showing the most recently registered mappings. Search a
+              roll, or pick a course/batch/section, to narrow this down.
             </p>
           )}
           <DataTable

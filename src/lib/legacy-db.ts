@@ -187,22 +187,30 @@ export async function getStudentNamesByRolls(rolls: string[]): Promise<Map<strin
 }
 
 // App-owned Section membership (2026-08-10 MOM) - joined in for the admin
-// student list/detail views. Comma-joins names for students in more than
-// one section (e.g. a Major+Section default plus a course-driven merged
-// section); excludes rows a human has explicitly removed.
-export async function getSectionNamesByRolls(rolls: string[]): Promise<Map<string, string>> {
+// student list/detail views. A student can be in more than one section (e.g.
+// a Major+Semester default plus a course-driven merged section); excludes
+// rows a human has explicitly removed. Structured (id+name), so callers that
+// need to let an admin remove a specific membership (not just display it)
+// have the section id to act on - see getSectionNamesByRolls for the
+// display-only comma-joined-name form most callers actually want.
+export async function getSectionsByRolls(rolls: string[]): Promise<Map<string, { id: number; name: string }[]>> {
   if (rolls.length === 0) return new Map();
   const rows = await prisma.sectionStudent.findMany({
     where: { studentRoll: { in: [...new Set(rolls)] }, source: { not: "manual_removed" } },
-    include: { section: { select: { name: true } } },
+    include: { section: { select: { id: true, name: true } } },
   });
-  const byRoll = new Map<string, string[]>();
+  const byRoll = new Map<string, { id: number; name: string }[]>();
   for (const row of rows) {
-    const names = byRoll.get(row.studentRoll) ?? [];
-    names.push(row.section.name);
-    byRoll.set(row.studentRoll, names);
+    const list = byRoll.get(row.studentRoll) ?? [];
+    list.push({ id: row.section.id, name: row.section.name });
+    byRoll.set(row.studentRoll, list);
   }
-  return new Map([...byRoll.entries()].map(([roll, names]) => [roll, names.join(", ")]));
+  return byRoll;
+}
+
+export async function getSectionNamesByRolls(rolls: string[]): Promise<Map<string, string>> {
+  const sections = await getSectionsByRolls(rolls);
+  return new Map([...sections.entries()].map(([roll, list]) => [roll, list.map((s) => s.name).join(", ")]));
 }
 
 export async function getFacultyNamesByRolls(rolls: string[]): Promise<Map<string, string>> {
@@ -295,20 +303,24 @@ export async function listStudents(params: {
     `),
   ]);
 
-  const sections = await getSectionNamesByRolls(items.map((r) => r.roll));
+  const sectionsByRoll = await getSectionsByRolls(items.map((r) => r.roll));
 
   return {
-    items: items.map((r) => ({
-      roll: r.roll,
-      name: r.stu_name,
-      email: r.user_email,
-      major: r.major ?? "",
-      batch: r.batch ?? "",
-      semNow: r.sem_now == null ? "" : String(r.sem_now),
-      status: r.status,
-      category: r.category,
-      section: sections.get(r.roll) ?? null,
-    })),
+    items: items.map((r) => {
+      const sections = sectionsByRoll.get(r.roll) ?? [];
+      return {
+        roll: r.roll,
+        name: r.stu_name,
+        email: r.user_email,
+        major: r.major ?? "",
+        batch: r.batch ?? "",
+        semNow: r.sem_now == null ? "" : String(r.sem_now),
+        status: r.status,
+        category: r.category,
+        section: sections.length ? sections.map((s) => s.name).join(", ") : null,
+        sections,
+      };
+    }),
     total: Number(countRows[0]?.total ?? 0),
   };
 }
@@ -654,6 +666,40 @@ export async function getRecentRegistrations(subList: string, limit: number): Pr
   }
 
   return results.slice(0, limit);
+}
+
+// Backs the mapping page's Batch filter - a single batch table is cheap to
+// query directly (unlike scanning all ~60), optionally narrowed to a
+// specific roll set (e.g. a section's members) instead of just LIMITed.
+export async function getBatchRegistrations(
+  batch: string,
+  subList: string,
+  opts: { rolls?: string[]; limit?: number } = {}
+): Promise<StudentCourseRow[]> {
+  const tableName = await resolveBatchTable(batch);
+  if (!tableName) return [];
+
+  try {
+    if (opts.rolls) {
+      if (opts.rolls.length === 0) return [];
+      const placeholders = opts.rolls.map(() => "?").join(",");
+      const rows = await prisma.$queryRawUnsafe<Record<string, string>[]>(
+        `SELECT \`${REG_ROLL_COLUMN}\` AS roll, \`${REG_SUB_CODE_COLUMN}\` AS sub_code FROM \`${tableName}\` WHERE \`${REG_SUB_LIST_COLUMN}\` = ? AND \`${REG_ROLL_COLUMN}\` IN (${placeholders}) ORDER BY \`${REG_PK_COLUMN}\` DESC`,
+        subList,
+        ...opts.rolls
+      );
+      return rows.map((r) => ({ roll: r.roll, subCode: r.sub_code }));
+    }
+
+    const rows = await prisma.$queryRawUnsafe<Record<string, string>[]>(
+      `SELECT \`${REG_ROLL_COLUMN}\` AS roll, \`${REG_SUB_CODE_COLUMN}\` AS sub_code FROM \`${tableName}\` WHERE \`${REG_SUB_LIST_COLUMN}\` = ? ORDER BY \`${REG_PK_COLUMN}\` DESC LIMIT ${opts.limit ?? 50}`,
+      subList
+    );
+    return rows.map((r) => ({ roll: r.roll, subCode: r.sub_code }));
+  } catch (error) {
+    console.error(`getBatchRegistrations: query against ${tableName} failed`, error);
+    return [];
+  }
 }
 
 export async function createStudentCourseMapping(data: {

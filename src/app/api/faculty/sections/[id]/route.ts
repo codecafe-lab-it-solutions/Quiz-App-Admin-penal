@@ -6,9 +6,10 @@ import { sectionSchema } from "@/lib/validators/master-data";
 import { idParamSchema } from "@/lib/validators/common";
 import { syncSection } from "@/lib/section-sync";
 
-// Faculty may edit a section's name/linked courses (same as create), but
-// cannot delete one - deleting is admin-only since other faculty/quizzes may
-// depend on a section neither of them created.
+// Faculty may edit a section's linked courses (same as create) - the name
+// stays fixed to whatever it was derived from at creation - but cannot
+// delete one, since other faculty/quizzes may depend on a section neither
+// of them created.
 export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
   try {
     const user = getAuthUser(req);

@@ -4,7 +4,8 @@ import { ok, created, handleApiError } from "@/lib/api-response";
 import { getAuthUser, requireRole } from "@/lib/auth";
 import { sectionSchema } from "@/lib/validators/master-data";
 import { paginationSchema, paginationMeta } from "@/lib/validators/common";
-import { syncSection, addManualSectionStudent } from "@/lib/section-sync";
+import { getCurrentSubList } from "@/lib/config";
+import { syncSection, createOrExtendSection } from "@/lib/section-sync";
 
 export async function GET(req: NextRequest) {
   try {
@@ -45,18 +46,11 @@ export async function POST(req: NextRequest) {
     const user = getAuthUser(req);
     requireRole(user, "admin");
 
-    const { name, courseIds, studentRolls } = sectionSchema.parse(await req.json());
-    const section = await prisma.section.create({
-      data: {
-        name,
-        courses: { create: courseIds.map((courseId) => ({ courseId })) },
-      },
-    });
-
-    await syncSection(section.id);
+    const { courseIds, studentRolls } = sectionSchema.parse(await req.json());
     // Direct student selection at creation time (2026-08-10 MOM) - added as
     // manual members, so a later course-roster resync never drops them.
-    await Promise.all(studentRolls.map((roll) => addManualSectionStudent(section.id, roll)));
+    const section = await createOrExtendSection(courseIds, studentRolls, await getCurrentSubList());
+    await syncSection(section.id);
 
     return created(section);
   } catch (error) {

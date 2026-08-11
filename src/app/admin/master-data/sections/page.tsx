@@ -44,7 +44,6 @@ interface ListResponse<T> {
 }
 
 const schema = z.object({
-  name: z.string().trim().min(1, "Section name is required"),
   courseIds: z.array(z.number()).min(1, "Select at least one course"),
 });
 type FormValues = z.infer<typeof schema>;
@@ -65,9 +64,9 @@ export default function SectionsPage() {
   const { data, isLoading, mutate } = useSWR(`/api/admin/sections?${params.toString()}`, fetcher);
   const { data: courseData } = useSWR("/api/admin/courses?pageSize=200", courseFetcher);
 
-  const { register, handleSubmit, reset, watch, setValue, formState: { errors } } = useForm<FormValues>({
+  const { handleSubmit, reset, watch, setValue, formState: { errors } } = useForm<FormValues>({
     resolver: zodResolver(schema),
-    defaultValues: { name: "", courseIds: [] },
+    defaultValues: { courseIds: [] },
   });
   const courseIds = watch("courseIds") ?? [];
 
@@ -79,13 +78,13 @@ export default function SectionsPage() {
   const openCreate = () => {
     setEditing(null);
     setSelectedStudents(new Set());
-    reset({ name: "", courseIds: [] });
+    reset({ courseIds: [] });
     setDialogOpen(true);
   };
 
   const openEdit = (section: Section) => {
     setEditing(section);
-    reset({ name: section.name, courseIds: section.courses.map((c) => c.course.id) });
+    reset({ courseIds: section.courses.map((c) => c.course.id) });
     setDialogOpen(true);
   };
 
@@ -188,11 +187,21 @@ export default function SectionsPage() {
             </DialogDescription>
           </DialogHeader>
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-4" noValidate>
-            <div className="space-y-1.5">
-              <Label htmlFor="name">Section name</Label>
-              <Input id="name" placeholder="e.g. A" {...register("name")} />
-              {errors.name && <p className="text-sm text-destructive">{errors.name.message}</p>}
-            </div>
+            {editing ? (
+              <div className="space-y-1.5">
+                <Label>Section name</Label>
+                <Input value={editing.name} disabled />
+                <p className="text-xs text-muted-foreground">
+                  Derived from real data at creation - not editable directly. Change the linked
+                  courses/students below instead.
+                </p>
+              </div>
+            ) : (
+              <p className="text-xs text-muted-foreground">
+                Section name is derived automatically from real data (the selected students&apos;
+                Major + Semester, or the first course&apos;s branch + semester) - not typed.
+              </p>
+            )}
             <div className="space-y-1.5">
               <Label>Courses</Label>
               <div className="max-h-48 space-y-2 overflow-y-auto rounded-md border p-3">
