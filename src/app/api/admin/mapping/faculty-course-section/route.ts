@@ -99,7 +99,7 @@ export async function POST(req: NextRequest) {
     });
     // Section is always derived from Major + Semester (Major_Semester),
     // never a manually picked existing section - see assignFacultyToDefaultSection.
-    await assignFacultyToDefaultSection(major, body.sem, body.subCode, body.facRoll);
+    await assignFacultyToDefaultSection(major, body.sem, body.subCode, body.facRoll, currentSubList);
 
     return created(mapping);
   } catch (error) {

@@ -396,7 +396,7 @@ async function ensureFacultyCourseSectionLinks(subList: string) {
   const sectionNames = new Set<string>();
   for (const row of rows) {
     const major = resolveMajorFromBranch(row.branch ?? "", realMajors);
-    await assignFacultyToDefaultSection(major, row.sem!, row.subCode!, row.facRoll!);
+    await assignFacultyToDefaultSection(major, row.sem!, row.subCode!, row.facRoll!, subList);
     sectionNames.add(`${major.trim()}_${row.sem!.trim()}`);
   }
   return { rowCount: rows.length, sectionCount: sectionNames.size };

@@ -612,6 +612,60 @@ export async function deleteFacultyCourseMapping(id: number): Promise<void> {
   await prisma.isrSubAvailableTbl.delete({ where: { id } });
 }
 
+// Real course catalog for the "Add Mapping" course picker - a proper union
+// of isr_curriculum_tbl and isr_sub_available_tbl, since neither is a
+// complete list on its own (confirmed against the real C2 dump: 21 real
+// course codes only ever appear in isr_sub_available_tbl, never in
+// curriculum). Title comes from curriculum when available, falls back to the
+// bare code otherwise.
+export async function searchRealCourseCatalog(
+  subList: string,
+  search: string,
+  limit: number
+): Promise<{ code: string; title: string }[]> {
+  const like = `%${search.trim()}%`;
+  const rows = await prisma.$queryRawUnsafe<{ code: string; title: string | null }[]>(
+    `SELECT code, MAX(title) AS title FROM (
+       SELECT bsms_code AS code, title AS title FROM isr_curriculum_tbl WHERE sub_list = ?
+       UNION ALL
+       SELECT sub_code AS code, NULL AS title FROM isr_sub_available_tbl WHERE sub_list = ? AND sub_code IS NOT NULL
+     ) t
+     WHERE code LIKE ?
+     GROUP BY code
+     ORDER BY code ASC
+     LIMIT ?`,
+    subList,
+    subList,
+    like,
+    limit
+  );
+  return rows.map((r) => ({ code: r.code, title: r.title ?? r.code }));
+}
+
+// Real Branch+Semester options for a specific course - the admin picks from
+// these instead of typing (no guardrail before against picking a
+// branch/semester combination unrelated to what that course is actually
+// offered as). Same two-source union as above, since a course can be
+// "offered" per curriculum without a faculty row yet, or have a faculty row
+// without a curriculum entry.
+export async function getRealBranchSemOptions(
+  subCode: string,
+  subList: string
+): Promise<{ branch: string; sem: string }[]> {
+  const rows = await prisma.$queryRawUnsafe<{ branch: string; sem: string }[]>(
+    `SELECT DISTINCT bsms_branch AS branch, sem AS sem FROM isr_curriculum_tbl
+       WHERE bsms_code = ? AND sub_list = ? AND bsms_branch IS NOT NULL AND sem IS NOT NULL
+     UNION
+     SELECT DISTINCT branch AS branch, sem AS sem FROM isr_sub_available_tbl
+       WHERE sub_code = ? AND sub_list = ? AND branch IS NOT NULL AND sem IS NOT NULL`,
+    subCode,
+    subList,
+    subCode,
+    subList
+  );
+  return rows;
+}
+
 // ---------------------------------------------------------------------------
 // Student <-> Course mapping (isr_reg_<batch>_tbl) - dynamic table, allow-listed
 // ---------------------------------------------------------------------------

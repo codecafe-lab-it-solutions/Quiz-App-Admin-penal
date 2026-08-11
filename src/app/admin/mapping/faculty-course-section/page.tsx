@@ -7,6 +7,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { toast } from "sonner";
 import { apiClient, ApiClientError } from "@/lib/api-client";
+import { useDebouncedValue } from "@/hooks/use-debounced-value";
 import {
   Card,
   CardContent,
@@ -18,8 +19,8 @@ import { DataTable, DataTableColumn } from "@/components/admin/data-table";
 import { FilterBar } from "@/components/admin/filter-bar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { SearchableSelect, SearchableSelectOption } from "@/components/admin/searchable-select";
 import {
   Dialog,
   DialogContent,
@@ -51,11 +52,30 @@ interface ListResponse {
   currentSubList: string;
 }
 
+interface FacultyOption {
+  roll: string;
+  name: string;
+}
+
+interface CourseOption {
+  code: string;
+  title: string;
+}
+
+interface BranchSemOption {
+  branch: string;
+  sem: string;
+  major: string;
+}
+
 const fetcher = (url: string) => apiClient.get<ListResponse>(url);
+const facultyFetcher = (url: string) => apiClient.get<{ items: FacultyOption[] }>(url);
+const courseFetcher = (url: string) => apiClient.get<{ items: CourseOption[] }>(url);
+const branchSemFetcher = (url: string) => apiClient.get<{ items: BranchSemOption[] }>(url);
 
 const schema = z.object({
-  facRoll: z.string().trim().min(1, "Faculty roll is required"),
-  subCode: z.string().trim().min(1, "Course code is required"),
+  facRoll: z.string().trim().min(1, "Faculty is required"),
+  subCode: z.string().trim().min(1, "Course is required"),
   branch: z.string().trim().min(1, "Branch is required"),
   sem: z.string().trim().min(1, "Semester is required"),
 });
@@ -74,30 +94,80 @@ export default function FacultyMappingPage() {
   );
 
   const {
-    register,
     handleSubmit,
     reset,
     watch,
+    setValue,
     formState: { errors },
   } = useForm<FormValues>({ resolver: zodResolver(schema) });
+  const facRoll = watch("facRoll");
+  const subCode = watch("subCode");
+  const branch = watch("branch");
+  const sem = watch("sem");
 
-  // The section this mapping lands in is always Major_Semester, derived live
-  // from real data already on the form - never a separately typed/picked
-  // section. The exact resolved Major (Branch isn't always the same code -
-  // e.g. "DCE" really means major "CE", see resolveMajorFromBranch) is
-  // computed server-side on save; this preview just confirms Branch/Semester
-  // are filled in.
-  const branchValue = watch("branch");
-  const semValue = watch("sem");
-  const sectionPreviewReady = !!branchValue?.trim() && !!semValue?.trim();
+  // Faculty dropdown - server-searched, real isr_faculty_tbl rolls only.
+  const [facSearch, setFacSearch] = useState("");
+  const facSearchDebounced = useDebouncedValue(facSearch, 250);
+  const { data: facData, isLoading: facLoading } = useSWR(
+    dialogOpen
+      ? `/api/admin/faculty?search=${encodeURIComponent(facSearchDebounced)}&pageSize=20`
+      : null,
+    facultyFetcher,
+  );
+  const facOptions: SearchableSelectOption[] = (facData?.items ?? []).map((f) => ({
+    value: f.roll,
+    label: `${f.name} (${f.roll})`,
+  }));
+
+  // Course dropdown - server-searched, real curriculum/availability codes only.
+  const [courseSearch, setCourseSearch] = useState("");
+  const courseSearchDebounced = useDebouncedValue(courseSearch, 250);
+  const { data: courseData, isLoading: courseLoading } = useSWR(
+    dialogOpen
+      ? `/api/admin/mapping/faculty-course-section/courses?search=${encodeURIComponent(courseSearchDebounced)}&pageSize=20`
+      : null,
+    courseFetcher,
+  );
+  const courseOptions: SearchableSelectOption[] = (courseData?.items ?? []).map((c) => ({
+    value: c.code,
+    label: c.title === c.code ? c.code : `${c.code} - ${c.title}`,
+  }));
+
+  // Branch/Semester dropdowns - scoped to whichever course was picked, so
+  // only real (branch, sem) combinations that course is actually offered as
+  // are selectable. Small lists (typically 1-9 rows) - filtered client-side.
+  const { data: branchSemData } = useSWR(
+    dialogOpen && subCode
+      ? `/api/admin/mapping/faculty-course-section/branch-options?subCode=${encodeURIComponent(subCode)}`
+      : null,
+    branchSemFetcher,
+  );
+  const branchSemOptions = branchSemData?.items ?? [];
+
+  const [branchSearch, setBranchSearch] = useState("");
+  const distinctBranches = [...new Map(branchSemOptions.map((o) => [o.branch, o])).values()];
+  const branchOptions: SearchableSelectOption[] = distinctBranches
+    .filter((o) => o.branch.toLowerCase().includes(branchSearch.trim().toLowerCase()))
+    .map((o) => ({
+      value: o.branch,
+      label: o.branch,
+      description: o.major !== o.branch ? `→ ${o.major}` : undefined,
+    }));
+
+  const [semSearch, setSemSearch] = useState("");
+  const semOptionsForBranch = branchSemOptions.filter((o) => o.branch === branch);
+  const semOptions: SearchableSelectOption[] = semOptionsForBranch
+    .filter((o) => o.sem.includes(semSearch.trim()))
+    .map((o) => ({ value: o.sem, label: `Semester ${o.sem}` }));
+
+  const selectedMajor = branchSemOptions.find((o) => o.branch === branch && o.sem === sem)?.major ?? null;
 
   const openCreate = () => {
-    reset({
-      facRoll: "",
-      subCode: "",
-      branch: "",
-      sem: "",
-    });
+    reset({ facRoll: "", subCode: "", branch: "", sem: "" });
+    setFacSearch("");
+    setCourseSearch("");
+    setBranchSearch("");
+    setSemSearch("");
     setDialogOpen(true);
   };
 
@@ -218,7 +288,8 @@ export default function FacultyMappingPage() {
             <DialogTitle>Add Mapping</DialogTitle>
             <DialogDescription>
               Maps a faculty member to a course for the current cycle
-              {data?.currentSubList ? ` (${data.currentSubList})` : ""}.
+              {data?.currentSubList ? ` (${data.currentSubList})` : ""}. Every field is
+              picked from real data - nothing typed.
             </DialogDescription>
           </DialogHeader>
           <form
@@ -227,61 +298,94 @@ export default function FacultyMappingPage() {
             noValidate
           >
             <div className="space-y-1.5">
-              <Label htmlFor="facRoll">Faculty roll</Label>
-              <Input
-                id="facRoll"
-                {...register("facRoll")}
-                placeholder="e.g. RF0223"
+              <Label>Faculty</Label>
+              <SearchableSelect
+                value={facRoll || null}
+                onValueChange={(v) => setValue("facRoll", v, { shouldValidate: true })}
+                options={facOptions}
+                search={facSearch}
+                onSearchChange={setFacSearch}
+                placeholder="Select faculty"
+                searchPlaceholder="Search by name, roll, email..."
+                loading={facLoading}
+                emptyText="No faculty found."
               />
               {errors.facRoll && (
-                <p className="text-sm text-destructive">
-                  {errors.facRoll.message}
-                </p>
+                <p className="text-sm text-destructive">{errors.facRoll.message}</p>
               )}
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="subCode">Course code</Label>
-              <Input
-                id="subCode"
-                {...register("subCode")}
-                placeholder="e.g. PE202"
+              <Label>Course</Label>
+              <SearchableSelect
+                value={subCode || null}
+                onValueChange={(v) => {
+                  setValue("subCode", v, { shouldValidate: true });
+                  setValue("branch", "");
+                  setValue("sem", "");
+                  setBranchSearch("");
+                  setSemSearch("");
+                }}
+                options={courseOptions}
+                search={courseSearch}
+                onSearchChange={setCourseSearch}
+                placeholder="Select course"
+                searchPlaceholder="Search course code or title..."
+                loading={courseLoading}
+                emptyText="No matching courses."
               />
               {errors.subCode && (
-                <p className="text-sm text-destructive">
-                  {errors.subCode.message}
-                </p>
+                <p className="text-sm text-destructive">{errors.subCode.message}</p>
               )}
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
-                <Label htmlFor="branch">Branch</Label>
-                <Input
-                  id="branch"
-                  {...register("branch")}
-                  placeholder="e.g. DPE"
+                <Label>Branch</Label>
+                <SearchableSelect
+                  value={branch || null}
+                  onValueChange={(v) => {
+                    setValue("branch", v, { shouldValidate: true });
+                    const matches = branchSemOptions.filter((o) => o.branch === v);
+                    setValue("sem", matches.length === 1 ? matches[0].sem : "", {
+                      shouldValidate: true,
+                    });
+                    setSemSearch("");
+                  }}
+                  options={branchOptions}
+                  search={branchSearch}
+                  onSearchChange={setBranchSearch}
+                  placeholder={subCode ? "Select branch" : "Pick a course first"}
+                  searchPlaceholder="Search branch..."
+                  disabled={!subCode}
+                  emptyText="No branches offered for this course."
                 />
                 {errors.branch && (
-                  <p className="text-sm text-destructive">
-                    {errors.branch.message}
-                  </p>
+                  <p className="text-sm text-destructive">{errors.branch.message}</p>
                 )}
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="sem">Semester</Label>
-                <Input id="sem" {...register("sem")} placeholder="e.g. 3" />
+                <Label>Semester</Label>
+                <SearchableSelect
+                  value={sem || null}
+                  onValueChange={(v) => setValue("sem", v, { shouldValidate: true })}
+                  options={semOptions}
+                  search={semSearch}
+                  onSearchChange={setSemSearch}
+                  placeholder={branch ? "Select semester" : "Pick a branch first"}
+                  searchPlaceholder="Search semester..."
+                  disabled={!branch}
+                  emptyText="No semesters found."
+                />
                 {errors.sem && (
-                  <p className="text-sm text-destructive">
-                    {errors.sem.message}
-                  </p>
+                  <p className="text-sm text-destructive">{errors.sem.message}</p>
                 )}
               </div>
             </div>
             <div className="space-y-1.5">
               <Label>Section</Label>
               <p className="text-xs text-muted-foreground">
-                {sectionPreviewReady
-                  ? `Section: Major_${semValue.trim()} - Major is resolved from Branch against real student data, then combined with Semester. Real data only, not typed.`
-                  : "Enter Branch and Semester above to determine the section."}
+                {selectedMajor && sem
+                  ? `Section: "${selectedMajor}_${sem}" - real data only, not typed.`
+                  : "Pick a Branch (and Semester, if it offers more than one) to determine the section."}
               </p>
             </div>
             <DialogFooter>

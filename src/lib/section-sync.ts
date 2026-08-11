@@ -160,24 +160,53 @@ export async function assignStudentToDefaultSection(major: string, semNow: strin
  * actually being entered, and no guardrail against picking the wrong one).
  * Callers must pass the already-*resolved* major, not the raw branch value.
  *
- * Also links the mapped course to that section when the subCode matches a
- * known app Course (best-effort - a mapping row can reference a raw legacy
- * sub_code with no Course entity yet, in which case only the membership is
- * recorded). Without this the mapping page's own "Sections" column - scoped
- * to courses each section actually links (see the GET route) - would show
- * nothing for a brand-new section, even though the faculty really is in it.
+ * Also links the mapped course to that section, creating the Course itself
+ * (from real isr_curriculum_tbl title/credits, department = the resolved
+ * major) if it doesn't exist in the app's catalog yet - most real
+ * isr_sub_available_tbl course codes never got created as a Course this way,
+ * since the app's own Course catalog was originally only populated from
+ * courses real *students* register for (see buildCohortSections in
+ * prisma/seed.ts), and only 3 of the real batches have a registration table
+ * at all. Without creating the Course here, the mapping page's own
+ * "Sections" column - scoped to courses each section actually links (see the
+ * GET route) - would show nothing for the vast majority of real mappings,
+ * even though the faculty really is in the section.
  */
-export async function assignFacultyToDefaultSection(major: string, sem: string, subCode: string, facRoll: string) {
+export async function assignFacultyToDefaultSection(
+  major: string,
+  sem: string,
+  subCode: string,
+  facRoll: string,
+  subList: string
+) {
   const section = await findOrCreateSectionByName(`${major.trim()}_${sem.trim()}`);
 
-  const course = await prisma.course.findUnique({ where: { code: subCode } });
-  if (course) {
-    await prisma.sectionCourse.upsert({
-      where: { sectionId_courseId: { sectionId: section.id, courseId: course.id } },
+  let course = await prisma.course.findUnique({ where: { code: subCode } });
+  if (!course) {
+    const curriculum = await prisma.isrCurriculumTbl.findFirst({
+      where: { bsmsCode: subCode, subList },
+      select: { title: true, bsmsCredit: true },
+    });
+    const department = await prisma.department.upsert({
+      where: { name: major },
       update: {},
-      create: { sectionId: section.id, courseId: course.id },
+      create: { name: major },
+    });
+    course = await prisma.course.create({
+      data: {
+        name: curriculum?.title ?? subCode,
+        code: subCode,
+        departmentId: department.id,
+        credits: curriculum?.bsmsCredit ?? 0,
+      },
     });
   }
+
+  await prisma.sectionCourse.upsert({
+    where: { sectionId_courseId: { sectionId: section.id, courseId: course.id } },
+    update: {},
+    create: { sectionId: section.id, courseId: course.id },
+  });
 
   await addManualSectionFaculty(section.id, facRoll);
   return section;
