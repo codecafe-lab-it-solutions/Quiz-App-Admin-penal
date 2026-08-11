@@ -796,7 +796,7 @@ export async function createStudentCourseMapping(data: {
   roll: string;
   subCode: string;
   subList: string;
-}): Promise<StudentCourseRow & { batch: string }> {
+}): Promise<StudentCourseRow & { batch: string; major: string; semNow: string }> {
   const student = await getStudentByRoll(data.roll);
   if (!student || !student.batch) throw new ApiError(404, "No student found for this roll number, or the student has no batch on record");
 
@@ -820,7 +820,7 @@ export async function createStudentCourseMapping(data: {
     data.subList
   );
 
-  return { roll: data.roll, subCode: data.subCode, batch: student.batch };
+  return { roll: data.roll, subCode: data.subCode, batch: student.batch, major: student.major, semNow: student.semNow };
 }
 
 export async function deleteStudentCourseMapping(roll: string, subCode: string, subList: string): Promise<void> {

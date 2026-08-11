@@ -7,6 +7,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { toast } from "sonner";
 import { apiClient, ApiClientError } from "@/lib/api-client";
+import { useDebouncedValue } from "@/hooks/use-debounced-value";
 import {
   Card,
   CardContent,
@@ -25,6 +26,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { SearchableSelect, SearchableSelectOption } from "@/components/admin/searchable-select";
 import {
   Dialog,
   DialogContent,
@@ -63,12 +65,26 @@ interface BatchOption {
   batchName: string;
   isActive: boolean;
 }
+interface StudentSearchOption {
+  roll: string;
+  name: string;
+  major: string;
+  batch: string;
+  semNow: string;
+}
+interface RealCourseOption {
+  code: string;
+  title: string;
+}
 
 const fetcher = (url: string) => apiClient.get<ListResponse>(url);
 const courseFetcher = (url: string) => apiClient.get<{ items: CourseOption[] }>(url);
 const sectionFetcher = (url: string) => apiClient.get<{ items: SectionOption[] }>(url);
 const semesterConfigFetcher = (url: string) =>
   apiClient.get<{ batchRegistry: BatchOption[] }>(url);
+const studentSearchFetcher = (url: string) =>
+  apiClient.get<{ items: StudentSearchOption[] }>(url);
+const realCourseFetcher = (url: string) => apiClient.get<{ items: RealCourseOption[] }>(url);
 
 const schema = z.object({
   roll: z.string().trim().min(1, "Student roll is required"),
@@ -113,14 +129,50 @@ export default function StudentMappingPage() {
   );
 
   const {
-    register,
     handleSubmit,
     reset,
+    watch,
+    setValue,
     formState: { errors },
   } = useForm<FormValues>({ resolver: zodResolver(schema) });
+  const dialogRoll = watch("roll");
+  const dialogSubCode = watch("subCode");
+
+  // Student dropdown - server-searched, real isr_stu_main_tbl rolls only.
+  const [studentSearch, setStudentSearch] = useState("");
+  const studentSearchDebounced = useDebouncedValue(studentSearch, 250);
+  const { data: studentSearchData, isLoading: studentSearchLoading } = useSWR(
+    dialogOpen
+      ? `/api/admin/students?search=${encodeURIComponent(studentSearchDebounced)}&pageSize=20`
+      : null,
+    studentSearchFetcher,
+  );
+  const studentOptions: SearchableSelectOption[] = (studentSearchData?.items ?? []).map((s) => ({
+    value: s.roll,
+    label: `${s.name} (${s.roll})`,
+    description: `${s.major || "—"} · Sem ${s.semNow || "—"}`,
+  }));
+  const selectedStudent = studentSearchData?.items.find((s) => s.roll === dialogRoll) ?? null;
+
+  // Course dropdown - server-searched, same real curriculum/availability
+  // catalog the Faculty <-> Course mapping dialog uses.
+  const [dialogCourseSearch, setDialogCourseSearch] = useState("");
+  const dialogCourseSearchDebounced = useDebouncedValue(dialogCourseSearch, 250);
+  const { data: realCourseData, isLoading: realCourseLoading } = useSWR(
+    dialogOpen
+      ? `/api/admin/mapping/faculty-course-section/courses?search=${encodeURIComponent(dialogCourseSearchDebounced)}&pageSize=20`
+      : null,
+    realCourseFetcher,
+  );
+  const realCourseOptions: SearchableSelectOption[] = (realCourseData?.items ?? []).map((c) => ({
+    value: c.code,
+    label: c.title === c.code ? c.code : `${c.code} - ${c.title}`,
+  }));
 
   const openCreate = () => {
     reset({ roll: "", subCode: "" });
+    setStudentSearch("");
+    setDialogCourseSearch("");
     setDialogOpen(true);
   };
 
@@ -346,29 +398,44 @@ export default function StudentMappingPage() {
             noValidate
           >
             <div className="space-y-1.5">
-              <Label htmlFor="mappingRoll">Student roll</Label>
-              <Input
-                id="mappingRoll"
-                {...register("roll")}
-                placeholder="e.g. 25PE3001"
+              <Label>Student</Label>
+              <SearchableSelect
+                value={dialogRoll || null}
+                onValueChange={(v) => setValue("roll", v, { shouldValidate: true })}
+                options={studentOptions}
+                search={studentSearch}
+                onSearchChange={setStudentSearch}
+                placeholder="Select student"
+                searchPlaceholder="Search by name, roll, email..."
+                loading={studentSearchLoading}
+                emptyText="No students found."
               />
               {errors.roll && (
-                <p className="text-sm text-destructive">
-                  {errors.roll.message}
+                <p className="text-sm text-destructive">{errors.roll.message}</p>
+              )}
+              {selectedStudent && (
+                <p className="text-xs text-muted-foreground">
+                  {selectedStudent.major || "—"} · Sem {selectedStudent.semNow || "—"} · Batch{" "}
+                  {selectedStudent.batch || "—"} - registers into that batch&apos;s registration
+                  table.
                 </p>
               )}
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="mappingSubCode">Course code</Label>
-              <Input
-                id="mappingSubCode"
-                {...register("subCode")}
-                placeholder="e.g. PE202"
+              <Label>Course</Label>
+              <SearchableSelect
+                value={dialogSubCode || null}
+                onValueChange={(v) => setValue("subCode", v, { shouldValidate: true })}
+                options={realCourseOptions}
+                search={dialogCourseSearch}
+                onSearchChange={setDialogCourseSearch}
+                placeholder="Select course"
+                searchPlaceholder="Search course code or title..."
+                loading={realCourseLoading}
+                emptyText="No matching courses."
               />
               {errors.subCode && (
-                <p className="text-sm text-destructive">
-                  {errors.subCode.message}
-                </p>
+                <p className="text-sm text-destructive">{errors.subCode.message}</p>
               )}
             </div>
             <DialogFooter>

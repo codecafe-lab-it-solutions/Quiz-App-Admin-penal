@@ -13,6 +13,7 @@ import {
   createStudentCourseMapping,
 } from "@/lib/legacy-db";
 import { getCurrentSubList } from "@/lib/config";
+import { assignStudentToDefaultSection } from "@/lib/section-sync";
 
 // Sourced live from the legacy per-batch isr_reg_<batch>_tbl tables. GET
 // never returns an unfiltered dump - a roll/course code search, or a
@@ -175,9 +176,16 @@ export async function POST(req: NextRequest) {
     requireRole(user, "admin");
 
     const body = studentCourseMappingCreateSchema.parse(await req.json());
-    const mapping = await createStudentCourseMapping({
-      ...body,
-      subList: await getCurrentSubList(),
+    const subList = await getCurrentSubList();
+    const mapping = await createStudentCourseMapping({ ...body, subList });
+
+    // Section is always derived from Major + Semester (Major_Semester),
+    // auto-created if it doesn't exist yet - matches the Faculty <-> Course
+    // mapping flow. Also links this course to that section, same as the
+    // faculty side, so the mapping page's Sections column reflects it.
+    await assignStudentToDefaultSection(mapping.major, mapping.semNow, body.roll, {
+      subCode: body.subCode,
+      subList,
     });
 
     return created(mapping);

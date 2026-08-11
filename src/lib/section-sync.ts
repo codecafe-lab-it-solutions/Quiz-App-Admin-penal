@@ -130,57 +130,18 @@ async function findOrCreateSectionByName(name: string) {
 }
 
 /**
- * Resolves a student's default section from their real Major + current
- * Semester (e.g. "CE_13") - the same Major_SemesterNumber cohort naming the
- * seed's real-data sync uses (see ensureSectionByName in prisma/seed.ts) -
- * finding an existing section with that name or creating one, then adding
- * the student to it as a manual member. Deliberately not a typed/free-text
- * code: an admin-invented label ("A") isn't grounded in anything real once
- * you check the legacy dump (no section concept exists there at all - see
- * the 2026-08-10 root-cause note), so the name always comes from the
- * student's own major/semNow columns instead. A brand new section created
- * this way has no linked courses, so course-roster resync never touches it -
- * membership here is stable until an admin changes it directly.
- */
-export async function assignStudentToDefaultSection(major: string, semNow: string, roll: string) {
-  const section = await findOrCreateSectionByName(`${major.trim()}_${semNow.trim()}`);
-  await addManualSectionStudent(section.id, roll);
-  return section;
-}
-
-/**
- * Faculty counterpart to assignStudentToDefaultSection, for the Faculty ↔
- * Course mapping page: the Major + Semester an admin's Branch entry resolves
- * to (real isr_sub_available_tbl columns - see createFacultyCourseMapping
- * and resolveMajorFromBranch, which normalizes e.g. branch "DCE" to the real
- * major "CE") already uniquely determine which Major_Semester section this
- * mapping belongs to, so the section is derived from them directly rather
- * than making the admin separately pick one from an unconstrained list of
- * every section that exists (which had no relationship to the branch/sem
- * actually being entered, and no guardrail against picking the wrong one).
- * Callers must pass the already-*resolved* major, not the raw branch value.
- *
- * Also links the mapped course to that section, creating the Course itself
- * (from real isr_curriculum_tbl title/credits, department = the resolved
- * major) if it doesn't exist in the app's catalog yet - most real
- * isr_sub_available_tbl course codes never got created as a Course this way,
- * since the app's own Course catalog was originally only populated from
- * courses real *students* register for (see buildCohortSections in
- * prisma/seed.ts), and only 3 of the real batches have a registration table
- * at all. Without creating the Course here, the mapping page's own
+ * Links a course to a section, creating the Course itself (from real
+ * isr_curriculum_tbl title/credits, department = the section's own major) if
+ * it doesn't exist in the app's catalog yet - most real course codes never
+ * got created as a Course this way, since the app's own Course catalog was
+ * originally only populated from courses real *students* register for (see
+ * buildCohortSections in prisma/seed.ts), and only 3 of the real batches
+ * have a registration table at all. Without this, a mapping page's own
  * "Sections" column - scoped to courses each section actually links (see the
- * GET route) - would show nothing for the vast majority of real mappings,
- * even though the faculty really is in the section.
+ * mapping GET routes) - would show nothing for most real mappings, even
+ * though the student/faculty really is in the section.
  */
-export async function assignFacultyToDefaultSection(
-  major: string,
-  sem: string,
-  subCode: string,
-  facRoll: string,
-  subList: string
-) {
-  const section = await findOrCreateSectionByName(`${major.trim()}_${sem.trim()}`);
-
+async function ensureCourseLinkedToSection(sectionId: number, subCode: string, major: string, subList: string) {
   let course = await prisma.course.findUnique({ where: { code: subCode } });
   if (!course) {
     const curriculum = await prisma.isrCurriculumTbl.findFirst({
@@ -203,11 +164,65 @@ export async function assignFacultyToDefaultSection(
   }
 
   await prisma.sectionCourse.upsert({
-    where: { sectionId_courseId: { sectionId: section.id, courseId: course.id } },
+    where: { sectionId_courseId: { sectionId, courseId: course.id } },
     update: {},
-    create: { sectionId: section.id, courseId: course.id },
+    create: { sectionId, courseId: course.id },
   });
+}
 
+/**
+ * Resolves a student's default section from their real Major + current
+ * Semester (e.g. "CE_13") - the same Major_SemesterNumber cohort naming the
+ * seed's real-data sync uses (see ensureSectionByName in prisma/seed.ts) -
+ * finding an existing section with that name or creating one, then adding
+ * the student to it as a manual member. Deliberately not a typed/free-text
+ * code: an admin-invented label ("A") isn't grounded in anything real once
+ * you check the legacy dump (no section concept exists there at all - see
+ * the 2026-08-10 root-cause note), so the name always comes from the
+ * student's own major/semNow columns instead.
+ *
+ * `course`, when passed (from the Student ↔ Course mapping "Add Mapping"
+ * flow), also links that course to the section - matching what
+ * assignFacultyToDefaultSection does on the faculty side. Without a course
+ * (the Students page create/edit flow, which has no course context), the
+ * section is created with no linked courses and course-roster resync never
+ * touches it - membership stays stable until an admin changes it directly.
+ */
+export async function assignStudentToDefaultSection(
+  major: string,
+  semNow: string,
+  roll: string,
+  course?: { subCode: string; subList: string }
+) {
+  const section = await findOrCreateSectionByName(`${major.trim()}_${semNow.trim()}`);
+  if (course) {
+    await ensureCourseLinkedToSection(section.id, course.subCode, major, course.subList);
+  }
+  await addManualSectionStudent(section.id, roll);
+  return section;
+}
+
+/**
+ * Faculty counterpart to assignStudentToDefaultSection, for the Faculty ↔
+ * Course mapping page: the Major + Semester an admin's Branch entry resolves
+ * to (real isr_sub_available_tbl columns - see createFacultyCourseMapping
+ * and resolveMajorFromBranch, which normalizes e.g. branch "DCE" to the real
+ * major "CE") already uniquely determine which Major_Semester section this
+ * mapping belongs to, so the section is derived from them directly rather
+ * than making the admin separately pick one from an unconstrained list of
+ * every section that exists (which had no relationship to the branch/sem
+ * actually being entered, and no guardrail against picking the wrong one).
+ * Callers must pass the already-*resolved* major, not the raw branch value.
+ */
+export async function assignFacultyToDefaultSection(
+  major: string,
+  sem: string,
+  subCode: string,
+  facRoll: string,
+  subList: string
+) {
+  const section = await findOrCreateSectionByName(`${major.trim()}_${sem.trim()}`);
+  await ensureCourseLinkedToSection(section.id, subCode, major, subList);
   await addManualSectionFaculty(section.id, facRoll);
   return section;
 }
