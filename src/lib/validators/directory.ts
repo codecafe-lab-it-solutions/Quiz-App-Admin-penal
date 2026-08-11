@@ -51,12 +51,14 @@ export const loginStatusUpdateSchema = z.object({
   active: z.boolean(),
 });
 
+// No `sectionId` - the section is always derived from branch + sem (Major +
+// Semester, the same default-section convention as students), never a
+// manually picked existing section. See assignFacultyToDefaultSection.
 export const facultyCourseMappingCreateSchema = z.object({
   facRoll: z.string().trim().min(1, "Faculty roll is required"),
   subCode: z.string().trim().min(1, "Course code is required"),
   branch: z.string().trim().min(1, "Branch is required"),
   sem: z.string().trim().min(1, "Semester is required"),
-  sectionId: z.coerce.number().int().positive("Select a section"),
 });
 
 export const studentCourseMappingCreateSchema = z.object({

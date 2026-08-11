@@ -1,7 +1,12 @@
 import { prisma } from "@/lib/db";
 import { ApiError } from "@/lib/api-response";
 import { getCurrentSubList } from "@/lib/config";
-import { getCourseRegistrations } from "@/lib/legacy-db";
+import { getCourseRegistrations, getRealMajors, resolveMajorFromBranch } from "@/lib/legacy-db";
+
+/** A section's own major is its Major_Semester name's prefix (e.g. "CE" from "CE_3"). */
+function sectionMajorFromName(name: string): string {
+  return name.split("_")[0];
+}
 
 /**
  * Keeps SectionStudent/SectionFaculty in step with the legacy rosters of a
@@ -31,19 +36,34 @@ async function getDesiredStudentRolls(sectionId: number): Promise<Set<string>> {
 }
 
 async function getDesiredFacultyRolls(sectionId: number): Promise<Set<string>> {
-  const courses = await prisma.sectionCourse.findMany({
-    where: { sectionId },
-    include: { course: { select: { code: true } } },
-  });
-  if (courses.length === 0) return new Set();
+  const [section, courses] = await Promise.all([
+    prisma.section.findUnique({ where: { id: sectionId }, select: { name: true } }),
+    prisma.sectionCourse.findMany({ where: { sectionId }, include: { course: { select: { code: true } } } }),
+  ]);
+  if (!section || courses.length === 0) return new Set();
 
   const subList = await getCurrentSubList();
   const codes = courses.map((c) => c.course.code);
   const mappings = await prisma.isrSubAvailableTbl.findMany({
     where: { subCode: { in: codes }, subList, facRoll: { not: null } },
-    select: { facRoll: true },
+    select: { facRoll: true, branch: true },
   });
-  return new Set(mappings.map((m) => m.facRoll!));
+
+  // A real course is routinely shared across many different majors at once
+  // (e.g. "CDC" taken by 9 branches, each with its own faculty row) - so
+  // matching on course code alone would pull every one of those faculty into
+  // every section linked to that course, regardless of whether the row's
+  // branch actually corresponds to this section's own major. Scope to rows
+  // whose real major (branch, resolved - see resolveMajorFromBranch) matches
+  // this section's.
+  const sectionMajor = sectionMajorFromName(section.name);
+  const realMajors = await getRealMajors();
+  const rolls = new Set<string>();
+  for (const m of mappings) {
+    if (!m.facRoll) continue;
+    if (resolveMajorFromBranch(m.branch ?? "", realMajors) === sectionMajor) rolls.add(m.facRoll);
+  }
+  return rolls;
 }
 
 async function reconcile(
@@ -101,6 +121,14 @@ export async function syncSection(sectionId: number): Promise<void> {
   await Promise.all([syncSectionStudents(sectionId), syncSectionFaculty(sectionId)]);
 }
 
+/** Shared by every "default section" resolver below - one Section row per unique name. */
+async function findOrCreateSectionByName(name: string) {
+  return (
+    (await prisma.section.findFirst({ where: { name } })) ??
+    (await prisma.section.create({ data: { name } }))
+  );
+}
+
 /**
  * Resolves a student's default section from their real Major + current
  * Semester (e.g. "CE_13") - the same Major_SemesterNumber cohort naming the
@@ -115,11 +143,43 @@ export async function syncSection(sectionId: number): Promise<void> {
  * membership here is stable until an admin changes it directly.
  */
 export async function assignStudentToDefaultSection(major: string, semNow: string, roll: string) {
-  const name = `${major.trim()}_${semNow.trim()}`;
-  const section =
-    (await prisma.section.findFirst({ where: { name } })) ??
-    (await prisma.section.create({ data: { name } }));
+  const section = await findOrCreateSectionByName(`${major.trim()}_${semNow.trim()}`);
   await addManualSectionStudent(section.id, roll);
+  return section;
+}
+
+/**
+ * Faculty counterpart to assignStudentToDefaultSection, for the Faculty ↔
+ * Course mapping page: the Major + Semester an admin's Branch entry resolves
+ * to (real isr_sub_available_tbl columns - see createFacultyCourseMapping
+ * and resolveMajorFromBranch, which normalizes e.g. branch "DCE" to the real
+ * major "CE") already uniquely determine which Major_Semester section this
+ * mapping belongs to, so the section is derived from them directly rather
+ * than making the admin separately pick one from an unconstrained list of
+ * every section that exists (which had no relationship to the branch/sem
+ * actually being entered, and no guardrail against picking the wrong one).
+ * Callers must pass the already-*resolved* major, not the raw branch value.
+ *
+ * Also links the mapped course to that section when the subCode matches a
+ * known app Course (best-effort - a mapping row can reference a raw legacy
+ * sub_code with no Course entity yet, in which case only the membership is
+ * recorded). Without this the mapping page's own "Sections" column - scoped
+ * to courses each section actually links (see the GET route) - would show
+ * nothing for a brand-new section, even though the faculty really is in it.
+ */
+export async function assignFacultyToDefaultSection(major: string, sem: string, subCode: string, facRoll: string) {
+  const section = await findOrCreateSectionByName(`${major.trim()}_${sem.trim()}`);
+
+  const course = await prisma.course.findUnique({ where: { code: subCode } });
+  if (course) {
+    await prisma.sectionCourse.upsert({
+      where: { sectionId_courseId: { sectionId: section.id, courseId: course.id } },
+      update: {},
+      create: { sectionId: section.id, courseId: course.id },
+    });
+  }
+
+  await addManualSectionFaculty(section.id, facRoll);
   return section;
 }
 

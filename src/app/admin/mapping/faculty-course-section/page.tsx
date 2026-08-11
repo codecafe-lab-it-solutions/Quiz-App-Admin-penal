@@ -21,13 +21,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -45,6 +38,11 @@ interface Mapping {
   facRoll: string;
   facultyName: string | null;
   branch: string;
+  // Real major (isr_stu_main_tbl code space), resolved from `branch` -
+  // isr_sub_available_tbl.branch isn't always the same value (e.g. "DCE"
+  // really means major "CE") - see resolveMajorFromBranch. This is what
+  // Sections are actually keyed and matched by, not the raw branch.
+  major: string;
   sections: { id: number; name: string }[];
 }
 
@@ -53,23 +51,13 @@ interface ListResponse {
   currentSubList: string;
 }
 
-interface SectionOption {
-  id: number;
-  name: string;
-}
-interface SectionListResponse {
-  items: SectionOption[];
-}
-
 const fetcher = (url: string) => apiClient.get<ListResponse>(url);
-const sectionFetcher = (url: string) => apiClient.get<SectionListResponse>(url);
 
 const schema = z.object({
   facRoll: z.string().trim().min(1, "Faculty roll is required"),
   subCode: z.string().trim().min(1, "Course code is required"),
   branch: z.string().trim().min(1, "Branch is required"),
   sem: z.string().trim().min(1, "Semester is required"),
-  sectionId: z.coerce.number().int().positive("Select a section"),
 });
 type FormValues = z.infer<typeof schema>;
 
@@ -84,20 +72,24 @@ export default function FacultyMappingPage() {
     `/api/admin/mapping/faculty-course-section?${params.toString()}`,
     fetcher,
   );
-  const { data: sectionData } = useSWR(
-    "/api/admin/sections?pageSize=200",
-    sectionFetcher,
-  );
 
   const {
     register,
     handleSubmit,
     reset,
     watch,
-    setValue,
     formState: { errors },
   } = useForm<FormValues>({ resolver: zodResolver(schema) });
-  const sectionId = watch("sectionId");
+
+  // The section this mapping lands in is always Major_Semester, derived live
+  // from real data already on the form - never a separately typed/picked
+  // section. The exact resolved Major (Branch isn't always the same code -
+  // e.g. "DCE" really means major "CE", see resolveMajorFromBranch) is
+  // computed server-side on save; this preview just confirms Branch/Semester
+  // are filled in.
+  const branchValue = watch("branch");
+  const semValue = watch("sem");
+  const sectionPreviewReady = !!branchValue?.trim() && !!semValue?.trim();
 
   const openCreate = () => {
     reset({
@@ -105,7 +97,6 @@ export default function FacultyMappingPage() {
       subCode: "",
       branch: "",
       sem: "",
-      sectionId: undefined,
     });
     setDialogOpen(true);
   };
@@ -146,6 +137,7 @@ export default function FacultyMappingPage() {
     },
     { key: "subCode", header: "Course code", render: (r) => r.subCode },
     { key: "branch", header: "Branch", render: (r) => r.branch },
+    { key: "major", header: "Major", render: (r) => r.major },
     { key: "sem", header: "Semester", render: (r) => r.sem },
     {
       key: "sections",
@@ -286,28 +278,11 @@ export default function FacultyMappingPage() {
             </div>
             <div className="space-y-1.5">
               <Label>Section</Label>
-              <Select
-                value={sectionId ? String(sectionId) : undefined}
-                onValueChange={(v) =>
-                  setValue("sectionId", Number(v), { shouldValidate: true })
-                }
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select section" />
-                </SelectTrigger>
-                <SelectContent>
-                  {sectionData?.items.map((s) => (
-                    <SelectItem key={s.id} value={String(s.id)}>
-                      {s.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {errors.sectionId && (
-                <p className="text-sm text-destructive">
-                  {errors.sectionId.message}
-                </p>
-              )}
+              <p className="text-xs text-muted-foreground">
+                {sectionPreviewReady
+                  ? `Section: Major_${semValue.trim()} - Major is resolved from Branch against real student data, then combined with Semester. Real data only, not typed.`
+                  : "Enter Branch and Semester above to determine the section."}
+              </p>
             </div>
             <DialogFooter>
               <Button

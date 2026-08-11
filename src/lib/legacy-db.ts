@@ -51,6 +51,7 @@ export interface FacultyCourseMapping {
   facRoll: string;
   facultyName: string | null;
   branch: string;
+  major: string;
 }
 
 export interface StudentCourseRow {
@@ -505,6 +506,29 @@ export async function deleteStudent(roll: string): Promise<void> {
 // Faculty <-> Course mapping (isr_sub_available_tbl)
 // ---------------------------------------------------------------------------
 
+// isr_sub_available_tbl.branch is NOT the same code space as
+// isr_stu_main_tbl.major, confirmed against the real dump: most branch
+// values already match a real major exactly ("CE", "PE", "IT", ...), but a
+// real subset use a "D" + major prefix instead ("DCE", "DPE", "DFS" - real
+// isr_sub_available_tbl rows for CE202/CE203/etc, all genuinely Civil
+// Engineering courses, are branch="DCE" even though the real major for
+// those students is "CE"). Sections are keyed by the student-facing major
+// (Major_Semester, e.g. "CE_3") - so a faculty mapping's section has to
+// resolve through this real-data mismatch instead of using `branch` as-is,
+// or a "DCE" row would create a phantom section unrelated to the real "CE"
+// cohort its own students actually belong to.
+export async function getRealMajors(): Promise<Set<string>> {
+  const rows = await prisma.isrStuMainTbl.findMany({ distinct: ["major"], select: { major: true } });
+  return new Set(rows.map((r) => r.major));
+}
+
+export function resolveMajorFromBranch(branch: string, realMajors: Set<string>): string {
+  const b = branch.trim();
+  if (realMajors.has(b)) return b;
+  if (b.startsWith("D") && realMajors.has(b.slice(1))) return b.slice(1);
+  return b;
+}
+
 export async function getFacultyCourseMappings(
   subList: string,
   params: { facultyRoll?: string; page: number; pageSize: number }
@@ -529,6 +553,7 @@ export async function getFacultyCourseMappings(
     ? await prisma.isrFacultyTbl.findMany({ where: { roll: { in: facultyRolls } } })
     : [];
   const nameByRoll = new Map(facultyNames.map((f) => [f.roll, f.name]));
+  const realMajors = await getRealMajors();
 
   const items: FacultyCourseMapping[] = rows.map((r) => ({
     id: r.id,
@@ -538,6 +563,7 @@ export async function getFacultyCourseMappings(
     facRoll: r.facRoll!,
     facultyName: nameByRoll.get(r.facRoll!) ?? null,
     branch: r.branch ?? "",
+    major: resolveMajorFromBranch(r.branch ?? "", realMajors),
   }));
 
   return { items, total };
@@ -554,6 +580,7 @@ export async function createFacultyCourseMapping(data: {
   facRoll: string;
   subCode: string;
   branch: string;
+  major: string;
   sem: string;
   subList: string;
 }): Promise<FacultyCourseMapping> {
@@ -567,7 +594,16 @@ export async function createFacultyCourseMapping(data: {
     data: { sem: data.sem, subList: data.subList, subCode: data.subCode, facRoll: data.facRoll, branch: data.branch },
   });
 
-  return { id: row.id, sem: data.sem, subList: data.subList, subCode: data.subCode, facRoll: data.facRoll, facultyName: faculty.name, branch: data.branch };
+  return {
+    id: row.id,
+    sem: data.sem,
+    subList: data.subList,
+    subCode: data.subCode,
+    facRoll: data.facRoll,
+    facultyName: faculty.name,
+    branch: data.branch,
+    major: data.major,
+  };
 }
 
 export async function deleteFacultyCourseMapping(id: number): Promise<void> {
