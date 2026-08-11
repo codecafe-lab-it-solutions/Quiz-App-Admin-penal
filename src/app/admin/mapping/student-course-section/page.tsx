@@ -40,6 +40,8 @@ interface Registration {
   roll: string;
   subCode: string;
   batch?: string;
+  major: string | null;
+  semNow: string | null;
   sections: { id: number; name: string }[];
 }
 
@@ -159,6 +161,8 @@ export default function StudentMappingPage() {
 
   const columns: DataTableColumn<Registration>[] = [
     { key: "roll", header: "Student roll", render: (r) => r.roll },
+    { key: "major", header: "Branch", render: (r) => r.major ?? "—" },
+    { key: "semNow", header: "Semester", render: (r) => r.semNow ?? "—" },
     {
       key: "sections",
       header: "Sections",
@@ -227,23 +231,23 @@ export default function StudentMappingPage() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="space-y-1.5">
-            <Label htmlFor="roll">Student roll</Label>
-            <Input
-              id="roll"
-              value={roll}
-              onChange={(e) => {
-                setRoll(e.target.value);
-                if (e.target.value) {
-                  setCourseCode(ALL);
-                  setBatch(ALL);
-                  setSectionId(ALL);
-                }
-              }}
-              placeholder="e.g. 25PE3001"
-            />
-          </div>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="space-y-1.5">
+              <Label htmlFor="roll">Student roll</Label>
+              <Input
+                id="roll"
+                value={roll}
+                onChange={(e) => {
+                  setRoll(e.target.value);
+                  if (e.target.value) {
+                    setCourseCode(ALL);
+                    setBatch(ALL);
+                    setSectionId(ALL);
+                  }
+                }}
+                placeholder="e.g. 25PE3001"
+              />
+            </div>
             <div className="space-y-1.5">
               <Label>Course</Label>
               <Select

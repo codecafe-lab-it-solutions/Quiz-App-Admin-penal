@@ -50,25 +50,34 @@ export async function GET(req: NextRequest) {
     // A student's Sections column must be scoped to the specific course each
     // row represents, not their entire combined section list - a student
     // registered for both CS201 and CS301 should see their CS301 section
-    // only on the CS301 row, not repeated on every one of their rows.
+    // only on the CS301 row, not repeated on every one of their rows. Major
+    // + Semester (the real isr_stu_main_tbl columns each row's Section is
+    // itself derived from - see assignStudentToDefaultSection) are attached
+    // alongside so the mapping reads clearly without decoding the section name.
     const attachSections = async <T extends { roll: string; subCode: string }>(items: T[]) => {
       const studentRolls = [...new Set(items.map((item) => item.roll))];
       if (studentRolls.length === 0) {
-        return items.map((item) => ({ ...item, sections: [] }));
+        return items.map((item) => ({ ...item, sections: [], major: null, semNow: null }));
       }
 
-      const sectionRows = await prisma.sectionStudent.findMany({
-        where: { studentRoll: { in: studentRolls } },
-        include: {
-          section: {
-            select: {
-              id: true,
-              name: true,
-              courses: { select: { course: { select: { code: true } } } },
+      const [sectionRows, studentInfoRows] = await Promise.all([
+        prisma.sectionStudent.findMany({
+          where: { studentRoll: { in: studentRolls } },
+          include: {
+            section: {
+              select: {
+                id: true,
+                name: true,
+                courses: { select: { course: { select: { code: true } } } },
+              },
             },
           },
-        },
-      });
+        }),
+        prisma.isrStuMainTbl.findMany({
+          where: { roll: { in: studentRolls } },
+          select: { roll: true, major: true, semNow: true },
+        }),
+      ]);
 
       const sectionsByRoll = sectionRows.reduce((map, row) => {
         const existing = map.get(row.studentRoll) ?? [];
@@ -80,13 +89,19 @@ export async function GET(req: NextRequest) {
         map.set(row.studentRoll, existing);
         return map;
       }, new Map<string, { id: number; name: string; courseCodes: string[] }[]>());
+      const infoByRoll = new Map(studentInfoRows.map((s) => [s.roll, s]));
 
-      return items.map((item) => ({
-        ...item,
-        sections: (sectionsByRoll.get(item.roll) ?? [])
-          .filter((s) => s.courseCodes.includes(item.subCode))
-          .map((s) => ({ id: s.id, name: s.name })),
-      }));
+      return items.map((item) => {
+        const info = infoByRoll.get(item.roll);
+        return {
+          ...item,
+          sections: (sectionsByRoll.get(item.roll) ?? [])
+            .filter((s) => s.courseCodes.includes(item.subCode))
+            .map((s) => ({ id: s.id, name: s.name })),
+          major: info?.major ?? null,
+          semNow: info?.semNow != null ? String(info.semNow) : null,
+        };
+      });
     };
 
     if (roll) {
