@@ -1,6 +1,7 @@
 import { PrismaClient } from "@prisma/client";
 import bcrypt from "bcryptjs";
-import { addManualSectionStudent, addManualSectionFaculty } from "@/lib/section-sync";
+import { addManualSectionStudent, addManualSectionFaculty, assignFacultyToDefaultSection } from "@/lib/section-sync";
+import { getRealMajors, resolveMajorFromBranch } from "@/lib/legacy-db";
 import { importRealLegacyData } from "./import-legacy-data";
 
 const prisma = new PrismaClient();
@@ -263,17 +264,24 @@ async function buildCohortSections(subList: string): Promise<CohortBuildResult> 
     coursesByRoll.set(r.stu_roll, set);
   }
 
-  // Every real faculty assignment, loaded once - course code -> the set of
-  // real faculty rolls teaching it.
+  // Every real faculty assignment, loaded once - course code -> the faculty
+  // teaching it, each tagged with their real major (branch, resolved - see
+  // resolveMajorFromBranch). A real course is routinely shared across many
+  // different majors at once (e.g. "CDC" taken by 9 branches, each with its
+  // own faculty row) - so this can't just be a course -> faculty set, or
+  // every one of those 9 faculty would get linked into every cohort that
+  // happens to take CDC, regardless of whether they actually teach that
+  // cohort's own branch.
+  const realMajors = new Set(allStudents.map((s) => s.major));
   const allFac = await prisma.isrSubAvailableTbl.findMany({
     where: { subList, facRoll: { not: null }, subCode: { not: null } },
-    select: { subCode: true, facRoll: true },
+    select: { subCode: true, facRoll: true, branch: true },
   });
-  const facultyByCourse = new Map<string, Set<string>>();
+  const facultyByCourse = new Map<string, { facRoll: string; major: string }[]>();
   for (const f of allFac) {
-    const set = facultyByCourse.get(f.subCode!) ?? new Set<string>();
-    set.add(f.facRoll!);
-    facultyByCourse.set(f.subCode!, set);
+    const list = facultyByCourse.get(f.subCode!) ?? [];
+    list.push({ facRoll: f.facRoll!, major: resolveMajorFromBranch(f.branch ?? "", realMajors) });
+    facultyByCourse.set(f.subCode!, list);
   }
 
   // Course metadata, loaded once - real curriculum title/branch/credits,
@@ -309,6 +317,7 @@ async function buildCohortSections(subList: string): Promise<CohortBuildResult> 
   for (const [key, rolls] of byCohort) {
     const section = await ensureSectionByName(key);
     sections.set(key, section);
+    const cohortMajor = key.split("_")[0];
 
     for (const roll of rolls) {
       await addManualSectionStudent(section.id, roll);
@@ -344,8 +353,12 @@ async function buildCohortSections(subList: string): Promise<CohortBuildResult> 
       await prisma.sectionCourse.create({ data: { sectionId: section.id, courseId: course.id } });
       courseLinkCount++;
 
-      const facRolls = facultyByCourse.get(code);
-      if (facRolls) for (const fr of facRolls) cohortFacultyRolls.add(fr);
+      const facEntries = facultyByCourse.get(code);
+      if (facEntries) {
+        for (const entry of facEntries) {
+          if (entry.major === cohortMajor) cohortFacultyRolls.add(entry.facRoll);
+        }
+      }
     }
 
     for (const fr of cohortFacultyRolls) {
@@ -355,6 +368,38 @@ async function buildCohortSections(subList: string): Promise<CohortBuildResult> 
   }
 
   return { sections, courses, coursesByRoll, cohortCount: byCohort.size, studentCount, courseLinkCount, facultyLinkCount };
+}
+
+// buildCohortSections only links a cohort's courses/faculty from real student
+// *registrations* - and only btechpeg23/24/25 (all real PE-major batches)
+// have a registration table in the dump. Every other branch's students have
+// no registration rows at all, so their cohort sections come out of
+// buildCohortSections with zero linked courses and zero faculty - not
+// because they don't teach anything, but because isr_sub_available_tbl (the
+// actual real record of "this faculty teaches this course, for this branch,
+// this semester") was never consulted as its own source of truth.
+//
+// This closes that gap: every real isr_sub_available_tbl row for the current
+// cycle gets its Major_Semester section resolved (branch normalized against
+// real majors - see resolveMajorFromBranch, since e.g. branch "DCE" really
+// means major "CE") and the course/faculty linked to it, covering every
+// branch regardless of whether it has a registration table. Idempotent - the
+// section wipe at the top of main() means this always runs against a clean
+// slate, so there's nothing stale to clean up here, only real data to add.
+async function ensureFacultyCourseSectionLinks(subList: string) {
+  const realMajors = await getRealMajors();
+  const rows = await prisma.isrSubAvailableTbl.findMany({
+    where: { subList, facRoll: { not: null }, subCode: { not: null }, sem: { not: null } },
+    select: { subCode: true, branch: true, facRoll: true, sem: true },
+  });
+
+  const sectionNames = new Set<string>();
+  for (const row of rows) {
+    const major = resolveMajorFromBranch(row.branch ?? "", realMajors);
+    await assignFacultyToDefaultSection(major, row.sem!, row.subCode!, row.facRoll!);
+    sectionNames.add(`${major.trim()}_${row.sem!.trim()}`);
+  }
+  return { rowCount: rows.length, sectionCount: sectionNames.size };
 }
 
 async function main() {
@@ -394,6 +439,12 @@ async function main() {
   console.log(
     `  ${cohorts.cohortCount} cohort sections, ${cohorts.studentCount} real student memberships, ` +
       `${cohorts.courses.size} real courses discovered, ${cohorts.courseLinkCount} course links, ${cohorts.facultyLinkCount} faculty memberships.`
+  );
+
+  console.log("Linking every real faculty-course mapping (isr_sub_available_tbl) to its Major_Semester section - covers branches with no registration table too...");
+  const facultyMappingLinks = await ensureFacultyCourseSectionLinks(currentSubList);
+  console.log(
+    `  ${facultyMappingLinks.rowCount} real faculty-course mapping rows processed, ${facultyMappingLinks.sectionCount} Major_Semester sections linked.`
   );
 
   const session = await ensureSession("C2 Semester", new Date("2025-07-01"), new Date("2025-12-15"));
