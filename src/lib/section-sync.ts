@@ -103,7 +103,7 @@ export async function syncSection(sectionId: number): Promise<void> {
 
 /**
  * Resolves a student's default section from their real Major + current
- * Semester (e.g. "CE-13") - the same Major-SemesterNumber cohort naming the
+ * Semester (e.g. "CE_13") - the same Major_SemesterNumber cohort naming the
  * seed's real-data sync uses (see ensureSectionByName in prisma/seed.ts) -
  * finding an existing section with that name or creating one, then adding
  * the student to it as a manual member. Deliberately not a typed/free-text
@@ -115,7 +115,7 @@ export async function syncSection(sectionId: number): Promise<void> {
  * membership here is stable until an admin changes it directly.
  */
 export async function assignStudentToDefaultSection(major: string, semNow: string, roll: string) {
-  const name = `${major.trim()}-${semNow.trim()}`;
+  const name = `${major.trim()}_${semNow.trim()}`;
   const section =
     (await prisma.section.findFirst({ where: { name } })) ??
     (await prisma.section.create({ data: { name } }));
@@ -127,7 +127,7 @@ export async function assignStudentToDefaultSection(major: string, semNow: strin
  * Derives a real-data section name for the Master Data > Sections page's
  * manual "Add Section" flow, which (unlike assignStudentToDefaultSection)
  * starts from courses/students rather than a single student record. Prefers
- * the first selected student's own Major-SemesterNumber (most direct real
+ * the first selected student's own Major_SemesterNumber (most direct real
  * data); when no students are selected yet, falls back to the first
  * selected course's branch (its department, itself sourced from real
  * curriculum/availability data - see prisma/seed.ts) and semester (looked up
@@ -144,7 +144,7 @@ export async function deriveSectionName(
       where: { roll: studentRolls[0] },
       select: { major: true, semNow: true },
     });
-    if (student) return `${student.major}-${student.semNow}`;
+    if (student) return `${student.major}_${student.semNow}`;
   }
 
   if (courseIds.length > 0) {
@@ -166,7 +166,7 @@ export async function deriveSectionName(
             select: { sem: true },
           })
         )?.sem;
-      if (sem) return `${branch}-${sem}`;
+      if (sem) return `${branch}_${sem}`;
       return branch;
     }
   }
@@ -181,7 +181,7 @@ export async function deriveSectionName(
  * Backs the admin and faculty "Add Section" flows: names the section from
  * real data (deriveSectionName), then reuses an existing section with that
  * name rather than creating a duplicate - e.g. picking a course already
- * covered by the real "PE-7" cohort section just adds this course/students
+ * covered by the real "PE_7" cohort section just adds this course/students
  * to that section, matching how the seed's cohort sync treats section names
  * as unique-by-construction.
  */

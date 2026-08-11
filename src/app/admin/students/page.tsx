@@ -106,12 +106,12 @@ export default function StudentListPage() {
     formState: { errors },
   } = useForm<FormValues>({ resolver: zodResolver(schema) });
 
-  // The default section is always Major-SemesterNumber, derived live from
+  // The default section is always Major_SemesterNumber, derived live from
   // real data already on the form - never a typed/invented label.
   const majorValue = watch("major");
   const semNowValue = watch("semNow");
   const derivedSectionName =
-    majorValue?.trim() && semNowValue?.trim() ? `${majorValue.trim()}-${semNowValue.trim()}` : null;
+    majorValue?.trim() && semNowValue?.trim() ? `${majorValue.trim()}_${semNowValue.trim()}` : null;
 
   const openCreate = () => {
     setEditing(null);

@@ -293,7 +293,7 @@ async function buildCohortSections(subList: string): Promise<CohortBuildResult> 
 
   const byCohort = new Map<string, string[]>();
   for (const s of allStudents) {
-    const key = `${s.major}-${s.semNow}`;
+    const key = `${s.major}_${s.semNow}`;
     const rolls = byCohort.get(key) ?? [];
     rolls.push(s.roll);
     byCohort.set(key, rolls);
@@ -405,12 +405,12 @@ async function main() {
 
   const now = new Date();
 
-  // PE202/PE241/ECE102 are all dominated by the real PE-3 cohort (66 real
-  // registrants each - confirmed by query); PE331 is dominated by PE-5 (56
+  // PE202/PE241/ECE102 are all dominated by the real PE_3 cohort (66 real
+  // registrants each - confirmed by query); PE331 is dominated by PE_5 (56
   // real registrants). Picked for the same reason as before: real faculty +
   // a healthy real roster, not because they're special otherwise.
-  const pe3Section = cohorts.sections.get("PE-3");
-  const pe5Section = cohorts.sections.get("PE-5");
+  const pe3Section = cohorts.sections.get("PE_3");
+  const pe5Section = cohorts.sections.get("PE_5");
 
   if (pe3Section && cohorts.courses.has("PE241")) {
     const pe241Rolls = pickRegisteredStudents(cohorts.coursesByRoll, "PE241", 3);
