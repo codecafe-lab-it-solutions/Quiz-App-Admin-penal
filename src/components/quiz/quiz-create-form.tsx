@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import useSWR from "swr";
 import { toast } from "sonner";
 import { apiClient, ApiClientError } from "@/lib/api-client";
-import { dedupeByCourseCode } from "@/lib/course-catalog";
+import { dedupeByCourseCode, hasRealTitle } from "@/lib/course-catalog";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -99,7 +99,7 @@ export function QuizCreateForm({ role }: { role: "faculty" | "admin" }) {
   // course" list, so collapse to one entry per code, preferring a row that
   // actually resolved a title over one that fell back to null.
   const courses = dedupeByCourseCode(
-    (coursesData?.items ?? []).filter((c) => c.courseId !== null),
+    (coursesData?.items ?? []).filter((c) => c.courseId !== null && hasRealTitle(c)),
   );
   const buildings = buildingsData?.items ?? [];
   const selectedCourse = courses.find((c) => c.subCode === courseCode);

@@ -4,7 +4,7 @@ import { useState } from "react";
 import useSWR from "swr";
 import { format } from "@/lib/format-date";
 import { apiClient, downloadFile } from "@/lib/api-client";
-import { dedupeByCourseCode } from "@/lib/course-catalog";
+import { dedupeByCourseCode, hasRealTitle } from "@/lib/course-catalog";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -66,7 +66,9 @@ export function FacultyAttendance() {
     courseId !== "all" ? `/api/faculty/sections?courseId=${courseId}` : "/api/faculty/sections",
     (url: string) => apiClient.get<{ items: Section[] }>(url)
   );
-  const courses = dedupeByCourseCode((courseData?.items ?? []).filter((c) => c.courseId !== null));
+  const courses = dedupeByCourseCode(
+    (courseData?.items ?? []).filter((c) => c.courseId !== null && hasRealTitle(c)),
+  );
 
   const buildParams = (extra?: Record<string, string>) => {
     const params = new URLSearchParams({ page: String(page), pageSize: "10" });

@@ -6,7 +6,7 @@ import useSWR from "swr";
 import { toast } from "sonner";
 import { apiClient, ApiClientError, downloadFile } from "@/lib/api-client";
 import { formatDateTime, toLocalDateTimeInputValue } from "@/lib/format-date";
-import { dedupeByCourseCode } from "@/lib/course-catalog";
+import { dedupeByCourseCode, hasRealTitle } from "@/lib/course-catalog";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -193,7 +193,7 @@ export function QuizManagement({
     (url: string) => fetcher<{ items: CourseOption[] }>(url),
   );
   const editCourses = dedupeByCourseCode(
-    (editCoursesData?.items ?? []).filter((c) => c.courseId !== null),
+    (editCoursesData?.items ?? []).filter((c) => c.courseId !== null && hasRealTitle(c)),
   );
   const editSelectedCourse = editCourses.find((c) => c.subCode === editCourseCode);
   // Scoped server-side to sections the selected faculty actually teaches

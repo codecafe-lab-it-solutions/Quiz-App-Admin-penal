@@ -4,7 +4,7 @@ import { useState } from "react";
 import useSWR from "swr";
 import Link from "next/link";
 import { apiClient, downloadFile } from "@/lib/api-client";
-import { dedupeByCourseCode } from "@/lib/course-catalog";
+import { dedupeByCourseCode, hasRealTitle } from "@/lib/course-catalog";
 import { DataTable, DataTableColumn } from "@/components/admin/data-table";
 import { PaginationBar } from "@/components/admin/pagination-bar";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -105,7 +105,9 @@ export function FacultyResults() {
     );
   };
 
-  const courses = dedupeByCourseCode((courseData?.items ?? []).filter((c) => c.courseId !== null));
+  const courses = dedupeByCourseCode(
+    (courseData?.items ?? []).filter((c) => c.courseId !== null && hasRealTitle(c)),
+  );
 
   const columns: DataTableColumn<ResultRow>[] = [
     {

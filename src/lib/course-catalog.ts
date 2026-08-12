@@ -3,6 +3,18 @@ interface CourseCatalogRow {
   title: string | null;
 }
 
+// True only when this row has a real title, distinct from its own code.
+// getFacultyCourseCatalog falls back to the bare code as "title" when
+// neither isr_curriculum_tbl nor the app's own Course catalog has a real
+// name for it (e.g. SM304 - a real faculty assignment exists in
+// isr_sub_available_tbl, but the code was never entered into the curriculum
+// table for that semester by whoever owns that source data). Filtering
+// these out of pickers avoids showing a course as "SM304 (SM304)" - it
+// reappears on its own once a real title is added upstream.
+export function hasRealTitle(item: CourseCatalogRow): boolean {
+  return !!item.title && item.title !== item.subCode;
+}
+
 // The faculty course-catalog API (/api/faculty/courses) returns one row per
 // branch a faculty teaches a code under - the admin mapping picker needs
 // that per-branch granularity to disambiguate which row to link, so the API
