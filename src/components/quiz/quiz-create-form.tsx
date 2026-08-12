@@ -134,8 +134,8 @@ export function QuizCreateForm({ role }: { role: "faculty" | "admin" }) {
   }, [sectionIds.join(",")]);
 
   const { data: studentsData } = useSWR(
-    activeSectionIds.length > 0
-      ? `/api/faculty/sections/students?sectionIds=${activeSectionIds.join(",")}`
+    activeSectionIds.length > 0 && selectedCourse?.courseId
+      ? `/api/faculty/sections/students?sectionIds=${activeSectionIds.join(",")}&courseId=${selectedCourse.courseId}`
       : null,
     (url: string) => fetcher<{ items: StudentOption[] }>(url),
   );

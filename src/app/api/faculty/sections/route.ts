@@ -4,7 +4,7 @@ import { ok, created, handleApiError } from "@/lib/api-response";
 import { getAuthUser, requireRole } from "@/lib/auth";
 import { sectionSchema } from "@/lib/validators/master-data";
 import { getCurrentSubList } from "@/lib/config";
-import { syncSection, createOrExtendSection } from "@/lib/section-sync";
+import { syncSection, syncSectionFaculty, createOrExtendSection } from "@/lib/section-sync";
 import { resolveFacultyRoll } from "@/lib/quiz-access";
 
 // Section list for the quiz-creation section picker. Sections are primarily
@@ -27,6 +27,20 @@ export async function GET(req: NextRequest) {
 
     const courseId = req.nextUrl.searchParams.get("courseId");
     const facultyRoll = resolveFacultyRoll(user, req.nextUrl.searchParams.get("facultyRoll") ?? undefined);
+
+    // Scoped to a course: resync those sections' faculty membership against
+    // isr_sub_available_tbl first, so a faculty-course mapping change (a
+    // faculty added/removed from teaching this course) is reflected
+    // immediately rather than only after the next section edit or admin
+    // resync - mirrors what /api/faculty/sections/students does for student
+    // membership. Bounded to just the course's own sections, not every
+    // section system-wide.
+    if (courseId) {
+      const candidateSectionIds = (
+        await prisma.sectionCourse.findMany({ where: { courseId: Number(courseId) }, select: { sectionId: true } })
+      ).map((sc) => sc.sectionId);
+      await Promise.all(candidateSectionIds.map((id) => syncSectionFaculty(id)));
+    }
 
     const sections = await prisma.section.findMany({
       where: {

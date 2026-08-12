@@ -751,6 +751,39 @@ export async function getCourseRegistrations(courseCode: string, subList: string
   return results;
 }
 
+// Only 3 of the real student batches (btechpeg23/24/25) have an actual
+// isr_reg_<batch>_tbl in the database - confirmed against the live schema:
+// every other batch (the other ~94% of students, by roll count) has no
+// registration table at all, so getCourseRegistrations can never find a row
+// for them regardless of what course they're really taking. Naively
+// intersecting a student list against getCourseRegistrations would therefore
+// wipe out almost every student system-wide, not just the ones who aren't
+// really taking the course - worse than not filtering at all.
+//
+// So this only *excludes* a student when their own batch actually has a
+// registration table and that table's rows say they're not registered for
+// this course - i.e. when there's real per-student evidence to act on. A
+// student whose batch has no registration table at all is left in the list
+// unfiltered (section membership is the best available signal for them).
+export async function narrowToCourseRegistrants(rolls: string[], courseCode: string, subList: string): Promise<string[]> {
+  if (rolls.length === 0) return [];
+
+  const [registry, students, registrations] = await Promise.all([
+    listBatchRegistry(),
+    prisma.isrStuMainTbl.findMany({ where: { roll: { in: rolls } }, select: { roll: true, batch: true } }),
+    getCourseRegistrations(courseCode, subList),
+  ]);
+  const verifiableBatches = new Set(registry.filter((r) => r.isActive).map((r) => r.batchName));
+  const batchByRoll = new Map(students.map((s) => [s.roll, s.batch]));
+  const registeredRolls = new Set(registrations.map((r) => r.roll));
+
+  return rolls.filter((roll) => {
+    const batch = batchByRoll.get(roll);
+    const isVerifiable = !!batch && verifiableBatches.has(batch);
+    return !isVerifiable || registeredRolls.has(roll);
+  });
+}
+
 // Bounded default listing for the admin mapping page - a handful of the most
 // recently registered rows per active batch table, so the page shows real
 // data immediately instead of only after a search (the per-table LIMIT keeps
