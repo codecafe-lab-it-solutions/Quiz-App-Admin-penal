@@ -106,16 +106,16 @@ export function QuizCreateForm({ role }: { role: "faculty" | "admin" }) {
 
   // Every section linked to the chosen course is auto-included (no manual
   // section picking) - the visible/interactive part is just which students
-  // to allot, sourced from the union of those sections' membership. Scoped
-  // server-side to sections the selected faculty actually teaches (not
-  // every section a shared course happens to touch system-wide) - see the
-  // GET route.
-  const sectionsUrl = selectedCourse?.courseId
+  // to allot. Sourced live from isr_sub_available_tbl (real per-branch
+  // sections) and isr_stu_main_tbl/isr_reg_<batch>_tbl (real student
+  // membership + course registration) on every call, not from the app's own
+  // section_students/section_faculty tables - see /api/faculty/quiz-sections.
+  const sectionsUrl = selectedCourse?.subCode
     ? role === "admin"
       ? facultyRoll
-        ? `/api/faculty/sections?courseId=${selectedCourse.courseId}&facultyRoll=${encodeURIComponent(facultyRoll)}`
+        ? `/api/faculty/quiz-sections?subCode=${encodeURIComponent(selectedCourse.subCode)}&facultyRoll=${encodeURIComponent(facultyRoll)}`
         : null
-      : `/api/faculty/sections?courseId=${selectedCourse.courseId}`
+      : `/api/faculty/quiz-sections?subCode=${encodeURIComponent(selectedCourse.subCode)}`
     : null;
   const { data: sectionsData } = useSWR(
     sectionsUrl,
@@ -133,10 +133,16 @@ export function QuizCreateForm({ role }: { role: "faculty" | "admin" }) {
     }
   }, [sectionIds.join(",")]);
 
+  const studentsUrl =
+    activeSectionIds.length > 0 && selectedCourse?.subCode
+      ? role === "admin"
+        ? facultyRoll
+          ? `/api/faculty/quiz-sections/students?sectionIds=${activeSectionIds.join(",")}&subCode=${encodeURIComponent(selectedCourse.subCode)}&facultyRoll=${encodeURIComponent(facultyRoll)}`
+          : null
+        : `/api/faculty/quiz-sections/students?sectionIds=${activeSectionIds.join(",")}&subCode=${encodeURIComponent(selectedCourse.subCode)}`
+      : null;
   const { data: studentsData } = useSWR(
-    activeSectionIds.length > 0 && selectedCourse?.courseId
-      ? `/api/faculty/sections/students?sectionIds=${activeSectionIds.join(",")}&courseId=${selectedCourse.courseId}`
-      : null,
+    studentsUrl,
     (url: string) => fetcher<{ items: StudentOption[] }>(url),
   );
   const candidates = studentsData?.items ?? [];

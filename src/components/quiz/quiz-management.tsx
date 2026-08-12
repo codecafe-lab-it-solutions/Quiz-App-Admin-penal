@@ -205,15 +205,16 @@ export function QuizManagement({
     (editCoursesData?.items ?? []).filter((c) => c.courseId !== null && hasRealTitle(c)),
   );
   const editSelectedCourse = editCourses.find((c) => c.subCode === editCourseCode);
-  // Scoped server-side to sections the selected faculty actually teaches
-  // (not every section a shared course happens to touch system-wide).
+  // Sourced live from isr_sub_available_tbl (real per-branch sections), not
+  // the app's own section_courses/section_faculty tables - see the create
+  // form's identical switch to /api/faculty/quiz-sections.
   const editSectionsUrl =
-    editDialogOpen && editSelectedCourse?.courseId
+    editDialogOpen && editSelectedCourse?.subCode
       ? role === "admin"
         ? editForm.facultyRoll
-          ? `/api/faculty/sections?courseId=${editSelectedCourse.courseId}&facultyRoll=${encodeURIComponent(editForm.facultyRoll)}`
+          ? `/api/faculty/quiz-sections?subCode=${encodeURIComponent(editSelectedCourse.subCode)}&facultyRoll=${encodeURIComponent(editForm.facultyRoll)}`
           : null
-        : `/api/faculty/sections?courseId=${editSelectedCourse.courseId}`
+        : `/api/faculty/quiz-sections?subCode=${encodeURIComponent(editSelectedCourse.subCode)}`
       : null;
   const { data: editSectionsData } = useSWR(
     editSectionsUrl,

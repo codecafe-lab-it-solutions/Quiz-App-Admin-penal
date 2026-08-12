@@ -1,7 +1,13 @@
 import { prisma } from "@/lib/db";
 import { ApiError } from "@/lib/api-response";
 import { getCurrentSubList } from "@/lib/config";
-import { getCourseRegistrations, getRealMajors, resolveMajorFromBranch } from "@/lib/legacy-db";
+import {
+  getCourseRegistrations,
+  getRealMajors,
+  resolveMajorFromBranch,
+  narrowToCourseRegistrants,
+  getStudentNamesByRolls,
+} from "@/lib/legacy-db";
 
 /** A section's own major is its Major_Semester name's prefix (e.g. "CE" from "CE_3"). */
 function sectionMajorFromName(name: string): string {
@@ -162,6 +168,88 @@ async function findOrCreateSectionByName(name: string) {
     (await prisma.section.findFirst({ where: { name } })) ??
     (await prisma.section.create({ data: { name } }))
   );
+}
+
+export interface RealFacultySectionOption {
+  id: number;
+  name: string;
+  branch: string | null;
+  sem: string | null;
+}
+
+/**
+ * Real per-branch sections a faculty teaches a given course under, for the
+ * Create/Edit Quiz section picker - sourced directly from
+ * isr_sub_available_tbl.section (a real legacy column) on every call, not
+ * from the app's own section_courses/section_faculty tables. The client
+ * flagged section_students/section_faculty as not belonging to their real
+ * database, so quiz creation's course->section->student chain must trace
+ * back to real isr_* tables, not an app-synced copy (Master Data > Sections
+ * and Manage Members still use the app's Section tables - only this flow
+ * changed). Still finds/creates an app Section row per real name, since
+ * Quiz -> QuizSection needs a real FK target, but which sections exist and
+ * their branch/sem always comes fresh from the real mapping table.
+ */
+export async function getRealSectionsForFacultyCourse(
+  facultyRoll: string,
+  subCode: string,
+  subList: string
+): Promise<RealFacultySectionOption[]> {
+  const rows = await prisma.isrSubAvailableTbl.findMany({
+    where: { facRoll: facultyRoll, subCode, subList },
+  });
+
+  const results: RealFacultySectionOption[] = [];
+  const seen = new Set<string>();
+  for (const row of rows) {
+    if (!row.section || seen.has(row.section)) continue;
+    seen.add(row.section);
+    const section = await findOrCreateSectionByName(row.section);
+    results.push({ id: section.id, name: row.section, branch: row.branch, sem: row.sem });
+  }
+  return results;
+}
+
+/**
+ * Live candidate students for a faculty's course across the given real
+ * section names - never reads section_students. Resolves each section name
+ * back to its real (branch, sem) row in isr_sub_available_tbl, derives the
+ * real major from branch, and queries isr_stu_main_tbl by (major, sem_now)
+ * directly - then narrows against real per-course registration
+ * (isr_reg_<batch>_tbl, dynamically resolved per student's own batch - see
+ * narrowToCourseRegistrants) wherever that's verifiable.
+ */
+export async function getStudentsForRealSections(
+  facultyRoll: string,
+  subCode: string,
+  subList: string,
+  sectionNames: string[]
+): Promise<{ roll: string; name: string }[]> {
+  if (sectionNames.length === 0) return [];
+
+  const rows = await prisma.isrSubAvailableTbl.findMany({
+    where: { facRoll: facultyRoll, subCode, subList, section: { in: sectionNames } },
+  });
+
+  const realMajors = await getRealMajors();
+  const rolls = new Set<string>();
+  for (const row of rows) {
+    if (!row.sem) continue;
+    const semNow = Number(row.sem);
+    if (Number.isNaN(semNow)) continue;
+    const major = resolveMajorFromBranch(row.branch ?? "", realMajors);
+    const students = await prisma.isrStuMainTbl.findMany({
+      where: { major, semNow },
+      select: { roll: true },
+    });
+    students.forEach((s) => rolls.add(s.roll));
+  }
+
+  const narrowedRolls = await narrowToCourseRegistrants([...rolls], subCode, subList);
+  const names = await getStudentNamesByRolls(narrowedRolls);
+  return narrowedRolls
+    .map((roll) => ({ roll, name: names.get(roll) ?? roll }))
+    .sort((a, b) => a.name.localeCompare(b.name));
 }
 
 /**
