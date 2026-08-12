@@ -10,6 +10,7 @@ import { apiClient, ApiClientError } from "@/lib/api-client";
 import { dedupeByCourseCode, hasRealTitle } from "@/lib/course-catalog";
 import { DataTable, DataTableColumn } from "@/components/admin/data-table";
 import { FilterBar } from "@/components/admin/filter-bar";
+import { PaginationBar } from "@/components/admin/pagination-bar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -51,9 +52,11 @@ type FormValues = z.infer<typeof schema>;
 
 const fetcher = (url: string) => apiClient.get<ListResponse<Section>>(url);
 const courseFetcher = (url: string) => apiClient.get<ListResponse<CourseCatalogEntry>>(url);
+const PAGE_SIZE = 10;
 
 export function FacultySections() {
   const [search, setSearch] = useState("");
+  const [page, setPage] = useState(1);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<Section | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -114,9 +117,12 @@ export function FacultySections() {
     }
   };
 
-  const items = (data?.items ?? []).filter((s) =>
+  const filtered = (data?.items ?? []).filter((s) =>
     search ? s.name.toLowerCase().includes(search.toLowerCase()) : true,
   );
+  const total = filtered.length;
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const items = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
   const columns: DataTableColumn<Section>[] = [
     { key: "name", header: "Name", render: (r) => <span className="font-medium">{r.name}</span> },
@@ -160,9 +166,16 @@ export function FacultySections() {
         </Button>
       </div>
 
-      <FilterBar search={search} onSearchChange={setSearch} searchPlaceholder="Search sections..." />
+      <FilterBar
+        search={search}
+        onSearchChange={(v) => { setSearch(v); setPage(1); }}
+        searchPlaceholder="Search sections..."
+      />
 
       <DataTable columns={columns} rows={items} rowKey={(r) => r.id} loading={isLoading} />
+      {total > 0 && (
+        <PaginationBar page={page} totalPages={totalPages} total={total} pageSize={PAGE_SIZE} onPageChange={setPage} />
+      )}
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="sm:max-w-md">

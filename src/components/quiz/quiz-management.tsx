@@ -30,6 +30,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { DataTable, DataTableColumn } from "@/components/admin/data-table";
+import { PaginationBar } from "@/components/admin/pagination-bar";
 import { ConfirmDialog } from "@/components/admin/confirm-dialog";
 import {
   QuestionEditorDialog,
@@ -37,6 +38,14 @@ import {
 } from "@/components/quiz/question-editor-dialog";
 import { RichTextDisplay } from "@/components/quiz/rich-text-display";
 import { Copy, Pencil, Play, Plus, Square, Trash2, Upload } from "lucide-react";
+
+const CLIENT_PAGE_SIZE = 10;
+
+function paginateClient<T>(rows: T[], page: number) {
+  const total = rows.length;
+  const start = (page - 1) * CLIENT_PAGE_SIZE;
+  return { items: rows.slice(start, start + CLIENT_PAGE_SIZE), total, totalPages: Math.max(1, Math.ceil(total / CLIENT_PAGE_SIZE)) };
+}
 
 interface QuizDetail {
   id: number;
@@ -211,6 +220,8 @@ export function QuizManagement({
     (url: string) => fetcher<{ items: SectionOption[] }>(url),
   );
   const editSections = editSectionsData?.items ?? [];
+  const [subjectivePage, setSubjectivePage] = useState(1);
+  const [questionsPage, setQuestionsPage] = useState(1);
   const { data: subjectiveData, mutate: mutateSubjective } = useSWR(
     quiz?.status === "completed"
       ? `/api/faculty/quiz/${quizId}/subjective-answers`
@@ -553,6 +564,9 @@ export function QuizManagement({
     }
   };
 
+  const pagedSubjective = paginateClient(subjectiveData?.items ?? [], subjectivePage);
+  const pagedQuestions = paginateClient(quiz?.questions ?? [], questionsPage);
+
   const handleGrade = async (answerId: number, marksAwarded: number) => {
     try {
       await apiClient.patch(
@@ -762,10 +776,19 @@ export function QuizManagement({
         <CardContent>
           <DataTable
             columns={questionColumns}
-            rows={quiz.questions}
+            rows={pagedQuestions.items}
             rowKey={(r) => r.id}
             emptyMessage="No questions yet - add one or bulk import from Excel."
           />
+          {quiz.questions.length > 0 && (
+            <PaginationBar
+              page={questionsPage}
+              totalPages={pagedQuestions.totalPages}
+              total={pagedQuestions.total}
+              pageSize={CLIENT_PAGE_SIZE}
+              onPageChange={setQuestionsPage}
+            />
+          )}
         </CardContent>
       </Card>
 
@@ -835,13 +858,22 @@ export function QuizManagement({
                 No subjective answers to grade for this quiz.
               </p>
             )}
-            {(subjectiveData?.items ?? []).map((a) => (
+            {pagedSubjective.items.map((a) => (
               <SubjectiveAnswerRow
                 key={a.answerId}
                 answer={a}
                 onGrade={handleGrade}
               />
             ))}
+            {(subjectiveData?.items ?? []).length > 0 && (
+              <PaginationBar
+                page={subjectivePage}
+                totalPages={pagedSubjective.totalPages}
+                total={pagedSubjective.total}
+                pageSize={CLIENT_PAGE_SIZE}
+                onPageChange={setSubjectivePage}
+              />
+            )}
           </CardContent>
         </Card>
       )}
@@ -1073,10 +1105,12 @@ function LiveMonitoringCard({
   data: AttemptsResponse | undefined;
   onToggleProxy: (roll: string, currentlyProxy: boolean) => void;
 }) {
+  const [page, setPage] = useState(1);
   const entries = [
     ...(data?.attempted ?? []),
     ...(data?.notAttempted ?? []),
   ].sort((a, b) => a.student.name.localeCompare(b.student.name));
+  const paged = paginateClient(entries, page);
   const inProgressCount = entries.filter(
     (e) => e.attempt?.status === "in_progress",
   ).length;
@@ -1103,7 +1137,7 @@ function LiveMonitoringCard({
           </p>
         ) : (
           <div className="max-h-96 space-y-1 overflow-y-auto rounded-md border p-2">
-            {entries.map((entry) => (
+            {paged.items.map((entry) => (
               <div
                 key={entry.student.roll}
                 className="flex items-center justify-between rounded px-2 py-1.5 hover:bg-muted"
@@ -1132,6 +1166,15 @@ function LiveMonitoringCard({
               </div>
             ))}
           </div>
+        )}
+        {entries.length > 0 && (
+          <PaginationBar
+            page={page}
+            totalPages={paged.totalPages}
+            total={paged.total}
+            pageSize={CLIENT_PAGE_SIZE}
+            onPageChange={setPage}
+          />
         )}
       </CardContent>
     </Card>
@@ -1190,6 +1233,9 @@ function ResultsReportCard({
     { label: "Published", value: data.summary.publishedCount },
     { label: "Needs grading", value: data.summary.ungradedCount },
   ];
+
+  const [resultsPage, setResultsPage] = useState(1);
+  const pagedResults = paginateClient(data.studentResults, resultsPage);
 
   const resultColumns: DataTableColumn<(typeof data.studentResults)[number]>[] =
     [
@@ -1298,10 +1344,19 @@ function ResultsReportCard({
           <h3 className="text-sm font-semibold">Student result summary</h3>
           <DataTable
             columns={resultColumns}
-            rows={data.studentResults}
+            rows={pagedResults.items}
             rowKey={(row) => row.roll}
             emptyMessage="No students have results yet."
           />
+          {data.studentResults.length > 0 && (
+            <PaginationBar
+              page={resultsPage}
+              totalPages={pagedResults.totalPages}
+              total={pagedResults.total}
+              pageSize={CLIENT_PAGE_SIZE}
+              onPageChange={setResultsPage}
+            />
+          )}
         </div>
       </CardContent>
     </Card>

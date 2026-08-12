@@ -751,6 +751,112 @@ export async function getCourseRegistrations(courseCode: string, subList: string
   return results;
 }
 
+// UI-facing paginated form of getCourseRegistrations, for the Student <->
+// Course mapping page's course browse filter - that page needs a real
+// page/pageSize with a total count, not the full unbounded scan
+// getCourseRegistrations does for its other (internal, correctness-critical)
+// callers. Counts each active batch table first (cheap), then only pulls
+// LIMIT/OFFSET rows from the specific table(s) this page actually falls on -
+// never loads more than one page's worth of rows into memory, however many
+// batch tables exist.
+export async function getCourseRegistrationsPaged(
+  courseCode: string,
+  subList: string,
+  opts: { batch?: string; page: number; pageSize: number }
+): Promise<{ items: (StudentCourseRow & { batch: string })[]; total: number }> {
+  const registry = (await listBatchRegistry()).filter(
+    (r) => r.isActive && (!opts.batch || r.batchName === opts.batch) && SAFE_TABLE_NAME.test(r.tableName)
+  );
+
+  const perTable: { entry: (typeof registry)[number]; count: number }[] = [];
+  let total = 0;
+  for (const entry of registry) {
+    try {
+      const rows = await prisma.$queryRawUnsafe<{ c: bigint | number }[]>(
+        `SELECT COUNT(*) AS c FROM \`${entry.tableName}\` WHERE \`${REG_SUB_CODE_COLUMN}\` = ? AND \`${REG_SUB_LIST_COLUMN}\` = ?`,
+        courseCode,
+        subList
+      );
+      const count = Number(rows[0]?.c ?? 0);
+      perTable.push({ entry, count });
+      total += count;
+    } catch (error) {
+      console.error(`getCourseRegistrationsPaged: count against ${entry.tableName} failed`, error);
+    }
+  }
+
+  let remainingSkip = (opts.page - 1) * opts.pageSize;
+  let remainingTake = opts.pageSize;
+  const items: (StudentCourseRow & { batch: string })[] = [];
+
+  for (const { entry, count } of perTable) {
+    if (remainingTake <= 0) break;
+    if (remainingSkip >= count) {
+      remainingSkip -= count;
+      continue;
+    }
+    const tableSkip = remainingSkip;
+    const tableTake = Math.min(remainingTake, count - tableSkip);
+    remainingSkip = 0;
+    try {
+      const rows = await prisma.$queryRawUnsafe<Record<string, string>[]>(
+        `SELECT \`${REG_ROLL_COLUMN}\` AS roll, \`${REG_SUB_CODE_COLUMN}\` AS sub_code FROM \`${entry.tableName}\` WHERE \`${REG_SUB_CODE_COLUMN}\` = ? AND \`${REG_SUB_LIST_COLUMN}\` = ? ORDER BY \`${REG_PK_COLUMN}\` LIMIT ${tableTake} OFFSET ${tableSkip}`,
+        courseCode,
+        subList
+      );
+      items.push(...rows.map((r) => ({ roll: r.roll, subCode: r.sub_code, batch: entry.batchName })));
+      remainingTake -= tableTake;
+    } catch (error) {
+      console.error(`getCourseRegistrationsPaged: page query against ${entry.tableName} failed`, error);
+    }
+  }
+
+  return { items, total };
+}
+
+// Course browse combined with a section filter (roll set already known and
+// bounded, unlike a full course scan) - resolves each member's real batch
+// and queries only those specific tables with both sub_code and an IN-list
+// of rolls, instead of scanning every active batch table for the course and
+// filtering client-side.
+export async function getCourseRegistrationsForRolls(
+  courseCode: string,
+  subList: string,
+  rolls: string[]
+): Promise<(StudentCourseRow & { batch: string })[]> {
+  if (rolls.length === 0) return [];
+  const members = await prisma.isrStuMainTbl.findMany({
+    where: { roll: { in: rolls } },
+    select: { roll: true, batch: true },
+  });
+  const rollsByBatch = new Map<string, string[]>();
+  for (const m of members) {
+    if (!m.batch) continue;
+    const list = rollsByBatch.get(m.batch) ?? [];
+    list.push(m.roll);
+    rollsByBatch.set(m.batch, list);
+  }
+
+  const results: (StudentCourseRow & { batch: string })[] = [];
+  for (const [batch, batchRolls] of rollsByBatch) {
+    const tableName = await resolveBatchTable(batch);
+    if (!tableName) continue;
+    try {
+      const placeholders = batchRolls.map(() => "?").join(",");
+      const rows = await prisma.$queryRawUnsafe<Record<string, string>[]>(
+        `SELECT \`${REG_ROLL_COLUMN}\` AS roll, \`${REG_SUB_CODE_COLUMN}\` AS sub_code FROM \`${tableName}\` WHERE \`${REG_SUB_CODE_COLUMN}\` = ? AND \`${REG_SUB_LIST_COLUMN}\` = ? AND \`${REG_ROLL_COLUMN}\` IN (${placeholders})`,
+        courseCode,
+        subList,
+        ...batchRolls
+      );
+      results.push(...rows.map((r) => ({ roll: r.roll, subCode: r.sub_code, batch })));
+    } catch (error) {
+      console.error(`getCourseRegistrationsForRolls: query against ${tableName} failed`, error);
+    }
+  }
+  return results;
+}
+
 // Only 3 of the real student batches (btechpeg23/24/25) have an actual
 // isr_reg_<batch>_tbl in the database - confirmed against the live schema:
 // every other batch (the other ~94% of students, by roll count) has no
@@ -841,6 +947,35 @@ export async function getBatchRegistrations(
   } catch (error) {
     console.error(`getBatchRegistrations: query against ${tableName} failed`, error);
     return [];
+  }
+}
+
+// Paginated form of the batch-only browse (no roll filter) - real
+// LIMIT/OFFSET plus a total count, instead of the fixed 50-row cap
+// getBatchRegistrations({ limit }) applies with no way to see further rows.
+export async function getBatchRegistrationsPaged(
+  batch: string,
+  subList: string,
+  opts: { page: number; pageSize: number }
+): Promise<{ items: StudentCourseRow[]; total: number }> {
+  const tableName = await resolveBatchTable(batch);
+  if (!tableName) return { items: [], total: 0 };
+
+  try {
+    const countRows = await prisma.$queryRawUnsafe<{ c: bigint | number }[]>(
+      `SELECT COUNT(*) AS c FROM \`${tableName}\` WHERE \`${REG_SUB_LIST_COLUMN}\` = ?`,
+      subList
+    );
+    const total = Number(countRows[0]?.c ?? 0);
+    const skip = (opts.page - 1) * opts.pageSize;
+    const rows = await prisma.$queryRawUnsafe<Record<string, string>[]>(
+      `SELECT \`${REG_ROLL_COLUMN}\` AS roll, \`${REG_SUB_CODE_COLUMN}\` AS sub_code FROM \`${tableName}\` WHERE \`${REG_SUB_LIST_COLUMN}\` = ? ORDER BY \`${REG_PK_COLUMN}\` DESC LIMIT ${opts.pageSize} OFFSET ${skip}`,
+      subList
+    );
+    return { items: rows.map((r) => ({ roll: r.roll, subCode: r.sub_code })), total };
+  } catch (error) {
+    console.error(`getBatchRegistrationsPaged: query against ${tableName} failed`, error);
+    return { items: [], total: 0 };
   }
 }
 

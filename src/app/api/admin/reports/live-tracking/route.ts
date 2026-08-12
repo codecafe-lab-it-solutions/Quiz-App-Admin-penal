@@ -3,22 +3,36 @@ import { prisma } from "@/lib/db";
 import { ok, handleApiError } from "@/lib/api-response";
 import { getAuthUser, requireRole } from "@/lib/auth";
 import { getFacultyNamesByRolls } from "@/lib/legacy-db";
+import { paginationMeta } from "@/lib/validators/common";
+import { z } from "zod";
+
+const querySchema = z.object({
+  page: z.coerce.number().int().min(1).default(1),
+  pageSize: z.coerce.number().int().min(1).max(50).default(12),
+});
 
 export async function GET(req: NextRequest) {
   try {
     const user = getAuthUser(req);
     requireRole(user, "admin");
 
-    const liveQuizzes = await prisma.quiz.findMany({
-      where: { status: "live" },
-      orderBy: { actualStartTime: "asc" },
-      include: {
-        course: { select: { id: true, name: true, code: true } },
-        sections: { include: { section: { select: { id: true, name: true } } } },
-        building: { select: { id: true, name: true } },
-        _count: { select: { allotments: true } },
-      },
-    });
+    const { page, pageSize } = querySchema.parse(Object.fromEntries(req.nextUrl.searchParams));
+
+    const [liveQuizzes, runningCount] = await Promise.all([
+      prisma.quiz.findMany({
+        where: { status: "live" },
+        orderBy: { actualStartTime: "asc" },
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+        include: {
+          course: { select: { id: true, name: true, code: true } },
+          sections: { include: { section: { select: { id: true, name: true } } } },
+          building: { select: { id: true, name: true } },
+          _count: { select: { allotments: true } },
+        },
+      }),
+      prisma.quiz.count({ where: { status: "live" } }),
+    ]);
 
     const facultyNames = await getFacultyNamesByRolls(liveQuizzes.map((q) => q.facultyRoll));
     const now = Date.now();
@@ -79,7 +93,7 @@ export async function GET(req: NextRequest) {
       })
     );
 
-    return ok({ runningCount: items.length, items });
+    return ok({ runningCount, items, meta: paginationMeta(runningCount, page, pageSize) });
   } catch (error) {
     return handleApiError(error);
   }

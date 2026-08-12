@@ -4,16 +4,29 @@ import { ok, created, fail, handleApiError } from "@/lib/api-response";
 import { getAuthUser, requireRole } from "@/lib/auth";
 import { studentCourseMappingQuerySchema } from "@/lib/validators/mapping";
 import { studentCourseMappingCreateSchema } from "@/lib/validators/directory";
+import { paginationMeta } from "@/lib/validators/common";
 import {
   getStudentByRoll,
   getStudentCourses,
-  getCourseRegistrations,
+  getCourseRegistrationsPaged,
+  getCourseRegistrationsForRolls,
   getRecentRegistrations,
   getBatchRegistrations,
+  getBatchRegistrationsPaged,
   createStudentCourseMapping,
 } from "@/lib/legacy-db";
 import { getCurrentSubList } from "@/lib/config";
 import { assignStudentToDefaultSection } from "@/lib/section-sync";
+
+// Paginates an already-fetched, size-bounded array (bounded by a real roll
+// set - a section's membership - not by an unbounded DB scan) - used for the
+// branches where the underlying data is already small enough to fetch in
+// full, so a real DB-level LIMIT/OFFSET isn't needed to keep this cheap.
+function paginateArray<T>(items: T[], page: number, pageSize: number): { items: T[]; total: number } {
+  const total = items.length;
+  const start = (page - 1) * pageSize;
+  return { items: items.slice(start, start + pageSize), total };
+}
 
 // Sourced live from the legacy per-batch isr_reg_<batch>_tbl tables. GET
 // never returns an unfiltered dump - a roll/course code search, or a
@@ -31,7 +44,7 @@ export async function GET(req: NextRequest) {
     if (!parsed.success) {
       return fail(400, "Provide either roll or courseCode to search");
     }
-    const { roll, courseCode, batch, sectionId } = parsed.data;
+    const { roll, courseCode, batch, sectionId, page, pageSize } = parsed.data;
     const subList = await getCurrentSubList();
 
     // Section browse filter - resolves once, reused by both the courseCode
@@ -108,7 +121,7 @@ export async function GET(req: NextRequest) {
     if (roll) {
       const student = await getStudentByRoll(roll);
       if (!student || !student.batch) {
-        return ok({ items: [] });
+        return ok({ items: [], isDefault: false, meta: paginationMeta(0, 1, pageSize) });
       }
       const courses = await getStudentCourses(roll, student.batch, subList);
       const rows = courses.map((c) => ({
@@ -116,31 +129,51 @@ export async function GET(req: NextRequest) {
         subCode: c.subCode,
         batch: student.batch,
       }));
-      return ok({ items: await attachSections(rows), isDefault: false });
+      // One student's own course list - naturally small, no real pagination
+      // need, but still paginated over for a consistent response shape.
+      const { items, total } = paginateArray(rows, page, pageSize);
+      return ok({ items: await attachSections(items), isDefault: false, meta: paginationMeta(total, page, pageSize) });
+    }
+
+    if (courseCode && sectionRolls) {
+      // Course + section together - bounded by the section's own membership
+      // (already known and small), so resolve per-member batch and query
+      // just those tables directly rather than scanning every active batch
+      // table for the course and filtering client-side.
+      let items = await getCourseRegistrationsForRolls(courseCode, subList, [...sectionRolls]);
+      if (batch) items = items.filter((i) => i.batch === batch);
+      const paged = paginateArray(items, page, pageSize);
+      return ok({ items: await attachSections(paged.items), isDefault: false, meta: paginationMeta(paged.total, page, pageSize) });
     }
 
     if (courseCode) {
-      let items = await getCourseRegistrations(courseCode, subList);
-      if (batch) items = items.filter((i) => i.batch === batch);
-      if (sectionRolls) items = items.filter((i) => sectionRolls.has(i.roll));
-      return ok({ items: await attachSections(items), isDefault: false });
+      // Course browse, optionally narrowed to one batch - real DB-level
+      // LIMIT/OFFSET across whichever batch table(s) apply, with a total
+      // count, instead of scanning every active table unbounded.
+      const { items, total } = await getCourseRegistrationsPaged(courseCode, subList, { batch, page, pageSize });
+      return ok({ items: await attachSections(items), isDefault: false, meta: paginationMeta(total, page, pageSize) });
     }
 
     // Browse mode - a batch and/or section picked from a dropdown, with no
     // exact roll/course code typed. Each branch below only ever queries the
     // specific batch table(s) those choices actually point at, never all ~60.
-    if (batch) {
-      const rows = await getBatchRegistrations(batch, subList, {
-        rolls: sectionRolls ? [...sectionRolls] : undefined,
-        limit: 50,
-      });
+    if (batch && sectionRolls) {
+      const rows = await getBatchRegistrations(batch, subList, { rolls: [...sectionRolls] });
       const items = rows.map((r) => ({ ...r, batch }));
-      return ok({ items: await attachSections(items), isDefault: false });
+      const paged = paginateArray(items, page, pageSize);
+      return ok({ items: await attachSections(paged.items), isDefault: false, meta: paginationMeta(paged.total, page, pageSize) });
+    }
+
+    if (batch) {
+      const { items: rows, total } = await getBatchRegistrationsPaged(batch, subList, { page, pageSize });
+      const items = rows.map((r) => ({ ...r, batch }));
+      return ok({ items: await attachSections(items), isDefault: false, meta: paginationMeta(total, page, pageSize) });
     }
 
     if (sectionRolls) {
       // No batch chosen - resolve each section member's real batch so only
       // the handful of batch tables its members actually belong to get hit.
+      // Bounded by section membership size, so fetched in full then paged.
       const members = await prisma.isrStuMainTbl.findMany({
         where: { roll: { in: [...sectionRolls] } },
         select: { roll: true, batch: true },
@@ -157,14 +190,16 @@ export async function GET(req: NextRequest) {
         const rows = await getBatchRegistrations(b, subList, { rolls });
         items.push(...rows.map((r) => ({ ...r, batch: b })));
       }
-      return ok({ items: await attachSections(items), isDefault: false });
+      const paged = paginateArray(items, page, pageSize);
+      return ok({ items: await attachSections(paged.items), isDefault: false, meta: paginationMeta(paged.total, page, pageSize) });
     }
 
     // No search or filter yet - show a bounded "recently registered" default
     // list (see getRecentRegistrations) so the page reads as live and
-    // connected rather than blank.
+    // connected rather than blank. Intentionally a fixed-size preview, not a
+    // real paginated browse - pick a filter above to actually page through data.
     const recent = await getRecentRegistrations(subList, 20);
-    return ok({ items: await attachSections(recent), isDefault: true });
+    return ok({ items: await attachSections(recent), isDefault: true, meta: paginationMeta(recent.length, 1, recent.length || 1) });
   } catch (error) {
     return handleApiError(error);
   }

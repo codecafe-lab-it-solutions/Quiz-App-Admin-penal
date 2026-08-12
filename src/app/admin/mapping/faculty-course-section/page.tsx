@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/card";
 import { DataTable, DataTableColumn } from "@/components/admin/data-table";
 import { FilterBar } from "@/components/admin/filter-bar";
+import { PaginationBar } from "@/components/admin/pagination-bar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -50,6 +51,7 @@ interface Mapping {
 interface ListResponse {
   items: Mapping[];
   currentSubList: string;
+  meta: { total: number; page: number; pageSize: number; totalPages: number };
 }
 
 interface FacultyOption {
@@ -96,10 +98,11 @@ type FormValues = z.infer<typeof schema>;
 
 export default function FacultyMappingPage() {
   const [facultyRoll, setFacultyRoll] = useState("");
+  const [page, setPage] = useState(1);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
-  const params = new URLSearchParams({ pageSize: "100" });
+  const params = new URLSearchParams({ page: String(page), pageSize: "10" });
   if (facultyRoll.trim()) params.set("facultyRoll", facultyRoll.trim());
   const { data, isLoading, mutate } = useSWR(
     `/api/admin/mapping/faculty-course-section?${params.toString()}`,
@@ -384,7 +387,7 @@ export default function FacultyMappingPage() {
         <CardContent className="space-y-4">
           <FilterBar
             search={facultyRoll}
-            onSearchChange={setFacultyRoll}
+            onSearchChange={(v) => { setFacultyRoll(v); setPage(1); }}
             searchPlaceholder="Filter by faculty roll..."
           />
           <DataTable
@@ -393,6 +396,15 @@ export default function FacultyMappingPage() {
             rowKey={(r) => r.id}
             loading={isLoading}
           />
+          {data?.meta && (
+            <PaginationBar
+              page={data.meta.page}
+              totalPages={data.meta.totalPages}
+              total={data.meta.total}
+              pageSize={data.meta.pageSize}
+              onPageChange={setPage}
+            />
+          )}
         </CardContent>
       </Card>
 

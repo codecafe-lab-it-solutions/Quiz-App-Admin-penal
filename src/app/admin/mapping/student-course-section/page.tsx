@@ -16,6 +16,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { DataTable, DataTableColumn } from "@/components/admin/data-table";
+import { PaginationBar } from "@/components/admin/pagination-bar";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
@@ -50,6 +51,7 @@ interface Registration {
 interface ListResponse {
   items: Registration[];
   isDefault: boolean;
+  meta: { total: number; page: number; pageSize: number; totalPages: number };
 }
 
 interface CourseOption {
@@ -99,6 +101,7 @@ export default function StudentMappingPage() {
   const [courseCode, setCourseCode] = useState(ALL);
   const [batch, setBatch] = useState(ALL);
   const [sectionId, setSectionId] = useState(ALL);
+  const [page, setPage] = useState(1);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
@@ -113,7 +116,7 @@ export default function StudentMappingPage() {
   // still fires - the route returns a bounded "recently registered" default
   // list instead of nothing, so the page shows real, interconnected data
   // immediately.
-  const params = new URLSearchParams();
+  const params = new URLSearchParams({ page: String(page), pageSize: "20" });
   if (roll.trim()) {
     params.set("roll", roll.trim());
   } else {
@@ -186,6 +189,7 @@ export default function StudentMappingPage() {
       setCourseCode(ALL);
       setBatch(ALL);
       setSectionId(ALL);
+      setPage(1);
       setRoll(values.roll);
       mutate();
     } catch (error) {
@@ -291,6 +295,7 @@ export default function StudentMappingPage() {
                 value={roll}
                 onChange={(e) => {
                   setRoll(e.target.value);
+                  setPage(1);
                   if (e.target.value) {
                     setCourseCode(ALL);
                     setBatch(ALL);
@@ -306,6 +311,7 @@ export default function StudentMappingPage() {
                 value={courseCode}
                 onValueChange={(v) => {
                   setCourseCode(v);
+                  setPage(1);
                   if (v !== ALL) setRoll("");
                 }}
               >
@@ -328,6 +334,7 @@ export default function StudentMappingPage() {
                 value={batch}
                 onValueChange={(v) => {
                   setBatch(v);
+                  setPage(1);
                   if (v !== ALL) setRoll("");
                 }}
               >
@@ -350,6 +357,7 @@ export default function StudentMappingPage() {
                 value={sectionId}
                 onValueChange={(v) => {
                   setSectionId(v);
+                  setPage(1);
                   if (v !== ALL) setRoll("");
                 }}
               >
@@ -368,7 +376,7 @@ export default function StudentMappingPage() {
             </div>
           </div>
 
-          {!query && data?.isDefault && (
+          {data?.isDefault && (
             <p className="text-sm text-muted-foreground">
               No search or filter yet — showing the most recently registered mappings. Search a
               roll, or pick a course/batch/section, to narrow this down.
@@ -380,6 +388,15 @@ export default function StudentMappingPage() {
             rowKey={(r) => `${r.roll}-${r.subCode}`}
             loading={isLoading}
           />
+          {data?.meta && !data.isDefault && (
+            <PaginationBar
+              page={data.meta.page}
+              totalPages={data.meta.totalPages}
+              total={data.meta.total}
+              pageSize={data.meta.pageSize}
+              onPageChange={setPage}
+            />
+          )}
         </CardContent>
       </Card>
 

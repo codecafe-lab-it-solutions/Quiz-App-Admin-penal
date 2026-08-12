@@ -1,9 +1,11 @@
 "use client";
 
+import { useState } from "react";
 import useSWR from "swr";
 import { apiClient } from "@/lib/api-client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { PaginationBar } from "@/components/admin/pagination-bar";
 import { Radio, Users, Clock } from "lucide-react";
 import { formatDateTime } from "@/lib/format-date";
 
@@ -29,6 +31,7 @@ interface LiveQuizItem {
 interface LiveTrackingData {
   runningCount: number;
   items: LiveQuizItem[];
+  meta: { total: number; page: number; pageSize: number; totalPages: number };
 }
 
 function formatDuration(seconds: number) {
@@ -44,9 +47,12 @@ interface LiveTrackingBoardProps {
 }
 
 export function LiveTrackingBoard({ compact = false }: LiveTrackingBoardProps) {
-  const { data, isLoading } = useSWR("/api/admin/reports/live-tracking", fetcher, {
-    refreshInterval: 12000,
-  });
+  const [page, setPage] = useState(1);
+  const { data, isLoading } = useSWR(
+    `/api/admin/reports/live-tracking?page=${compact ? 1 : page}&pageSize=12`,
+    fetcher,
+    { refreshInterval: 12000 },
+  );
 
   const items = compact ? (data?.items ?? []).slice(0, 3) : data?.items ?? [];
 
@@ -105,6 +111,16 @@ export function LiveTrackingBoard({ compact = false }: LiveTrackingBoardProps) {
             </Card>
           ))}
         </div>
+      )}
+
+      {!compact && data?.meta && (
+        <PaginationBar
+          page={data.meta.page}
+          totalPages={data.meta.totalPages}
+          total={data.meta.total}
+          pageSize={data.meta.pageSize}
+          onPageChange={setPage}
+        />
       )}
     </div>
   );

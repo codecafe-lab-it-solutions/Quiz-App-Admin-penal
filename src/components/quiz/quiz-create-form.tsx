@@ -151,6 +151,9 @@ export function QuizCreateForm({ role }: { role: "faculty" | "admin" }) {
     setCheckedRolls(next);
   };
 
+  const checkAllStudents = () => setCheckedRolls(new Set(candidates.map((c) => c.roll)));
+  const uncheckAllStudents = () => setCheckedRolls(new Set());
+
   const toggleSection = (sectionId: number, checked: boolean) => {
     setSelectedSectionIds((prev) => {
       if (checked) {
@@ -436,7 +439,31 @@ export function QuizCreateForm({ role }: { role: "faculty" | "admin" }) {
         </div>
 
         <div className="space-y-1.5">
-          <Label>Allot Students ({effectiveChecked.size} selected)</Label>
+          <div className="flex items-center justify-between">
+            <Label>Allot Students ({effectiveChecked.size} selected)</Label>
+            {candidates.length > 0 && (
+              <div className="flex gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={checkAllStudents}
+                  disabled={effectiveChecked.size === candidates.length}
+                >
+                  Check all
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={uncheckAllStudents}
+                  disabled={effectiveChecked.size === 0}
+                >
+                  Uncheck all
+                </Button>
+              </div>
+            )}
+          </div>
           <div className="max-h-56 space-y-1 overflow-y-auto rounded-md border p-2">
             {!courseCode && (
               <p className="p-2 text-xs text-muted-foreground">

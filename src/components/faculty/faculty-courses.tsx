@@ -6,7 +6,16 @@ import { apiClient } from "@/lib/api-client";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { DataTable, DataTableColumn } from "@/components/admin/data-table";
+import { PaginationBar } from "@/components/admin/pagination-bar";
 import { Users } from "lucide-react";
+
+const PAGE_SIZE = 10;
+
+function paginate<T>(rows: T[], page: number) {
+  const total = rows.length;
+  const start = (page - 1) * PAGE_SIZE;
+  return { items: rows.slice(start, start + PAGE_SIZE), total, totalPages: Math.max(1, Math.ceil(total / PAGE_SIZE)) };
+}
 
 interface FacultyCourse {
   subCode: string;
@@ -27,6 +36,8 @@ interface RosterRow {
 
 export function FacultyCourses() {
   const [rosterCourse, setRosterCourse] = useState<FacultyCourse | null>(null);
+  const [coursesPage, setCoursesPage] = useState(1);
+  const [rosterPage, setRosterPage] = useState(1);
 
   const { data: coursesData, isLoading: coursesLoading } = useSWR(`/api/faculty/courses`, (url: string) =>
     apiClient.get<{ items: FacultyCourse[] }>(url)
@@ -36,8 +47,10 @@ export function FacultyCourses() {
     (url: string) => apiClient.get<{ items: RosterRow[] }>(url)
   );
 
-  const courses = coursesData?.items ?? [];
-  const roster = rosterData?.items ?? [];
+  const allCourses = coursesData?.items ?? [];
+  const allRoster = rosterData?.items ?? [];
+  const courses = paginate(allCourses, coursesPage);
+  const roster = paginate(allRoster, rosterPage);
 
   const courseColumns: DataTableColumn<FacultyCourse>[] = [
     { key: "subCode", header: "Code", render: (r) => <span className="font-medium">{r.subCode}</span> },
@@ -72,13 +85,28 @@ export function FacultyCourses() {
 
       <DataTable
         columns={courseColumns}
-        rows={courses}
+        rows={courses.items}
         rowKey={(r) => r.subCode}
         loading={coursesLoading}
         emptyMessage="You aren't mapped to any courses for the current semester cycle."
       />
+      {allCourses.length > 0 && (
+        <PaginationBar
+          page={coursesPage}
+          totalPages={courses.totalPages}
+          total={courses.total}
+          pageSize={PAGE_SIZE}
+          onPageChange={setCoursesPage}
+        />
+      )}
 
-      <Dialog open={rosterCourse !== null} onOpenChange={(open) => !open && setRosterCourse(null)}>
+      <Dialog
+        open={rosterCourse !== null}
+        onOpenChange={(open) => {
+          if (!open) setRosterCourse(null);
+          setRosterPage(1);
+        }}
+      >
         <DialogContent className="max-w-2xl">
           <DialogHeader>
             <DialogTitle>
@@ -87,11 +115,20 @@ export function FacultyCourses() {
           </DialogHeader>
           <DataTable
             columns={rosterColumns}
-            rows={roster}
+            rows={roster.items}
             rowKey={(r) => r.roll}
             loading={rosterLoading}
             emptyMessage="No students registered for this course yet."
           />
+          {allRoster.length > 0 && (
+            <PaginationBar
+              page={rosterPage}
+              totalPages={roster.totalPages}
+              total={roster.total}
+              pageSize={PAGE_SIZE}
+              onPageChange={setRosterPage}
+            />
+          )}
         </DialogContent>
       </Dialog>
     </div>
