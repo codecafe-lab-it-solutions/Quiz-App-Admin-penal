@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import useSWR from "swr";
 import { toast } from "sonner";
 import { apiClient, ApiClientError } from "@/lib/api-client";
+import { dedupeByCourseCode } from "@/lib/course-catalog";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -92,7 +93,14 @@ export function QuizCreateForm({ role }: { role: "faculty" | "admin" }) {
     `/api/faculty/buildings`,
     (url: string) => fetcher<{ items: BuildingOption[] }>(url),
   );
-  const courses = (coursesData?.items ?? []).filter((c) => c.courseId !== null);
+  // The catalog API returns one row per branch a faculty teaches a code
+  // under (needed for the admin mapping picker), so a shared course across
+  // several branches arrives as several rows here - this is just a "pick a
+  // course" list, so collapse to one entry per code, preferring a row that
+  // actually resolved a title over one that fell back to null.
+  const courses = dedupeByCourseCode(
+    (coursesData?.items ?? []).filter((c) => c.courseId !== null),
+  );
   const buildings = buildingsData?.items ?? [];
   const selectedCourse = courses.find((c) => c.subCode === courseCode);
 

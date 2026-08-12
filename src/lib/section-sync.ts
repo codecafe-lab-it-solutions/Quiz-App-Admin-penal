@@ -179,10 +179,20 @@ async function findOrCreateSectionByName(name: string) {
 async function ensureCourseLinkedToSection(sectionId: number, subCode: string, major: string, subList: string) {
   let course = await prisma.course.findUnique({ where: { code: subCode } });
   if (!course) {
-    const curriculum = await prisma.isrCurriculumTbl.findFirst({
-      where: { bsmsCode: subCode, subList },
-      select: { title: true, bsmsCredit: true },
-    });
+    // Prefer the current cycle's row, but fall back to any cycle for the
+    // title - some codes only have a curriculum entry under an older
+    // subList, and scoping strictly to the current one would otherwise bake
+    // the bare code in as this Course's permanent name (see the same fix in
+    // getFacultyCourseCatalog).
+    const curriculum =
+      (await prisma.isrCurriculumTbl.findFirst({
+        where: { bsmsCode: subCode, subList },
+        select: { title: true, bsmsCredit: true },
+      })) ??
+      (await prisma.isrCurriculumTbl.findFirst({
+        where: { bsmsCode: subCode },
+        select: { title: true, bsmsCredit: true },
+      }));
     const department = await prisma.department.upsert({
       where: { name: major },
       update: {},

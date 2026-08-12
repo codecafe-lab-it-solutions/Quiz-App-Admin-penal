@@ -876,7 +876,12 @@ export async function getFacultyCourseCatalog(facultyRoll: string, subList: stri
 
   const codes = [...new Set(mappings.map((m) => m.subCode))];
   const [curriculum, appCourses] = await Promise.all([
-    prisma.isrCurriculumTbl.findMany({ where: { bsmsCode: { in: codes }, subList } }),
+    // Not filtered to the current subList: titles are static across cycles,
+    // but some codes (e.g. old electives) only have a curriculum row under a
+    // past cycle (subList='C1') with nothing under the current one - scoping
+    // this to `subList` misses those and leaves title null even though a
+    // real title exists one cycle back.
+    prisma.isrCurriculumTbl.findMany({ where: { bsmsCode: { in: codes } } }),
     prisma.course.findMany({
       where: { code: { in: codes } },
       select: { id: true, code: true, name: true, credits: true, sectionCourses: { include: { section: { select: { id: true, name: true } } } } },
@@ -887,8 +892,14 @@ export async function getFacultyCourseCatalog(facultyRoll: string, subList: stri
   // by-code Map would collapse all of those down to whichever one happened
   // to load last, so every row for that course would show the same wrong
   // branch/sem/title regardless of its own real isr_sub_available_tbl.branch.
-  const byCodeAndBranch = new Map(curriculum.map((c) => [`${c.bsmsCode}::${c.bsmsBranch}`, c]));
-  const byCode = new Map(curriculum.map((c) => [c.bsmsCode, c]));
+  // Rows from the current subList are inserted last so they win ties with an
+  // older cycle's row for the same (code, branch); an older cycle's row only
+  // survives in the map when the current cycle has nothing for that key.
+  const bySubListThenCurrent = [...curriculum].sort((a, b) =>
+    Number(a.subList === subList) - Number(b.subList === subList)
+  );
+  const byCodeAndBranch = new Map(bySubListThenCurrent.map((c) => [`${c.bsmsCode}::${c.bsmsBranch}`, c]));
+  const byCode = new Map(bySubListThenCurrent.map((c) => [c.bsmsCode, c]));
   const appCourseByCode = new Map(appCourses.map((c) => [c.code, c]));
   const faculty = await getFacultyByRoll(facultyRoll);
 

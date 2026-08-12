@@ -7,6 +7,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { toast } from "sonner";
 import { apiClient, ApiClientError } from "@/lib/api-client";
+import { dedupeByCourseCode } from "@/lib/course-catalog";
 import { DataTable, DataTableColumn } from "@/components/admin/data-table";
 import { FilterBar } from "@/components/admin/filter-bar";
 import { Button } from "@/components/ui/button";
@@ -59,9 +60,11 @@ export function FacultySections() {
 
   const { data, isLoading, mutate } = useSWR("/api/faculty/sections", fetcher);
   const { data: courseData } = useSWR("/api/faculty/courses", courseFetcher);
-  const courses: Course[] = (courseData?.items ?? [])
-    .filter((c): c is CourseCatalogEntry & { courseId: number } => c.courseId !== null)
-    .map((c) => ({ id: c.courseId, code: c.subCode, name: c.title ?? c.subCode }));
+  const courses: Course[] = dedupeByCourseCode(
+    (courseData?.items ?? []).filter(
+      (c): c is CourseCatalogEntry & { courseId: number } => c.courseId !== null,
+    ),
+  ).map((c) => ({ id: c.courseId, code: c.subCode, name: c.title ?? c.subCode }));
 
   const {
     handleSubmit,
