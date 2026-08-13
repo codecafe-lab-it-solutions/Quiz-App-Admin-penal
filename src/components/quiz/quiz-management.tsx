@@ -155,6 +155,7 @@ export function QuizManagement({
     null,
   );
   const [checkedRolls, setCheckedRolls] = useState<Set<string> | null>(null);
+  const [candidateSearch, setCandidateSearch] = useState("");
   const [allotting, setAllotting] = useState(false);
   const [importing, setImporting] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
@@ -492,7 +493,6 @@ export function QuizManagement({
     setCheckedRolls(next);
   };
 
-  const [candidateSearch, setCandidateSearch] = useState("");
   const visibleCandidates = candidates.filter((c) => {
     const q = candidateSearch.trim().toLowerCase();
     if (!q) return true;
