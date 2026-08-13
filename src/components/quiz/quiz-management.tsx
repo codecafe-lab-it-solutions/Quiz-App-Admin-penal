@@ -677,14 +677,13 @@ export function QuizManagement({
           </div>
           <div className="flex items-center gap-2">
             <Badge variant={statusVariant[quiz.status]}>{quiz.status}</Badge>
-            {role === "admin" &&
-              (quiz.status === "draft" || quiz.status === "scheduled") && (
-                <Button size="sm" onClick={handleStart}>
-                  <Play className="mr-2 h-4 w-4" />
-                  Start
-                </Button>
-              )}
-            {role === "admin" && quiz.status === "live" && (
+            {(quiz.status === "draft" || quiz.status === "scheduled") && (
+              <Button size="sm" onClick={handleStart}>
+                <Play className="mr-2 h-4 w-4" />
+                Start
+              </Button>
+            )}
+            {quiz.status === "live" && (
               <Button size="sm" variant="destructive" onClick={handleStop}>
                 <Square className="mr-2 h-4 w-4" />
                 Stop

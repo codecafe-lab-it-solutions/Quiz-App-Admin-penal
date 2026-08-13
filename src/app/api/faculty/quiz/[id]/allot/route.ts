@@ -4,16 +4,28 @@ import { ok, handleApiError, ApiError } from "@/lib/api-response";
 import { getAuthUser, requireRole } from "@/lib/auth";
 import { allotSchema } from "@/lib/validators/quiz";
 import { idParamSchema } from "@/lib/validators/common";
+import { getStudentsForRealSections } from "@/lib/section-sync";
+import { getCurrentSubList } from "@/lib/config";
 
-async function getSectionDerivedRolls(quizId: number): Promise<Set<string>> {
-  const quizSections = await prisma.quizSection.findMany({ where: { quizId } });
-  const sectionIds = quizSections.map((qs) => qs.sectionId);
-  if (sectionIds.length === 0) return new Set();
+// Must use the exact same source the "Allot Students" picker itself used
+// (getStudentsForRealSections - real isr_reg_<batch>_tbl registration rows,
+// scoped to the quiz's own course+sections), not the cached section_students
+// snapshot. That snapshot only refreshes when a section is explicitly
+// created/edited/resynced, so it can go stale between when a faculty member
+// picks students and when they save - silently dropping real registrants the
+// picker had just shown them (confirmed: 2 of 58 real PE312 registrants were
+// dropped here while section_students hadn't caught up).
+async function getSectionDerivedRolls(quizId: number, facultyRoll: string, courseId: number): Promise<Set<string>> {
+  const [course, quizSections] = await Promise.all([
+    prisma.course.findUnique({ where: { id: courseId }, select: { code: true } }),
+    prisma.quizSection.findMany({ where: { quizId }, include: { section: { select: { name: true } } } }),
+  ]);
+  if (!course || quizSections.length === 0) return new Set();
 
-  const members = await prisma.sectionStudent.findMany({
-    where: { sectionId: { in: sectionIds }, source: { not: "manual_removed" } },
-  });
-  return new Set(members.map((m) => m.studentRoll));
+  const subList = await getCurrentSubList();
+  const sectionNames = quizSections.map((qs) => qs.section.name);
+  const students = await getStudentsForRealSections(facultyRoll, course.code, subList, sectionNames);
+  return new Set(students.map((s) => s.roll));
 }
 
 export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
@@ -28,7 +40,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
 
     const body = allotSchema.parse(await req.json());
 
-    const eligibleRolls = await getSectionDerivedRolls(quizId);
+    const eligibleRolls = await getSectionDerivedRolls(quizId, quiz.facultyRoll, quiz.courseId);
     const studentRolls = body.studentRolls.filter((roll) => eligibleRolls.has(roll));
 
     if (studentRolls.length === 0) {
