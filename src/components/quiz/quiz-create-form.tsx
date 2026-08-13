@@ -143,6 +143,13 @@ export function QuizCreateForm({ role }: { role: "faculty" | "admin" }) {
   const effectiveChecked =
     checkedRolls ?? new Set(candidates.map((c) => c.roll));
 
+  const [studentSearch, setStudentSearch] = useState("");
+  const visibleCandidates = candidates.filter((c) => {
+    const q = studentSearch.trim().toLowerCase();
+    if (!q) return true;
+    return c.name.toLowerCase().includes(q) || c.roll.toLowerCase().includes(q);
+  });
+
   const toggleStudent = (roll: string, checked: boolean) => {
     const next = new Set(effectiveChecked);
     if (checked) next.add(roll);
@@ -150,8 +157,20 @@ export function QuizCreateForm({ role }: { role: "faculty" | "admin" }) {
     setCheckedRolls(next);
   };
 
-  const checkAllStudents = () => setCheckedRolls(new Set(candidates.map((c) => c.roll)));
-  const uncheckAllStudents = () => setCheckedRolls(new Set());
+  // Check all / Uncheck all only ever act on the currently visible
+  // (searched) rows - same convention as the admin section-member pickers -
+  // so searching "PE31" then "Check all" doesn't silently re-check students
+  // who scrolled out of view under an earlier, different search term.
+  const checkAllStudents = () => {
+    const next = new Set(effectiveChecked);
+    visibleCandidates.forEach((c) => next.add(c.roll));
+    setCheckedRolls(next);
+  };
+  const uncheckAllStudents = () => {
+    const next = new Set(effectiveChecked);
+    visibleCandidates.forEach((c) => next.delete(c.roll));
+    setCheckedRolls(next);
+  };
 
   const toggleSection = (sectionId: number, checked: boolean) => {
     setSelectedSectionIds((prev) => {
@@ -168,6 +187,7 @@ export function QuizCreateForm({ role }: { role: "faculty" | "admin" }) {
 
   useEffect(() => {
     setCheckedRolls(null);
+    setStudentSearch("");
   }, [courseCode, activeSectionIds.join(",")]);
 
   const handleSubmit = async () => {
@@ -431,7 +451,7 @@ export function QuizCreateForm({ role }: { role: "faculty" | "admin" }) {
                   variant="outline"
                   size="sm"
                   onClick={checkAllStudents}
-                  disabled={effectiveChecked.size === candidates.length}
+                  disabled={visibleCandidates.every((c) => effectiveChecked.has(c.roll))}
                 >
                   Check all
                 </Button>
@@ -440,13 +460,20 @@ export function QuizCreateForm({ role }: { role: "faculty" | "admin" }) {
                   variant="outline"
                   size="sm"
                   onClick={uncheckAllStudents}
-                  disabled={effectiveChecked.size === 0}
+                  disabled={visibleCandidates.every((c) => !effectiveChecked.has(c.roll))}
                 >
                   Uncheck all
                 </Button>
               </div>
             )}
           </div>
+          {candidates.length > 0 && (
+            <Input
+              placeholder="Search students by name or roll..."
+              value={studentSearch}
+              onChange={(e) => setStudentSearch(e.target.value)}
+            />
+          )}
           <div className="max-h-56 space-y-1 overflow-y-auto rounded-md border p-2">
             {!courseCode && (
               <p className="p-2 text-xs text-muted-foreground">
@@ -464,7 +491,10 @@ export function QuizCreateForm({ role }: { role: "faculty" | "admin" }) {
                 No students found in this course&apos;s section(s) yet.
               </p>
             )}
-            {candidates.map((c) => (
+            {candidates.length > 0 && visibleCandidates.length === 0 && (
+              <p className="p-2 text-xs text-muted-foreground">No students match &quot;{studentSearch}&quot;.</p>
+            )}
+            {visibleCandidates.map((c) => (
               <div
                 key={c.roll}
                 className="flex items-center gap-2 rounded px-2 py-1.5 hover:bg-muted"

@@ -492,6 +492,13 @@ export function QuizManagement({
     setCheckedRolls(next);
   };
 
+  const [candidateSearch, setCandidateSearch] = useState("");
+  const visibleCandidates = candidates.filter((c) => {
+    const q = candidateSearch.trim().toLowerCase();
+    if (!q) return true;
+    return c.name.toLowerCase().includes(q) || c.roll.toLowerCase().includes(q);
+  });
+
   const handleAllot = async () => {
     const studentRolls = [...effectiveChecked];
     if (studentRolls.length === 0) {
@@ -800,45 +807,6 @@ export function QuizManagement({
         </CardContent>
       </Card>
 
-      {quiz.status !== "completed" && candidates.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-lg">Add More Students</CardTitle>
-            <p className="text-sm text-muted-foreground">
-              {allottedCount} student(s) were already allotted when this quiz was created. These joined a
-              linked section afterward and haven&apos;t been allotted yet.
-            </p>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <div className="max-h-72 space-y-1 overflow-y-auto rounded-md border p-2">
-              {candidates.map((c) => (
-                <div
-                  key={c.roll}
-                  className="flex items-center justify-between rounded px-2 py-1.5 hover:bg-muted"
-                >
-                  <div className="flex items-center gap-2">
-                    <Checkbox
-                      checked={effectiveChecked.has(c.roll)}
-                      onCheckedChange={(checked) =>
-                        toggleCandidate(c.roll, checked === true)
-                      }
-                      id={`student-${c.roll}`}
-                    />
-                    <label htmlFor={`student-${c.roll}`} className="text-sm">
-                      {c.name}{" "}
-                      <span className="text-muted-foreground">({c.roll})</span>
-                    </label>
-                  </div>
-                </div>
-              ))}
-            </div>
-            <Button onClick={handleAllot} disabled={allotting}>
-              {allotting ? "Allotting..." : "Allot Selected"}
-            </Button>
-          </CardContent>
-        </Card>
-      )}
-
       {quiz.status === "completed" && resultsData && (
         <ResultsReportCard data={resultsData} />
       )}
@@ -1066,6 +1034,49 @@ export function QuizManagement({
                 />
               </div>
             </div>
+
+            {quiz.status !== "completed" && candidates.length > 0 && (
+              <div className="space-y-1.5 border-t pt-4">
+                <Label>Add More Students</Label>
+                <p className="text-xs text-muted-foreground">
+                  {allottedCount} student(s) were already allotted when this quiz was created. These joined a
+                  linked section afterward and haven&apos;t been allotted yet.
+                </p>
+                <Input
+                  placeholder="Search students by name or roll..."
+                  value={candidateSearch}
+                  onChange={(e) => setCandidateSearch(e.target.value)}
+                />
+                <div className="max-h-56 space-y-1 overflow-y-auto rounded-md border p-2">
+                  {visibleCandidates.length === 0 && (
+                    <p className="p-2 text-xs text-muted-foreground">No students match &quot;{candidateSearch}&quot;.</p>
+                  )}
+                  {visibleCandidates.map((c) => (
+                    <div
+                      key={c.roll}
+                      className="flex items-center justify-between rounded px-2 py-1.5 hover:bg-muted"
+                    >
+                      <div className="flex items-center gap-2">
+                        <Checkbox
+                          checked={effectiveChecked.has(c.roll)}
+                          onCheckedChange={(checked) =>
+                            toggleCandidate(c.roll, checked === true)
+                          }
+                          id={`student-${c.roll}`}
+                        />
+                        <label htmlFor={`student-${c.roll}`} className="text-sm">
+                          {c.name}{" "}
+                          <span className="text-muted-foreground">({c.roll})</span>
+                        </label>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <Button type="button" size="sm" onClick={handleAllot} disabled={allotting}>
+                  {allotting ? "Allotting..." : "Allot Selected"}
+                </Button>
+              </div>
+            )}
           </div>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => setEditDialogOpen(false)}>
