@@ -15,7 +15,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import {
   Dialog,
   DialogContent,
@@ -184,15 +184,15 @@ export default function AdminUsersPage() {
             </div>
             <div className="space-y-1.5">
               <Label>Role</Label>
-              <Select value={role} onValueChange={(v) => setValue("role", v as "super_admin" | "admin")}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="admin">Admin</SelectItem>
-                  <SelectItem value="super_admin">Super Admin</SelectItem>
-                </SelectContent>
-              </Select>
+              <SearchableSelect
+                value={role}
+                onValueChange={(v) => setValue("role", v as "super_admin" | "admin")}
+                options={[
+                  { value: "admin", label: "Admin" },
+                  { value: "super_admin", label: "Super Admin" },
+                ]}
+                searchPlaceholder="Search..."
+              />
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="password">{editing ? "Reset password (optional)" : "Password"}</Label>

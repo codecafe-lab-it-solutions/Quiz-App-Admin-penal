@@ -14,7 +14,7 @@ import { ConfirmDialog } from "@/components/admin/confirm-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import {
   Dialog,
   DialogContent,
@@ -180,21 +180,13 @@ export default function CoursesPage() {
             </div>
             <div className="space-y-1.5">
               <Label>Department</Label>
-              <Select
-                value={departmentId ? String(departmentId) : undefined}
+              <SearchableSelect
+                value={departmentId ? String(departmentId) : null}
                 onValueChange={(v) => setValue("departmentId", Number(v), { shouldValidate: true })}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select department" />
-                </SelectTrigger>
-                <SelectContent>
-                  {deptData?.items.map((d) => (
-                    <SelectItem key={d.id} value={String(d.id)}>
-                      {d.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                options={(deptData?.items ?? []).map((d) => ({ value: String(d.id), label: d.name }))}
+                placeholder="Select department"
+                searchPlaceholder="Search departments..."
+              />
               {errors.departmentId && <p className="text-sm text-destructive">{errors.departmentId.message}</p>}
             </div>
             <div className="space-y-1.5">

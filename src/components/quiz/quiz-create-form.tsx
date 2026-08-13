@@ -12,13 +12,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Checkbox } from "@/components/ui/checkbox";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 
 interface CourseOption {
   subCode: string;
@@ -257,18 +251,16 @@ export function QuizCreateForm({ role }: { role: "faculty" | "admin" }) {
         {role === "admin" && (
           <div className="space-y-1.5">
             <Label>Faculty</Label>
-            <Select value={facultyRoll} onValueChange={setFacultyRoll}>
-              <SelectTrigger>
-                <SelectValue placeholder="Select the faculty member this quiz is for" />
-              </SelectTrigger>
-              <SelectContent>
-                {(facultyData?.items ?? []).map((f) => (
-                  <SelectItem key={f.roll} value={f.roll}>
-                    {f.name} ({f.roll})
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <SearchableSelect
+              value={facultyRoll || null}
+              onValueChange={setFacultyRoll}
+              options={(facultyData?.items ?? []).map((f) => ({
+                value: f.roll,
+                label: `${f.name} (${f.roll})`,
+              }))}
+              placeholder="Select the faculty member this quiz is for"
+              searchPlaceholder="Search faculty..."
+            />
           </div>
         )}
 
@@ -285,26 +277,17 @@ export function QuizCreateForm({ role }: { role: "faculty" | "admin" }) {
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <div className="space-y-1.5">
             <Label>Course</Label>
-            <Select
-              value={courseCode}
+            <SearchableSelect
+              value={courseCode || null}
               onValueChange={setCourseCode}
               disabled={role === "admin" && !facultyRoll}
-            >
-              <SelectTrigger>
-                <SelectValue
-                  placeholder={
-                    coursesLoading ? "Loading..." : "Select a course"
-                  }
-                />
-              </SelectTrigger>
-              <SelectContent>
-                {courses.map((c) => (
-                  <SelectItem key={c.subCode} value={c.subCode}>
-                    {c.title ?? c.subCode} ({c.subCode})
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+              options={courses.map((c) => ({
+                value: c.subCode,
+                label: `${c.title ?? c.subCode} (${c.subCode})`,
+              }))}
+              placeholder={coursesLoading ? "Loading..." : "Select a course"}
+              searchPlaceholder="Search courses..."
+            />
             {coursesData && courses.length === 0 && !coursesLoading && (
               <p className="text-xs text-muted-foreground">
                 No courses with a catalog entry yet - ask an admin to add one
@@ -314,18 +297,13 @@ export function QuizCreateForm({ role }: { role: "faculty" | "admin" }) {
           </div>
           <div className="space-y-1.5">
             <Label>Building</Label>
-            <Select value={buildingId} onValueChange={setBuildingId}>
-              <SelectTrigger>
-                <SelectValue placeholder="Select a building" />
-              </SelectTrigger>
-              <SelectContent>
-                {buildings.map((b) => (
-                  <SelectItem key={b.id} value={String(b.id)}>
-                    {b.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <SearchableSelect
+              value={buildingId || null}
+              onValueChange={setBuildingId}
+              options={buildings.map((b) => ({ value: String(b.id), label: b.name }))}
+              placeholder="Select a building"
+              searchPlaceholder="Search buildings..."
+            />
           </div>
         </div>
 

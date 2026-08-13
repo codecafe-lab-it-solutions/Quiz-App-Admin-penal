@@ -20,14 +20,7 @@ import { PaginationBar } from "@/components/admin/pagination-bar";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { SearchableSelect, SearchableSelectOption } from "@/components/admin/searchable-select";
+import { SearchableSelect, SearchableSelectOption } from "@/components/ui/searchable-select";
 import {
   Dialog,
   DialogContent,
@@ -307,72 +300,54 @@ export default function StudentMappingPage() {
             </div>
             <div className="space-y-1.5">
               <Label>Course</Label>
-              <Select
+              <SearchableSelect
                 value={courseCode}
                 onValueChange={(v) => {
                   setCourseCode(v);
                   setPage(1);
                   if (v !== ALL) setRoll("");
                 }}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Any course" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={ALL}>Any course</SelectItem>
-                  {(courseData?.items ?? []).map((c) => (
-                    <SelectItem key={c.id} value={c.code}>
-                      {c.name} ({c.code})
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                options={[
+                  { value: ALL, label: "Any course" },
+                  ...(courseData?.items ?? []).map((c) => ({ value: c.code, label: `${c.name} (${c.code})` })),
+                ]}
+                placeholder="Any course"
+                searchPlaceholder="Search courses..."
+              />
             </div>
             <div className="space-y-1.5">
               <Label>Batch</Label>
-              <Select
+              <SearchableSelect
                 value={batch}
                 onValueChange={(v) => {
                   setBatch(v);
                   setPage(1);
                   if (v !== ALL) setRoll("");
                 }}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Any batch" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={ALL}>Any batch</SelectItem>
-                  {batches.map((b) => (
-                    <SelectItem key={b.batchName} value={b.batchName}>
-                      {b.batchName}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                options={[
+                  { value: ALL, label: "Any batch" },
+                  ...batches.map((b) => ({ value: b.batchName, label: b.batchName })),
+                ]}
+                placeholder="Any batch"
+                searchPlaceholder="Search batches..."
+              />
             </div>
             <div className="space-y-1.5">
               <Label>Section</Label>
-              <Select
+              <SearchableSelect
                 value={sectionId}
                 onValueChange={(v) => {
                   setSectionId(v);
                   setPage(1);
                   if (v !== ALL) setRoll("");
                 }}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Any section" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={ALL}>Any section</SelectItem>
-                  {(sectionData?.items ?? []).map((s) => (
-                    <SelectItem key={s.id} value={String(s.id)}>
-                      {s.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                options={[
+                  { value: ALL, label: "Any section" },
+                  ...(sectionData?.items ?? []).map((s) => ({ value: String(s.id), label: s.name })),
+                ]}
+                placeholder="Any section"
+                searchPlaceholder="Search sections..."
+              />
             </div>
           </div>
 

@@ -17,13 +17,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import { format } from "@/lib/format-date";
 import { FileSpreadsheet, FileText } from "lucide-react";
 
@@ -182,48 +176,34 @@ export default function AttendanceReportPage() {
         <CardContent className="grid grid-cols-1 gap-4 sm:grid-cols-5">
           <div className="space-y-1.5">
             <Label>Course</Label>
-            <Select
+            <SearchableSelect
               value={courseId}
               onValueChange={(v) => {
                 setCourseId(v);
                 setSectionId("all");
                 setPage(1);
               }}
-            >
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All courses</SelectItem>
-                {courseData?.items.map((c) => (
-                  <SelectItem key={c.id} value={String(c.id)}>
-                    {c.name} ({c.code})
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+              options={[
+                { value: "all", label: "All courses" },
+                ...(courseData?.items ?? []).map((c) => ({ value: String(c.id), label: `${c.name} (${c.code})` })),
+              ]}
+              searchPlaceholder="Search courses..."
+            />
           </div>
           <div className="space-y-1.5">
             <Label>Section</Label>
-            <Select
+            <SearchableSelect
               value={sectionId}
               onValueChange={(v) => {
                 setSectionId(v);
                 setPage(1);
               }}
-            >
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All sections</SelectItem>
-                {sectionData?.items.map((s) => (
-                  <SelectItem key={s.id} value={String(s.id)}>
-                    {s.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+              options={[
+                { value: "all", label: "All sections" },
+                ...(sectionData?.items ?? []).map((s) => ({ value: String(s.id), label: s.name })),
+              ]}
+              searchPlaceholder="Search sections..."
+            />
           </div>
           <div className="space-y-1.5">
             <Label>Search</Label>
@@ -348,21 +328,18 @@ export default function AttendanceReportPage() {
           </div>
           <div className="space-y-1.5">
             <Label>Sort by date</Label>
-            <Select
+            <SearchableSelect
               value={sortOrder}
               onValueChange={(v) => {
                 setSortOrder(v as "asc" | "desc");
                 setPage(1);
               }}
-            >
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="desc">Newest first</SelectItem>
-                <SelectItem value="asc">Oldest first</SelectItem>
-              </SelectContent>
-            </Select>
+              options={[
+                { value: "desc", label: "Newest first" },
+                { value: "asc", label: "Oldest first" },
+              ]}
+              searchPlaceholder="Search..."
+            />
           </div>
         </CardContent>
       </Card>

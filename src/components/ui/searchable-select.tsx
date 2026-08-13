@@ -17,38 +17,58 @@ interface SearchableSelectProps {
   value: string | null;
   onValueChange: (value: string) => void;
   options: SearchableSelectOption[];
-  search: string;
-  onSearchChange: (search: string) => void;
+  // Controlled search is optional - pass both to drive search server-side
+  // (e.g. a new SWR key per keystroke) with `options` already filtered by the
+  // caller. Omit both and the component filters `options` in-memory by label
+  // itself, which is all most call sites (an already-fetched array) need.
+  search?: string;
+  onSearchChange?: (search: string) => void;
   placeholder?: string;
   searchPlaceholder?: string;
   emptyText?: string;
   loading?: boolean;
   disabled?: boolean;
+  className?: string;
 }
 
 /**
- * A searchable dropdown backed by whatever `options` the caller passes in -
- * server-searched (pass a fetched, already-filtered list and wire
- * `onSearchChange` to a new SWR key) or a small in-memory list (filter
- * `onSearchChange` locally). Always real data - no free-text entry.
+ * Drop-in searchable replacement for the plain shadcn <Select> - same
+ * value/onValueChange contract, but with a filter Input inside the popover.
+ * Always real data from `options` - no free-text entry.
  */
 export function SearchableSelect({
   value,
   onValueChange,
   options,
-  search,
-  onSearchChange,
+  search: controlledSearch,
+  onSearchChange: controlledOnSearchChange,
   placeholder = "Select...",
   searchPlaceholder = "Search...",
   emptyText = "No results.",
   loading = false,
   disabled = false,
+  className,
 }: SearchableSelectProps) {
   const [open, setOpen] = useState(false);
+  const [internalSearch, setInternalSearch] = useState("");
+  const isControlled = controlledSearch !== undefined && controlledOnSearchChange !== undefined;
+  const search = isControlled ? controlledSearch : internalSearch;
+  const setSearch = isControlled ? controlledOnSearchChange : setInternalSearch;
+
+  const visibleOptions = isControlled
+    ? options
+    : options.filter((o) => o.label.toLowerCase().includes(search.trim().toLowerCase()));
+
   const selected = options.find((o) => o.value === value);
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover
+      open={open}
+      onOpenChange={(next) => {
+        setOpen(next);
+        if (!next && !isControlled) setInternalSearch("");
+      }}
+    >
       <PopoverTrigger asChild>
         <Button
           type="button"
@@ -56,7 +76,7 @@ export function SearchableSelect({
           role="combobox"
           aria-expanded={open}
           disabled={disabled}
-          className="w-full justify-between font-normal"
+          className={cn("w-full justify-between font-normal", className)}
         >
           <span className={cn("truncate", !selected && "text-muted-foreground")}>
             {selected ? selected.label : placeholder}
@@ -69,23 +89,24 @@ export function SearchableSelect({
           <Input
             autoFocus
             value={search}
-            onChange={(e) => onSearchChange(e.target.value)}
+            onChange={(e) => setSearch(e.target.value)}
             placeholder={searchPlaceholder}
           />
         </div>
         <div className="max-h-60 overflow-y-auto border-t">
           {loading ? (
             <p className="p-3 text-sm text-muted-foreground">Loading...</p>
-          ) : options.length === 0 ? (
+          ) : visibleOptions.length === 0 ? (
             <p className="p-3 text-sm text-muted-foreground">{emptyText}</p>
           ) : (
-            options.map((o) => (
+            visibleOptions.map((o) => (
               <button
                 type="button"
                 key={o.value}
                 onClick={() => {
                   onValueChange(o.value);
                   setOpen(false);
+                  if (!isControlled) setInternalSearch("");
                 }}
                 className={cn(
                   "flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-accent",

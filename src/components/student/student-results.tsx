@@ -8,13 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import { DataTable, DataTableColumn } from "@/components/admin/data-table";
 import { PaginationBar } from "@/components/admin/pagination-bar";
 import { FileSpreadsheet, FileText } from "lucide-react";
@@ -127,35 +121,27 @@ export function StudentResults() {
         <CardContent className="grid grid-cols-1 gap-4 sm:grid-cols-5">
           <div className="space-y-1.5">
             <Label>Course</Label>
-            <Select value={courseId} onValueChange={(v) => { setCourseId(v); setSectionId("all"); setPage(1); }}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All courses</SelectItem>
-                {filterOptions.courses.map((c) => (
-                  <SelectItem key={c.id} value={String(c.id)}>
-                    {c.name} ({c.code})
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <SearchableSelect
+              value={courseId}
+              onValueChange={(v) => { setCourseId(v); setSectionId("all"); setPage(1); }}
+              options={[
+                { value: "all", label: "All courses" },
+                ...filterOptions.courses.map((c) => ({ value: String(c.id), label: `${c.name} (${c.code})` })),
+              ]}
+              searchPlaceholder="Search courses..."
+            />
           </div>
           <div className="space-y-1.5">
             <Label>Section</Label>
-            <Select value={sectionId} onValueChange={(v) => { setSectionId(v); setPage(1); }}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All sections</SelectItem>
-                {filterOptions.sections.map((s) => (
-                  <SelectItem key={s.id} value={String(s.id)}>
-                    {s.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <SearchableSelect
+              value={sectionId}
+              onValueChange={(v) => { setSectionId(v); setPage(1); }}
+              options={[
+                { value: "all", label: "All sections" },
+                ...filterOptions.sections.map((s) => ({ value: String(s.id), label: s.name })),
+              ]}
+              searchPlaceholder="Search sections..."
+            />
           </div>
           <div className="space-y-1.5">
             <Label>Quiz search</Label>
@@ -171,15 +157,15 @@ export function StudentResults() {
           </div>
           <div className="space-y-1.5">
             <Label>Sort by published date</Label>
-            <Select value={sortOrder} onValueChange={(v) => { setSortOrder(v as "asc" | "desc"); setPage(1); }}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="desc">Newest first</SelectItem>
-                <SelectItem value="asc">Oldest first</SelectItem>
-              </SelectContent>
-            </Select>
+            <SearchableSelect
+              value={sortOrder}
+              onValueChange={(v) => { setSortOrder(v as "asc" | "desc"); setPage(1); }}
+              options={[
+                { value: "desc", label: "Newest first" },
+                { value: "asc", label: "Oldest first" },
+              ]}
+              searchPlaceholder="Search..."
+            />
           </div>
           <div className="sm:col-span-5">
             <Button variant="ghost" size="sm" onClick={clearFilters}>

@@ -22,13 +22,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import { DataTable, DataTableColumn } from "@/components/admin/data-table";
 import { PaginationBar } from "@/components/admin/pagination-bar";
 import { ConfirmDialog } from "@/components/admin/confirm-dialog";
@@ -921,18 +915,16 @@ export function QuizManagement({
             )}
             <div className="space-y-1.5">
               <Label>Course</Label>
-              <Select value={editCourseCode} onValueChange={setEditCourseCode}>
-                <SelectTrigger>
-                  <SelectValue placeholder={editCoursesLoading ? "Loading..." : "Select a course"} />
-                </SelectTrigger>
-                <SelectContent>
-                  {editCourses.map((c) => (
-                    <SelectItem key={c.subCode} value={c.subCode}>
-                      {c.title ?? c.subCode} ({c.subCode})
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <SearchableSelect
+                value={editCourseCode || null}
+                onValueChange={setEditCourseCode}
+                options={editCourses.map((c) => ({
+                  value: c.subCode,
+                  label: `${c.title ?? c.subCode} (${c.subCode})`,
+                }))}
+                placeholder={editCoursesLoading ? "Loading..." : "Select a course"}
+                searchPlaceholder="Search courses..."
+              />
             </div>
             <div className="space-y-1.5">
               <Label>Sections</Label>
@@ -969,21 +961,13 @@ export function QuizManagement({
             </div>
             <div className="space-y-1.5">
               <Label>Building</Label>
-              <Select
-                value={editForm.buildingId}
+              <SearchableSelect
+                value={editForm.buildingId || null}
                 onValueChange={(v) => setEditForm((f) => ({ ...f, buildingId: v }))}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select a building" />
-                </SelectTrigger>
-                <SelectContent>
-                  {(buildingsData?.items ?? []).map((b) => (
-                    <SelectItem key={b.id} value={String(b.id)}>
-                      {b.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                options={(buildingsData?.items ?? []).map((b) => ({ value: String(b.id), label: b.name }))}
+                placeholder="Select a building"
+                searchPlaceholder="Search buildings..."
+              />
             </div>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
               <div className="space-y-1.5">

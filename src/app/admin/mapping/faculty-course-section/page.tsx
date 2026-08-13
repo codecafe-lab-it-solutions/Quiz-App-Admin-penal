@@ -21,7 +21,7 @@ import { PaginationBar } from "@/components/admin/pagination-bar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import { SearchableSelect, SearchableSelectOption } from "@/components/admin/searchable-select";
+import { SearchableSelect, SearchableSelectOption } from "@/components/ui/searchable-select";
 import {
   Dialog,
   DialogContent,

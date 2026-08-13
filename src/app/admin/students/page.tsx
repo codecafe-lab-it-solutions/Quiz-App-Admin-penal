@@ -23,13 +23,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ChevronRight, Pencil, Plus, Power, PowerOff, Trash2, X } from "lucide-react";
@@ -377,19 +371,16 @@ export default function StudentListPage() {
             )}
             <div className="space-y-1.5">
               <Label>{editing ? "Add a section" : "Section"}</Label>
-              <Select value={sectionChoice} onValueChange={setSectionChoice}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select a section" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={NEW_SECTION}>Default section (from Major + Semester)</SelectItem>
-                  {sections.map((s) => (
-                    <SelectItem key={s.id} value={String(s.id)}>
-                      {s.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <SearchableSelect
+                value={sectionChoice}
+                onValueChange={setSectionChoice}
+                options={[
+                  { value: NEW_SECTION, label: "Default section (from Major + Semester)" },
+                  ...sections.map((s) => ({ value: String(s.id), label: s.name })),
+                ]}
+                placeholder="Select a section"
+                searchPlaceholder="Search sections..."
+              />
               {sectionChoice === NEW_SECTION && (
                 <>
                   {editing && (

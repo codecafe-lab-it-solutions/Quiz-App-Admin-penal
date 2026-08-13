@@ -11,13 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import { format } from "@/lib/format-date";
 import { ArrowRight, FileSpreadsheet, FileText } from "lucide-react";
 
@@ -197,69 +191,55 @@ export default function AdminResultsPage() {
         <CardContent className="grid grid-cols-1 gap-4 sm:grid-cols-5">
           <div className="space-y-1.5">
             <Label>Course</Label>
-            <Select
+            <SearchableSelect
               value={courseId}
               onValueChange={(value) => {
                 setCourseId(value);
                 setSectionId("all");
                 setPage(1);
               }}
-            >
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All courses</SelectItem>
-                {courseData?.items.map((course) => (
-                  <SelectItem key={course.id} value={String(course.id)}>
-                    {course.name} ({course.code})
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+              options={[
+                { value: "all", label: "All courses" },
+                ...(courseData?.items ?? []).map((course) => ({
+                  value: String(course.id),
+                  label: `${course.name} (${course.code})`,
+                })),
+              ]}
+              searchPlaceholder="Search courses..."
+            />
           </div>
 
           <div className="space-y-1.5">
             <Label>Section</Label>
-            <Select
+            <SearchableSelect
               value={sectionId}
               onValueChange={(value) => {
                 setSectionId(value);
                 setPage(1);
               }}
-            >
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All sections</SelectItem>
-                {sectionData?.items.map((section) => (
-                  <SelectItem key={section.id} value={String(section.id)}>
-                    {section.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+              options={[
+                { value: "all", label: "All sections" },
+                ...(sectionData?.items ?? []).map((section) => ({ value: String(section.id), label: section.name })),
+              ]}
+              searchPlaceholder="Search sections..."
+            />
           </div>
 
           <div className="space-y-1.5">
             <Label>Result status</Label>
-            <Select
+            <SearchableSelect
               value={status}
               onValueChange={(value) => {
                 setStatus(value);
                 setPage(1);
               }}
-            >
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All statuses</SelectItem>
-                <SelectItem value="pending">Pending</SelectItem>
-                <SelectItem value="published">Published</SelectItem>
-              </SelectContent>
-            </Select>
+              options={[
+                { value: "all", label: "All statuses" },
+                { value: "pending", label: "Pending" },
+                { value: "published", label: "Published" },
+              ]}
+              searchPlaceholder="Search..."
+            />
           </div>
 
           <div className="space-y-1.5">
@@ -301,21 +281,18 @@ export default function AdminResultsPage() {
 
           <div className="space-y-1.5">
             <Label>Sort by published date</Label>
-            <Select
+            <SearchableSelect
               value={sortOrder}
               onValueChange={(value) => {
                 setSortOrder(value as "asc" | "desc");
                 setPage(1);
               }}
-            >
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="desc">Newest first</SelectItem>
-                <SelectItem value="asc">Oldest first</SelectItem>
-              </SelectContent>
-            </Select>
+              options={[
+                { value: "desc", label: "Newest first" },
+                { value: "asc", label: "Oldest first" },
+              ]}
+              searchPlaceholder="Search..."
+            />
           </div>
         </CardContent>
       </Card>
