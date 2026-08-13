@@ -212,15 +212,23 @@ export async function getRealSectionsForFacultyCourse(
 /**
  * Live candidate students for a faculty's course across the given real
  * section names - never reads section_students. Resolves each section name
- * back to its real (branch, sem) row in isr_sub_available_tbl, derives the
- * real major from branch, and uses isr_stu_main_tbl by (major, sem_now) only
- * to scope *which* students are even eligible to look up - the actual
- * inclusion test is a real registration row for this exact (subCode,
- * subList) in the student's own isr_reg_<batch>_tbl (see
- * getCourseRegistrations). A student with no registration row anywhere is
- * excluded, full stop - no "batch has no table, so keep them anyway"
- * fallback. Faculty -> course -> section -> student must all be real,
- * verified mappings, never an inferred default-include.
+ * back to its real branch row in isr_sub_available_tbl, derives the real
+ * major from branch, and uses isr_stu_main_tbl by major only to scope which
+ * department a registrant has to belong to - the actual inclusion test is a
+ * real registration row for this exact (subCode, subList) in the student's
+ * own isr_reg_<batch>_tbl (see getCourseRegistrations). A student with no
+ * registration row anywhere is excluded, full stop - no "batch has no
+ * table, so keep them anyway" fallback. Faculty -> course -> section ->
+ * student must all be real, verified mappings, never an inferred
+ * default-include.
+ *
+ * Deliberately NOT filtered on isr_stu_main_tbl.sem_now: a real registration
+ * row is by itself sufficient proof a student is taking the course this
+ * cycle, and sem_now can legitimately lag behind that for backlog/repeat
+ * students (confirmed against RF0240/PE312/C2 - 2 of the 58 real
+ * registrants sit at sem_now=4 despite being registered for a sem-5
+ * subject). Requiring sem_now to also match wrongly dropped real
+ * registrants.
  */
 export async function getStudentsForRealSections(
   facultyRoll: string,
@@ -240,18 +248,12 @@ export async function getStudentsForRealSections(
   if (registeredRolls.size === 0) return [];
 
   const realMajors = await getRealMajors();
-  const rolls = new Set<string>();
-  for (const row of rows) {
-    if (!row.sem) continue;
-    const semNow = Number(row.sem);
-    if (Number.isNaN(semNow)) continue;
-    const major = resolveMajorFromBranch(row.branch ?? "", realMajors);
-    const students = await prisma.isrStuMainTbl.findMany({
-      where: { major, semNow, roll: { in: [...registeredRolls] } },
-      select: { roll: true },
-    });
-    students.forEach((s) => rolls.add(s.roll));
-  }
+  const majors = new Set(rows.map((row) => resolveMajorFromBranch(row.branch ?? "", realMajors)));
+  const students = await prisma.isrStuMainTbl.findMany({
+    where: { major: { in: [...majors] }, roll: { in: [...registeredRolls] } },
+    select: { roll: true },
+  });
+  const rolls = new Set(students.map((s) => s.roll));
 
   const names = await getStudentNamesByRolls([...rolls]);
   return [...rolls]
