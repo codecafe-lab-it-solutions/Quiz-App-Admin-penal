@@ -451,6 +451,22 @@ async function main() {
 
   const currentSubList = (await ensureSemesterConfig()).currentSubList;
 
+  // Same one-time-bootstrap guard as importRealLegacyData, and for the same
+  // reason: this block unconditionally deletes EVERY quiz, section, course,
+  // department, and academic session app-wide, then rebuilds only a fixed
+  // set of demo cohorts/quizzes. On an already-live system that means every
+  // real quiz a real faculty member created (anything other than the 3
+  // hardcoded demo quizzes below) is deleted on every deploy and never comes
+  // back - confirmed happening in production via post-deploy.sh's
+  // unconditional `prisma db seed`. Only ever safe to run against a genuinely
+  // fresh/empty database, which importResult.imported already tells us.
+  if (!importResult.imported) {
+    console.log(
+      "Skipping demo quiz/section/course rebuild - real data already exists, so it's not a fresh bootstrap (this only ever runs once, against an empty database)."
+    );
+    return;
+  }
+
   console.log("Clearing previously-seeded app-domain data (quizzes/sections/courses)...");
   // Quiz cascades to Question/QuestionOption/QuestionFormula/QuizAllotment/
   // QuizAttempt/StudentAnswer/AntiCheatEvent/GeofenceLog/Attendance/Result/

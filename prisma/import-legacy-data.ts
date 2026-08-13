@@ -116,6 +116,24 @@ export interface ImportResult {
 }
 
 export async function importRealLegacyData(prisma: PrismaClient): Promise<ImportResult> {
+  // One-time bootstrap only. This TRUNCATEs and reloads isr_login_tbl (and
+  // every other isr_* table) from a static dump file checked into the repo,
+  // then overwrites every password with the shared demo hash - correct for
+  // seeding a fresh/empty database, catastrophic on a live one: it was
+  // silently re-running on every production deploy (post-deploy.sh -> `prisma
+  // db seed` -> here, unconditionally), wiping real registrations, faculty/
+  // student edits, and any password reset back to this frozen snapshot each
+  // time. isr_login_tbl already having rows means a real import already
+  // happened at some point - production data since then is authoritative and
+  // must never be clobbered by a redeploy.
+  const existingLoginRows = await prisma.isrLoginTbl.count();
+  if (existingLoginRows > 0) {
+    console.log(
+      `[import-legacy-data] isr_login_tbl already has ${existingLoginRows} row(s) - real data already imported, skipping (this only ever runs once).`
+    );
+    return { imported: false, counts: {} };
+  }
+
   const dumpPath = findDumpPath();
   if (!dumpPath) {
     console.warn(
