@@ -5,7 +5,6 @@ import {
   getCourseRegistrations,
   getRealMajors,
   resolveMajorFromBranch,
-  narrowToCourseRegistrants,
   getStudentNamesByRolls,
 } from "@/lib/legacy-db";
 
@@ -214,10 +213,14 @@ export async function getRealSectionsForFacultyCourse(
  * Live candidate students for a faculty's course across the given real
  * section names - never reads section_students. Resolves each section name
  * back to its real (branch, sem) row in isr_sub_available_tbl, derives the
- * real major from branch, and queries isr_stu_main_tbl by (major, sem_now)
- * directly - then narrows against real per-course registration
- * (isr_reg_<batch>_tbl, dynamically resolved per student's own batch - see
- * narrowToCourseRegistrants) wherever that's verifiable.
+ * real major from branch, and uses isr_stu_main_tbl by (major, sem_now) only
+ * to scope *which* students are even eligible to look up - the actual
+ * inclusion test is a real registration row for this exact (subCode,
+ * subList) in the student's own isr_reg_<batch>_tbl (see
+ * getCourseRegistrations). A student with no registration row anywhere is
+ * excluded, full stop - no "batch has no table, so keep them anyway"
+ * fallback. Faculty -> course -> section -> student must all be real,
+ * verified mappings, never an inferred default-include.
  */
 export async function getStudentsForRealSections(
   facultyRoll: string,
@@ -230,6 +233,11 @@ export async function getStudentsForRealSections(
   const rows = await prisma.isrSubAvailableTbl.findMany({
     where: { facRoll: facultyRoll, subCode, subList, section: { in: sectionNames } },
   });
+  if (rows.length === 0) return [];
+
+  const registrations = await getCourseRegistrations(subCode, subList);
+  const registeredRolls = new Set(registrations.map((r) => r.roll));
+  if (registeredRolls.size === 0) return [];
 
   const realMajors = await getRealMajors();
   const rolls = new Set<string>();
@@ -239,15 +247,14 @@ export async function getStudentsForRealSections(
     if (Number.isNaN(semNow)) continue;
     const major = resolveMajorFromBranch(row.branch ?? "", realMajors);
     const students = await prisma.isrStuMainTbl.findMany({
-      where: { major, semNow },
+      where: { major, semNow, roll: { in: [...registeredRolls] } },
       select: { roll: true },
     });
     students.forEach((s) => rolls.add(s.roll));
   }
 
-  const narrowedRolls = await narrowToCourseRegistrants([...rolls], subCode, subList);
-  const names = await getStudentNamesByRolls(narrowedRolls);
-  return narrowedRolls
+  const names = await getStudentNamesByRolls([...rolls]);
+  return [...rolls]
     .map((roll) => ({ roll, name: names.get(roll) ?? roll }))
     .sort((a, b) => a.name.localeCompare(b.name));
 }
