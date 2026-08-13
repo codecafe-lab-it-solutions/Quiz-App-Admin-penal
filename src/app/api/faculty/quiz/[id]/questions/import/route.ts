@@ -7,14 +7,12 @@ import { parseWorkbookRows } from "@/lib/excel";
 import { escapePlainText } from "@/lib/sanitize-html";
 
 interface ImportRow {
-  Type?: string;
   Question?: string;
   OptionA?: string;
   OptionB?: string;
   OptionC?: string;
   OptionD?: string;
   Answer?: string;
-  ReferenceAnswer?: string;
   Marks?: string | number;
   NegativeMarks?: string | number;
 }
@@ -26,14 +24,16 @@ interface RowResult {
   reason?: string;
 }
 
-const ANSWER_TO_INDEX: Record<string, number> = { A: 0, B: 1, C: 2, D: 3 };
+const OPTION_LETTERS = ["A", "B", "C", "D"] as const;
 
 // Bulk question import from an .xlsx/.csv upload matching the template from
-// GET /api/faculty/questions/import-template. A `Type` column (OBJECTIVE /
-// SUBJECTIVE) branches validation per row: OBJECTIVE keeps the original
-// options+answer requirements, SUBJECTIVE allows options/Answer to be blank.
+// GET /api/faculty/questions/import-template. No `Type` column - a row is
+// OBJECTIVE if it has any option or an Answer filled in, SUBJECTIVE
+// otherwise (kept this way rather than requiring the faculty to type
+// OBJECTIVE/SUBJECTIVE correctly on every row, which was a common source of
+// rows silently defaulting to the wrong type and failing validation).
 // Validates each row independently and reports a per-row status - duplicate
-// detection, required-field checks, answer must be one of A-D for OBJECTIVE.
+// detection, required-field checks, answer must match a filled option.
 export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
   try {
     const user = getAuthUser(req);
@@ -66,15 +66,9 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       const r = rows[i];
       const rowNum = i + 2; // header is row 1
       const questionText = (r.Question ?? "").trim();
-      const rawType = (r.Type ?? "OBJECTIVE").trim().toUpperCase();
 
       if (!questionText) {
         results.push({ row: rowNum, question: "", status: "skipped", reason: "Question text is required" });
-        continue;
-      }
-
-      if (rawType !== "OBJECTIVE" && rawType !== "SUBJECTIVE") {
-        results.push({ row: rowNum, question: questionText, status: "skipped", reason: "Type must be OBJECTIVE or SUBJECTIVE" });
         continue;
       }
 
@@ -90,8 +84,11 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
         continue;
       }
 
-      if (rawType === "SUBJECTIVE") {
-        const referenceAnswerRaw = (r.ReferenceAnswer ?? "").trim();
+      const rawOptions = [r.OptionA, r.OptionB, r.OptionC, r.OptionD].map((o) => (o ?? "").toString().trim());
+      const answerLetter = (r.Answer ?? "").toString().trim().toUpperCase();
+      const isObjective = rawOptions.some(Boolean) || answerLetter !== "";
+
+      if (!isObjective) {
         await prisma.question.create({
           data: {
             quizId,
@@ -99,7 +96,6 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
             questionType: "subjective",
             marks,
             negativeMarks: 0,
-            referenceAnswer: referenceAnswerRaw ? escapePlainText(referenceAnswerRaw) : null,
             orderIndex: nextOrder++,
           },
         });
@@ -109,15 +105,19 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
         continue;
       }
 
-      // OBJECTIVE
-      const options = [r.OptionA, r.OptionB, r.OptionC, r.OptionD].map((o) => (o ?? "").trim()).filter(Boolean);
-      if (options.length < 2) {
+      // OBJECTIVE - kept keyed by letter (not compacted by array position) so
+      // a gap (e.g. OptionB left blank but OptionC filled) can't desync which
+      // option Answer=C actually points at.
+      const filledOptions = OPTION_LETTERS.map((letter, idx) => ({ letter, text: rawOptions[idx] })).filter(
+        (o) => o.text !== "",
+      );
+      if (filledOptions.length < 2) {
         results.push({ row: rowNum, question: questionText, status: "skipped", reason: "At least two options (OptionA, OptionB, ...) are required" });
         continue;
       }
 
-      const answer = (r.Answer ?? "").trim().toUpperCase();
-      if (!(answer in ANSWER_TO_INDEX) || ANSWER_TO_INDEX[answer] >= options.length) {
+      const correctOption = filledOptions.find((o) => o.letter === answerLetter);
+      if (!correctOption) {
         results.push({ row: rowNum, question: questionText, status: "skipped", reason: "Answer must be one of A, B, C, D, matching a filled option" });
         continue;
       }
@@ -137,9 +137,9 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
           negativeMarks,
           orderIndex: nextOrder++,
           options: {
-            create: options.map((optionText, idx) => ({
-              optionText: escapePlainText(optionText),
-              isCorrect: idx === ANSWER_TO_INDEX[answer],
+            create: filledOptions.map((o) => ({
+              optionText: escapePlainText(o.text),
+              isCorrect: o.letter === answerLetter,
             })),
           },
         },

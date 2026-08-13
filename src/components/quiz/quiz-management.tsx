@@ -41,6 +41,13 @@ function paginateClient<T>(rows: T[], page: number) {
   return { items: rows.slice(start, start + CLIENT_PAGE_SIZE), total, totalPages: Math.max(1, Math.ceil(total / CLIENT_PAGE_SIZE)) };
 }
 
+interface ImportRowResult {
+  row: number;
+  question: string;
+  status: "added" | "skipped";
+  reason?: string;
+}
+
 interface QuizDetail {
   id: number;
   title: string;
@@ -168,6 +175,7 @@ export function QuizManagement({
   const [editCourseCode, setEditCourseCode] = useState("");
   const [editSectionIds, setEditSectionIds] = useState<number[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [importResults, setImportResults] = useState<ImportRowResult[] | null>(null);
 
   const {
     data: quiz,
@@ -544,10 +552,16 @@ export function QuizManagement({
       const result = await apiClient.post<{
         addedCount: number;
         skippedCount: number;
+        results: ImportRowResult[];
       }>(`/api/faculty/quiz/${quizId}/questions/import`, formData);
       toast.success(
         `Imported ${result.addedCount} question(s), skipped ${result.skippedCount}`,
       );
+      // Show the full per-row breakdown whenever anything was skipped - the
+      // reason (bad marks, duplicate, answer doesn't match a filled option,
+      // etc.) is otherwise invisible, which made partial imports look like a
+      // silent failure instead of a specific, fixable row problem.
+      if (result.skippedCount > 0) setImportResults(result.results);
       mutate();
     } catch (error) {
       toast.error(
@@ -1060,6 +1074,36 @@ export function QuizManagement({
             <Button onClick={handleSaveDetails} disabled={savingDetails}>
               {savingDetails ? "Saving..." : "Save Changes"}
             </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={importResults !== null} onOpenChange={(open) => !open && setImportResults(null)}>
+        <DialogContent className="sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Bulk import results</DialogTitle>
+            <DialogDescription>
+              Every row is processed independently - here&apos;s exactly what happened to each one.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="max-h-96 space-y-2 overflow-y-auto">
+            {(importResults ?? []).map((r) => (
+              <div key={r.row} className="flex items-start justify-between gap-3 rounded-md border p-2 text-sm">
+                <div className="min-w-0">
+                  <p className="font-medium">
+                    Row {r.row}
+                    {r.question && <span className="font-normal text-muted-foreground"> — {r.question}</span>}
+                  </p>
+                  {r.reason && <p className="text-muted-foreground">{r.reason}</p>}
+                </div>
+                <Badge variant={r.status === "added" ? "success" : "destructive"} className="shrink-0">
+                  {r.status}
+                </Badge>
+              </div>
+            ))}
+          </div>
+          <DialogFooter>
+            <Button onClick={() => setImportResults(null)}>Close</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
