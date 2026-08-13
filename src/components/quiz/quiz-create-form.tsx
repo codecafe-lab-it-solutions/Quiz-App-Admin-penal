@@ -104,11 +104,11 @@ export function QuizCreateForm({ role }: { role: "faculty" | "admin" }) {
   const buildings = buildingsData?.items ?? [];
   const selectedCourse = courses.find((c) => c.subCode === courseCode);
 
-  // Every section linked to the chosen course is auto-included (no manual
-  // section picking) - the visible/interactive part is just which students
-  // to allot. Sourced live from isr_sub_available_tbl (real per-branch
-  // sections) and isr_stu_main_tbl/isr_reg_<batch>_tbl (real student
-  // membership + course registration) on every call, not from the app's own
+  // Sections linked to the chosen course are offered as checkboxes below for
+  // the faculty member to pick manually - not auto-selected. Sourced live
+  // from isr_sub_available_tbl (real per-branch sections) and
+  // isr_stu_main_tbl/isr_reg_<batch>_tbl (real student membership + course
+  // registration) on every call, not from the app's own
   // section_students/section_faculty tables - see /api/faculty/quiz-sections.
   const sectionsUrl = selectedCourse?.subCode
     ? role === "admin"
@@ -125,12 +125,11 @@ export function QuizCreateForm({ role }: { role: "faculty" | "admin" }) {
   const sectionIds = sections.map((s) => s.id);
   const activeSectionIds = selectedSectionIds;
 
+  // Reset selection (not auto-check) whenever the available section list
+  // changes, e.g. after picking a different course - the faculty member
+  // checks which section(s) they actually want via the checkboxes below.
   useEffect(() => {
-    if (sectionIds.length > 0) {
-      setSelectedSectionIds(sectionIds);
-    } else {
-      setSelectedSectionIds([]);
-    }
+    setSelectedSectionIds([]);
   }, [sectionIds.join(",")]);
 
   const studentsUrl =
