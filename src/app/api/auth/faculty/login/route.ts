@@ -2,23 +2,23 @@ import { NextRequest } from "next/server";
 import { ApiError, ok, handleApiError } from "@/lib/api-response";
 import { loginSchema } from "@/lib/validators/auth";
 import { signAccessToken, signRefreshToken, tokenPayloadFromUser } from "@/lib/auth";
-import { findLoginByEmail, verifyLegacyPassword, getFacultyByRoll } from "@/lib/legacy-db";
+import { findLoginByIdentifier, verifyLegacyPassword, getFacultyByRoll } from "@/lib/legacy-db";
 import { setAuthCookies } from "@/lib/cookies";
 
 export async function POST(req: NextRequest) {
   try {
     const body = loginSchema.parse(await req.json());
 
-    const login = await findLoginByEmail(body.email, "FAC");
-    if (!login) throw new ApiError(401, "Invalid email or password");
+    const login = await findLoginByIdentifier(body.identifier, "FAC");
+    if (!login) throw new ApiError(401, "Invalid roll number, email, mobile number, or password");
 
     const validPassword = await verifyLegacyPassword(body.password, login.userPassword);
-    if (!validPassword) throw new ApiError(401, "Invalid email or password");
+    if (!validPassword) throw new ApiError(401, "Invalid roll number, email, mobile number, or password");
 
     if (login.status !== 1) throw new ApiError(403, "This account has been deactivated. Contact the admin office.");
 
     const faculty = await getFacultyByRoll(login.userRoll);
-    if (!faculty) throw new ApiError(401, "Invalid email or password");
+    if (!faculty) throw new ApiError(401, "Invalid roll number, email, mobile number, or password");
 
     const payload = tokenPayloadFromUser({ id: faculty.roll, email: faculty.email, name: faculty.name }, "faculty");
 

@@ -94,9 +94,17 @@ export interface CourseRosterEntry {
 // Login / credential verification
 // ---------------------------------------------------------------------------
 
-export async function findLoginByEmail(email: string, userType: LegacyUserType) {
+// A user can sign in with any of their 3 real identifiers - roll, email, or
+// mobile - so this matches on whichever one they typed rather than assuming
+// a fixed field. Scoped by userType so a roll/email/mobile that happens to
+// collide across a student and faculty row (shouldn't happen, but isr_login_tbl
+// has no cross-type uniqueness constraint to rely on) never cross-matches.
+export async function findLoginByIdentifier(identifier: string, userType: LegacyUserType) {
   return prisma.isrLoginTbl.findFirst({
-    where: { userEmail: email, userType },
+    where: {
+      userType,
+      OR: [{ userRoll: identifier }, { userEmail: identifier }, { userMobile: identifier }],
+    },
   });
 }
 

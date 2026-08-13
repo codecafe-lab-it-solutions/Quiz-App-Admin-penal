@@ -14,7 +14,7 @@ import { apiClient, ApiClientError } from "@/lib/api-client";
 import { Eye, EyeOff, GraduationCap } from "lucide-react";
 
 const loginFormSchema = z.object({
-  email: z.string().trim().email("Enter a valid email"),
+  identifier: z.string().trim().min(1, "Enter your roll number, email, or mobile number"),
   password: z.string().min(1, "Password is required"),
 });
 
@@ -90,9 +90,14 @@ function LoginForm() {
         <CardContent>
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-4" noValidate>
             <div className="space-y-1.5">
-              <Label htmlFor="email">Email</Label>
-              <Input id="email" type="email" placeholder="admin@example.com" {...register("email")} />
-              {errors.email && <p className="text-sm text-destructive">{errors.email.message}</p>}
+              <Label htmlFor="identifier">Roll Number / Email / Mobile</Label>
+              <Input
+                id="identifier"
+                type="text"
+                placeholder="Roll number, email, or mobile number"
+                {...register("identifier")}
+              />
+              {errors.identifier && <p className="text-sm text-destructive">{errors.identifier.message}</p>}
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="password">Password</Label>

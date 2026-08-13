@@ -15,7 +15,7 @@ export async function POST(req: NextRequest) {
   try {
     const body = loginSchema.parse(await req.json());
 
-    const admin = await prisma.admin.findUnique({ where: { email: body.email } });
+    const admin = await prisma.admin.findUnique({ where: { email: body.identifier } });
     if (!admin) throw new ApiError(401, "Invalid email or password");
 
     const validPassword = await verifyPassword(body.password, admin.passwordHash);
