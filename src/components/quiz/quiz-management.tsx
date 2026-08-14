@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import useSWR from "swr";
 import { toast } from "sonner";
@@ -277,8 +277,21 @@ export function QuizManagement({
         }>;
       }>(url),
   );
+  // Keyed off the live edit-dialog course/section (and, for admins, faculty)
+  // selection - not the quiz's persisted values - so picking a different
+  // course/section re-maps the roster immediately, same as the Create Quiz
+  // picker's studentsUrl. Falls back to nothing until a course+section are
+  // selected, matching Create's studentsUrl gating.
+  const candidatesUrl =
+    editDialogOpen && editSectionIds.length > 0 && editSelectedCourse?.subCode
+      ? role === "admin"
+        ? editForm.facultyRoll
+          ? `/api/faculty/quiz/${quizId}/allot/candidates?subCode=${encodeURIComponent(editSelectedCourse.subCode)}&sectionIds=${editSectionIds.join(",")}&facultyRoll=${encodeURIComponent(editForm.facultyRoll)}`
+          : null
+        : `/api/faculty/quiz/${quizId}/allot/candidates?subCode=${encodeURIComponent(editSelectedCourse.subCode)}&sectionIds=${editSectionIds.join(",")}`
+      : null;
   const { data: candidatesData, mutate: mutateCandidates } = useSWR(
-    `/api/faculty/quiz/${quizId}/allot/candidates`,
+    candidatesUrl,
     (url: string) =>
       fetcher<{ items: { roll: string; name: string; allotted: boolean }[] }>(
         url,
@@ -291,6 +304,14 @@ export function QuizManagement({
   const allRealStudents = candidatesData?.items ?? [];
   const effectiveChecked =
     checkedRolls ?? new Set(allRealStudents.filter((c) => c.allotted).map((c) => c.roll));
+
+  // Reset stale checkbox/search state whenever the course or section
+  // selection changes, e.g. switching sections mid-edit - same convention
+  // as the Create Quiz picker's identical reset effect.
+  useEffect(() => {
+    setCheckedRolls(null);
+    setCandidateSearch("");
+  }, [editCourseCode, editSectionIds.join(",")]);
 
   // Polls only while the quiz is actually live, so submission status/proxy
   // state on screen tracks what's really happening in real time.
@@ -346,6 +367,12 @@ export function QuizManagement({
     });
     setEditCourseCode(quiz.course.code);
     setEditSectionIds(quiz.sections.map((s) => s.section.id));
+    // Clear any unsaved checkbox/search state from a previous time this
+    // dialog was open - otherwise reopening on the same course/section
+    // (which wouldn't trigger the change-reset effect) could show stale,
+    // unsaved edits instead of today's real allotment.
+    setCheckedRolls(null);
+    setCandidateSearch("");
     setEditDialogOpen(true);
   };
 
