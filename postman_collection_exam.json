@@ -46,7 +46,8 @@
             "header": [{ "key": "Content-Type", "value": "application/json" }],
             "auth": { "type": "noauth" },
             "url": "{{baseUrl}}/api/auth/faculty/login",
-            "body": { "mode": "raw", "raw": "{\n  \"email\": \"faculty@example.edu\",\n  \"password\": \"password\"\n}" }
+            "body": { "mode": "raw", "raw": "{\n  \"identifier\": \"faculty@example.edu\",\n  \"password\": \"password\"\n}" },
+            "description": "`identifier` can be the faculty's roll number, email, or mobile number - not just email."
           }
         },
         {
@@ -72,7 +73,8 @@
             "header": [{ "key": "Content-Type", "value": "application/json" }],
             "auth": { "type": "noauth" },
             "url": "{{baseUrl}}/api/auth/student/login",
-            "body": { "mode": "raw", "raw": "{\n  \"email\": \"student@example.edu\",\n  \"password\": \"password\"\n}" }
+            "body": { "mode": "raw", "raw": "{\n  \"identifier\": \"student@example.edu\",\n  \"password\": \"password\"\n}" },
+            "description": "`identifier` can be the student's roll number, email, or mobile number - not just email."
           }
         },
         {
