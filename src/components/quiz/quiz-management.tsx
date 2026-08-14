@@ -1035,46 +1035,54 @@ export function QuizManagement({
               </div>
             </div>
 
-            {quiz.status !== "completed" && candidates.length > 0 && (
+            {quiz.status !== "completed" && (
               <div className="space-y-1.5 border-t pt-4">
                 <Label>Add More Students</Label>
                 <p className="text-xs text-muted-foreground">
-                  {allottedCount} student(s) were already allotted when this quiz was created. These joined a
-                  linked section afterward and haven&apos;t been allotted yet.
+                  {allottedCount} student(s) are currently allotted. This checks for real registrants of this
+                  course (e.g. students who joined a linked section afterward) who aren&apos;t allotted yet.
                 </p>
-                <Input
-                  placeholder="Search students by name or roll..."
-                  value={candidateSearch}
-                  onChange={(e) => setCandidateSearch(e.target.value)}
-                />
-                <div className="max-h-56 space-y-1 overflow-y-auto rounded-md border p-2">
-                  {visibleCandidates.length === 0 && (
-                    <p className="p-2 text-xs text-muted-foreground">No students match &quot;{candidateSearch}&quot;.</p>
-                  )}
-                  {visibleCandidates.map((c) => (
-                    <div
-                      key={c.roll}
-                      className="flex items-center justify-between rounded px-2 py-1.5 hover:bg-muted"
-                    >
-                      <div className="flex items-center gap-2">
-                        <Checkbox
-                          checked={effectiveChecked.has(c.roll)}
-                          onCheckedChange={(checked) =>
-                            toggleCandidate(c.roll, checked === true)
-                          }
-                          id={`student-${c.roll}`}
-                        />
-                        <label htmlFor={`student-${c.roll}`} className="text-sm">
-                          {c.name}{" "}
-                          <span className="text-muted-foreground">({c.roll})</span>
-                        </label>
-                      </div>
+                {candidates.length === 0 ? (
+                  <p className="rounded-md border p-3 text-sm text-muted-foreground">
+                    Everyone currently registered for this course is already allotted - nothing new to add right now.
+                  </p>
+                ) : (
+                  <>
+                    <Input
+                      placeholder="Search students by name or roll..."
+                      value={candidateSearch}
+                      onChange={(e) => setCandidateSearch(e.target.value)}
+                    />
+                    <div className="max-h-56 space-y-1 overflow-y-auto rounded-md border p-2">
+                      {visibleCandidates.length === 0 && (
+                        <p className="p-2 text-xs text-muted-foreground">No students match &quot;{candidateSearch}&quot;.</p>
+                      )}
+                      {visibleCandidates.map((c) => (
+                        <div
+                          key={c.roll}
+                          className="flex items-center justify-between rounded px-2 py-1.5 hover:bg-muted"
+                        >
+                          <div className="flex items-center gap-2">
+                            <Checkbox
+                              checked={effectiveChecked.has(c.roll)}
+                              onCheckedChange={(checked) =>
+                                toggleCandidate(c.roll, checked === true)
+                              }
+                              id={`student-${c.roll}`}
+                            />
+                            <label htmlFor={`student-${c.roll}`} className="text-sm">
+                              {c.name}{" "}
+                              <span className="text-muted-foreground">({c.roll})</span>
+                            </label>
+                          </div>
+                        </div>
+                      ))}
                     </div>
-                  ))}
-                </div>
-                <Button type="button" size="sm" onClick={handleAllot} disabled={allotting}>
-                  {allotting ? "Allotting..." : "Allot Selected"}
-                </Button>
+                    <Button type="button" size="sm" onClick={handleAllot} disabled={allotting}>
+                      {allotting ? "Allotting..." : "Allot Selected"}
+                    </Button>
+                  </>
+                )}
               </div>
             )}
           </div>
