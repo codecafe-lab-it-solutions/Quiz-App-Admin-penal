@@ -127,9 +127,10 @@ export type GradeSubjectiveAnswerInput = z.infer<
 // The checked subset of the quiz's section-derived roster, chosen in the
 // allotment UI (default: everyone checked). The server still verifies every
 // roll is actually a member of one of the quiz's linked sections.
+// Empty is valid - sync semantics (see the allot route) treat this as "the
+// full desired set of allotted students," and an empty set legitimately
+// means "un-allot everyone."
 export const allotSchema = z.object({
-  studentRolls: z
-    .array(z.string().trim().min(1))
-    .min(1, "Select at least one student"),
+  studentRolls: z.array(z.string().trim().min(1)),
 });
 export type AllotInput = z.infer<typeof allotSchema>;

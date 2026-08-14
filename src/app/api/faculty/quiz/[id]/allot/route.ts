@@ -28,6 +28,14 @@ async function getSectionDerivedRolls(quizId: number, facultyRoll: string, cours
   return new Set(students.map((s) => s.roll));
 }
 
+// Sync semantics, not append-only: `studentRolls` is the FULL desired set of
+// allotted students, same as a fresh Create Quiz submission - anyone
+// currently allotted but missing from the list gets un-allotted, anyone new
+// gets added. This is what lets the Edit dialog's checkbox list behave
+// exactly like the creation-time picker (check/uncheck freely, one save
+// applies the exact end state) instead of only ever being able to add.
+// A student who already has a real attempt is never removed, even if
+// unchecked - their submission is real data, not a pending selection.
 export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
   try {
     const user = getAuthUser(req);
@@ -36,29 +44,41 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     const { id: quizId } = idParamSchema.parse(params);
     const quiz = await prisma.quiz.findUnique({ where: { id: quizId } });
     if (!quiz || (user.role === "faculty" && quiz.facultyRoll !== String(user.sub))) throw new ApiError(404, "Quiz not found");
-    if (quiz.status === "completed") throw new ApiError(400, "Cannot allot a completed quiz");
+    if (quiz.status === "completed") throw new ApiError(400, "Cannot change allotment on a completed quiz");
 
     const body = allotSchema.parse(await req.json());
 
     const eligibleRolls = await getSectionDerivedRolls(quizId, quiz.facultyRoll, quiz.courseId);
-    const studentRolls = body.studentRolls.filter((roll) => eligibleRolls.has(roll));
-
-    if (studentRolls.length === 0) {
-      throw new ApiError(400, "No eligible students to allot - check the quiz's linked sections have members");
+    if (eligibleRolls.size === 0) {
+      throw new ApiError(400, "No eligible students for this course/section - check the quiz's linked sections have real registrants");
     }
+    const desiredRolls = new Set(body.studentRolls.filter((roll) => eligibleRolls.has(roll)));
 
-    await prisma.$transaction(
-      studentRolls.map((studentRoll) =>
-        prisma.quizAllotment.upsert({
-          where: { quizId_studentRoll: { quizId, studentRoll } },
-          update: {},
-          create: { quizId, studentRoll, status: "allotted" },
-        })
-      )
-    );
+    const [existingAllotments, existingAttempts] = await Promise.all([
+      prisma.quizAllotment.findMany({ where: { quizId }, select: { studentRoll: true } }),
+      prisma.quizAttempt.findMany({ where: { quizId }, select: { studentRoll: true } }),
+    ]);
+    const existingRolls = new Set(existingAllotments.map((a) => a.studentRoll));
+    const attemptedRolls = new Set(existingAttempts.map((a) => a.studentRoll));
+
+    const toAdd = [...desiredRolls].filter((roll) => !existingRolls.has(roll));
+    const requestedRemoval = [...existingRolls].filter((roll) => !desiredRolls.has(roll));
+    const toRemove = requestedRemoval.filter((roll) => !attemptedRolls.has(roll));
+    const blockedRemovalCount = requestedRemoval.length - toRemove.length;
+
+    await prisma.$transaction([
+      ...toAdd.map((studentRoll) => prisma.quizAllotment.create({ data: { quizId, studentRoll, status: "allotted" } })),
+      ...(toRemove.length > 0 ? [prisma.quizAllotment.deleteMany({ where: { quizId, studentRoll: { in: toRemove } } })] : []),
+    ]);
 
     const total = await prisma.quizAllotment.count({ where: { quizId } });
-    return ok({ message: "Quiz allotted", allottedCount: studentRolls.length, totalAllotted: total });
+    return ok({
+      message: "Allotment updated",
+      addedCount: toAdd.length,
+      removedCount: toRemove.length,
+      blockedRemovalCount,
+      totalAllotted: total,
+    });
   } catch (error) {
     return handleApiError(error);
   }

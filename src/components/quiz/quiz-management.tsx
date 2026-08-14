@@ -156,7 +156,6 @@ export function QuizManagement({
   );
   const [checkedRolls, setCheckedRolls] = useState<Set<string> | null>(null);
   const [candidateSearch, setCandidateSearch] = useState("");
-  const [allottedSearch, setAllottedSearch] = useState("");
   const [allotting, setAllotting] = useState(false);
   const [importing, setImporting] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
@@ -285,18 +284,13 @@ export function QuizManagement({
         url,
       ),
   );
-  // Allotment already happens as part of Create Quiz - this list only
-  // surfaces students who joined a linked section afterward and were never
-  // allotted, so this card doesn't look like a duplicate of that step.
-  const candidates = (candidatesData?.items ?? []).filter((c) => !c.allotted);
-  // The other side of the same fetch - who's already allotted, so the Edit
-  // dialog can actually show the current roster instead of only ever
-  // showing "nothing to add" once everyone real is in.
-  const allottedStudents = (candidatesData?.items ?? []).filter((c) => c.allotted);
-  // Default: everyone checked. Once the faculty/admin touches a box, their
-  // selection takes over instead of re-defaulting on every refetch.
+  // Every real registrant for this course/section, whether already allotted
+  // or not - one unified checkbox list, same as the Create Quiz picker.
+  // Default-checked state is "currently allotted" (not "everyone"), so
+  // opening this dialog shows the real live roster, not a fresh blank slate.
+  const allRealStudents = candidatesData?.items ?? [];
   const effectiveChecked =
-    checkedRolls ?? new Set(candidates.map((c) => c.roll));
+    checkedRolls ?? new Set(allRealStudents.filter((c) => c.allotted).map((c) => c.roll));
 
   // Polls only while the quiz is actually live, so submission status/proxy
   // state on screen tracks what's really happening in real time.
@@ -498,33 +492,48 @@ export function QuizManagement({
     setCheckedRolls(next);
   };
 
-  const visibleCandidates = candidates.filter((c) => {
+  const visibleStudents = allRealStudents.filter((c) => {
     const q = candidateSearch.trim().toLowerCase();
     if (!q) return true;
     return c.name.toLowerCase().includes(q) || c.roll.toLowerCase().includes(q);
   });
 
-  const visibleAllotted = allottedStudents.filter((c) => {
-    const q = allottedSearch.trim().toLowerCase();
-    if (!q) return true;
-    return c.name.toLowerCase().includes(q) || c.roll.toLowerCase().includes(q);
-  });
+  // Check all / Uncheck all only ever act on the currently visible (searched)
+  // rows - same convention as the Create Quiz picker.
+  const checkAllVisible = () => {
+    const next = new Set(effectiveChecked);
+    visibleStudents.forEach((c) => next.add(c.roll));
+    setCheckedRolls(next);
+  };
+  const uncheckAllVisible = () => {
+    const next = new Set(effectiveChecked);
+    visibleStudents.forEach((c) => next.delete(c.roll));
+    setCheckedRolls(next);
+  };
 
   const handleAllot = async () => {
     const studentRolls = [...effectiveChecked];
-    if (studentRolls.length === 0) {
-      toast.error("Select at least one student");
-      return;
-    }
     setAllotting(true);
     try {
       const result = await apiClient.post<{
-        allottedCount: number;
+        addedCount: number;
+        removedCount: number;
+        blockedRemovalCount: number;
         totalAllotted: number;
       }>(`/api/faculty/quiz/${quizId}/allot`, { studentRolls });
+      const parts = [];
+      if (result.addedCount > 0) parts.push(`${result.addedCount} added`);
+      if (result.removedCount > 0) parts.push(`${result.removedCount} removed`);
       toast.success(
-        `Allotted ${result.allottedCount} student(s) - ${result.totalAllotted} total`,
+        parts.length > 0
+          ? `Allotment updated - ${parts.join(", ")} (${result.totalAllotted} total)`
+          : `No changes - ${result.totalAllotted} student(s) allotted`,
       );
+      if (result.blockedRemovalCount > 0) {
+        toast.error(
+          `${result.blockedRemovalCount} student(s) couldn't be removed - they've already attempted this quiz`,
+        );
+      }
       setCheckedRolls(null);
       mutate();
       mutateCandidates();
@@ -532,7 +541,7 @@ export function QuizManagement({
       toast.error(
         error instanceof ApiClientError
           ? error.message
-          : "Failed to allot quiz",
+          : "Failed to update allotment",
       );
     } finally {
       setAllotting(false);
@@ -1047,80 +1056,83 @@ export function QuizManagement({
             </div>
 
             <div className="space-y-1.5 border-t pt-4">
-              <Label>Currently Allotted ({allottedStudents.length})</Label>
-              {allottedStudents.length === 0 ? (
-                <p className="rounded-md border p-3 text-sm text-muted-foreground">No students allotted yet.</p>
+              <div className="flex items-center justify-between">
+                <Label>
+                  Allotted Students ({effectiveChecked.size}
+                  {allRealStudents.length > 0 ? ` of ${allRealStudents.length} real registrants` : ""})
+                </Label>
+                {quiz.status !== "completed" && visibleStudents.length > 0 && (
+                  <div className="flex gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={checkAllVisible}
+                      disabled={visibleStudents.every((c) => effectiveChecked.has(c.roll))}
+                    >
+                      Check all
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={uncheckAllVisible}
+                      disabled={visibleStudents.every((c) => !effectiveChecked.has(c.roll))}
+                    >
+                      Uncheck all
+                    </Button>
+                  </div>
+                )}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Live, real registrants for this course/section - check to allot, uncheck to remove. A student who
+                has already attempted this quiz can&apos;t be removed.
+              </p>
+              {allRealStudents.length === 0 ? (
+                <p className="rounded-md border p-3 text-sm text-muted-foreground">
+                  No real registrants found for this course/section.
+                </p>
               ) : (
                 <>
                   <Input
                     placeholder="Search students by name or roll..."
-                    value={allottedSearch}
-                    onChange={(e) => setAllottedSearch(e.target.value)}
+                    value={candidateSearch}
+                    onChange={(e) => setCandidateSearch(e.target.value)}
                   />
                   <div className="max-h-56 space-y-1 overflow-y-auto rounded-md border p-2">
-                    {visibleAllotted.length === 0 && (
-                      <p className="p-2 text-xs text-muted-foreground">No students match &quot;{allottedSearch}&quot;.</p>
+                    {visibleStudents.length === 0 && (
+                      <p className="p-2 text-xs text-muted-foreground">No students match &quot;{candidateSearch}&quot;.</p>
                     )}
-                    {visibleAllotted.map((c) => (
-                      <div key={c.roll} className="rounded px-2 py-1.5 text-sm hover:bg-muted">
-                        {c.name} <span className="text-muted-foreground">({c.roll})</span>
+                    {visibleStudents.map((c) => (
+                      <div
+                        key={c.roll}
+                        className="flex items-center justify-between rounded px-2 py-1.5 hover:bg-muted"
+                      >
+                        <div className="flex items-center gap-2">
+                          <Checkbox
+                            checked={effectiveChecked.has(c.roll)}
+                            onCheckedChange={(checked) =>
+                              toggleCandidate(c.roll, checked === true)
+                            }
+                            disabled={quiz.status === "completed"}
+                            id={`student-${c.roll}`}
+                          />
+                          <label htmlFor={`student-${c.roll}`} className="text-sm">
+                            {c.name}{" "}
+                            <span className="text-muted-foreground">({c.roll})</span>
+                          </label>
+                        </div>
                       </div>
                     ))}
                   </div>
+                  {quiz.status !== "completed" && (
+                    <Button type="button" size="sm" onClick={handleAllot} disabled={allotting}>
+                      {allotting ? "Updating..." : "Update Allotment"}
+                    </Button>
+                  )}
                 </>
               )}
             </div>
-
-            {quiz.status !== "completed" && (
-              <div className="space-y-1.5 border-t pt-4">
-                <Label>Add More Students</Label>
-                <p className="text-xs text-muted-foreground">
-                  {allottedCount} student(s) are currently allotted. This checks for real registrants of this
-                  course (e.g. students who joined a linked section afterward) who aren&apos;t allotted yet.
-                </p>
-                {candidates.length === 0 ? (
-                  <p className="rounded-md border p-3 text-sm text-muted-foreground">
-                    Everyone currently registered for this course is already allotted - nothing new to add right now.
-                  </p>
-                ) : (
-                  <>
-                    <Input
-                      placeholder="Search students by name or roll..."
-                      value={candidateSearch}
-                      onChange={(e) => setCandidateSearch(e.target.value)}
-                    />
-                    <div className="max-h-56 space-y-1 overflow-y-auto rounded-md border p-2">
-                      {visibleCandidates.length === 0 && (
-                        <p className="p-2 text-xs text-muted-foreground">No students match &quot;{candidateSearch}&quot;.</p>
-                      )}
-                      {visibleCandidates.map((c) => (
-                        <div
-                          key={c.roll}
-                          className="flex items-center justify-between rounded px-2 py-1.5 hover:bg-muted"
-                        >
-                          <div className="flex items-center gap-2">
-                            <Checkbox
-                              checked={effectiveChecked.has(c.roll)}
-                              onCheckedChange={(checked) =>
-                                toggleCandidate(c.roll, checked === true)
-                              }
-                              id={`student-${c.roll}`}
-                            />
-                            <label htmlFor={`student-${c.roll}`} className="text-sm">
-                              {c.name}{" "}
-                              <span className="text-muted-foreground">({c.roll})</span>
-                            </label>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                    <Button type="button" size="sm" onClick={handleAllot} disabled={allotting}>
-                      {allotting ? "Allotting..." : "Allot Selected"}
-                    </Button>
-                  </>
-                )}
-              </div>
-            )}
           </div>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => setEditDialogOpen(false)}>
