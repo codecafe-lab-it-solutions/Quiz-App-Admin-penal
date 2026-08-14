@@ -156,6 +156,7 @@ export function QuizManagement({
   );
   const [checkedRolls, setCheckedRolls] = useState<Set<string> | null>(null);
   const [candidateSearch, setCandidateSearch] = useState("");
+  const [allottedSearch, setAllottedSearch] = useState("");
   const [allotting, setAllotting] = useState(false);
   const [importing, setImporting] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
@@ -288,6 +289,10 @@ export function QuizManagement({
   // surfaces students who joined a linked section afterward and were never
   // allotted, so this card doesn't look like a duplicate of that step.
   const candidates = (candidatesData?.items ?? []).filter((c) => !c.allotted);
+  // The other side of the same fetch - who's already allotted, so the Edit
+  // dialog can actually show the current roster instead of only ever
+  // showing "nothing to add" once everyone real is in.
+  const allottedStudents = (candidatesData?.items ?? []).filter((c) => c.allotted);
   // Default: everyone checked. Once the faculty/admin touches a box, their
   // selection takes over instead of re-defaulting on every refetch.
   const effectiveChecked =
@@ -495,6 +500,12 @@ export function QuizManagement({
 
   const visibleCandidates = candidates.filter((c) => {
     const q = candidateSearch.trim().toLowerCase();
+    if (!q) return true;
+    return c.name.toLowerCase().includes(q) || c.roll.toLowerCase().includes(q);
+  });
+
+  const visibleAllotted = allottedStudents.filter((c) => {
+    const q = allottedSearch.trim().toLowerCase();
     if (!q) return true;
     return c.name.toLowerCase().includes(q) || c.roll.toLowerCase().includes(q);
   });
@@ -1033,6 +1044,31 @@ export function QuizManagement({
                   onCheckedChange={(v) => setEditForm((f) => ({ ...f, requireLocation: v }))}
                 />
               </div>
+            </div>
+
+            <div className="space-y-1.5 border-t pt-4">
+              <Label>Currently Allotted ({allottedStudents.length})</Label>
+              {allottedStudents.length === 0 ? (
+                <p className="rounded-md border p-3 text-sm text-muted-foreground">No students allotted yet.</p>
+              ) : (
+                <>
+                  <Input
+                    placeholder="Search students by name or roll..."
+                    value={allottedSearch}
+                    onChange={(e) => setAllottedSearch(e.target.value)}
+                  />
+                  <div className="max-h-56 space-y-1 overflow-y-auto rounded-md border p-2">
+                    {visibleAllotted.length === 0 && (
+                      <p className="p-2 text-xs text-muted-foreground">No students match &quot;{allottedSearch}&quot;.</p>
+                    )}
+                    {visibleAllotted.map((c) => (
+                      <div key={c.roll} className="rounded px-2 py-1.5 text-sm hover:bg-muted">
+                        {c.name} <span className="text-muted-foreground">({c.roll})</span>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
             </div>
 
             {quiz.status !== "completed" && (

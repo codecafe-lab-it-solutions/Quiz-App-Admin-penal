@@ -58,7 +58,11 @@ export default function AdminTestsPage() {
     {
       key: "title",
       header: "Title",
-      render: (r) => <span className="font-medium">{r.title}</span>,
+      render: (r) => (
+        <Link href={`/admin/tests/${r.id}`} className="font-medium hover:underline">
+          {r.title}
+        </Link>
+      ),
     },
     {
       key: "course",
