@@ -30,6 +30,7 @@ export async function POST(
 
     if (
       !quiz.requireLocation ||
+      allotment.bypassLocation ||
       body.latitude == null ||
       body.longitude == null
     ) {
@@ -38,7 +39,7 @@ export async function POST(
         distanceMeters: 0,
         allowedRadiusMeters: quiz.building.radiusMeters,
         buildingName: quiz.building.name,
-        skipped: !quiz.requireLocation,
+        skipped: !quiz.requireLocation || allotment.bypassLocation,
       });
     }
 

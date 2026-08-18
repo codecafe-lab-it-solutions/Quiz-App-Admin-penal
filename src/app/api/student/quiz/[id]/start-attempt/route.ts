@@ -50,6 +50,7 @@ export async function POST(
 
     if (
       !quiz.requireLocation ||
+      allotment.bypassLocation ||
       body.latitude == null ||
       body.longitude == null
     ) {

@@ -1,0 +1,719 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Quiz Platform — Database Documentation</title>
+<style>
+  @page { size: A4; margin: 20mm 16mm 18mm 16mm; }
+  * { box-sizing: border-box; }
+  body {
+    font-family: "Segoe UI", Calibri, Arial, sans-serif;
+    color: #1c2431;
+    font-size: 10.3pt;
+    line-height: 1.5;
+    margin: 0;
+  }
+  h1, h2, h3, h4 { font-family: "Segoe UI Semibold", "Segoe UI", Arial, sans-serif; color: #10203a; margin: 0 0 6px; }
+  h1 { font-size: 22pt; }
+  h2 { font-size: 15pt; border-bottom: 2px solid #2557a7; padding-bottom: 4px; margin-top: 26px; }
+  h3 { font-size: 12pt; color: #2557a7; margin-top: 18px; }
+  h4 { font-size: 10.5pt; color: #3a4a63; margin-top: 12px; }
+  p { margin: 6px 0; }
+  .section { page-break-before: always; }
+  .section:first-of-type { page-break-before: auto; }
+  .cover {
+    height: 250mm;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: flex-start;
+    background: linear-gradient(160deg, #10203a 0%, #1a3a68 55%, #2557a7 100%);
+    color: #fff;
+    padding: 30mm 20mm;
+    border-radius: 0;
+  }
+  .cover .tag { display:inline-block; background:rgba(255,255,255,.15); padding:4px 12px; border-radius:20px; font-size:9pt; letter-spacing:1px; text-transform:uppercase; margin-bottom:18px; }
+  .cover h1 { color: #fff; font-size: 30pt; margin-bottom: 10px; }
+  .cover .sub { font-size: 13pt; color: #d7e3f7; max-width: 480px; }
+  .cover .meta { margin-top: 60px; font-size: 10pt; color: #b9cbe8; border-top: 1px solid rgba(255,255,255,.25); padding-top: 14px; width: 100%; max-width: 480px; }
+  table { border-collapse: collapse; width: 100%; margin: 8px 0 14px; font-size: 9pt; }
+  th, td { border: 1px solid #d3dbe6; padding: 5px 7px; text-align: left; vertical-align: top; }
+  th { background: #eaf1fb; color: #10203a; font-weight: 600; }
+  tr:nth-child(even) td { background: #f7f9fc; }
+  code, .mono { font-family: "Consolas", "Cascadia Code", monospace; font-size: 8.7pt; background: #eef2f8; padding: 1px 5px; border-radius: 3px; color: #1a3a68; }
+  .badge { display: inline-block; font-size: 7.8pt; font-weight: 700; padding: 2px 7px; border-radius: 3px; letter-spacing: .4px; text-transform: uppercase; margin-left: 6px; }
+  .badge-app { background: #dcecff; color: #1256b3; }
+  .badge-legacy { background: #fdead0; color: #a15c00; }
+  .badge-config { background: #e2f6e3; color: #1e7d2c; }
+  .badge-join { background: #ece3fb; color: #5b32a8; }
+  .table-card { border: 1px solid #d3dbe6; border-radius: 6px; padding: 10px 14px; margin: 10px 0 18px; background: #fbfcfe; }
+  .table-card h3 { margin-top: 0; display:flex; align-items:center; }
+  .physical { color: #6b7688; font-weight: 400; font-size: 9pt; }
+  .note {
+    background: #fff8e6; border-left: 4px solid #e0a800; padding: 8px 12px; margin: 10px 0; font-size: 9.3pt; border-radius: 0 4px 4px 0;
+  }
+  .note.blue { background:#eaf2ff; border-left-color:#2557a7; }
+  .note.red { background:#fdeceb; border-left-color:#c0392b; }
+  .flow {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 10px 0 16px; font-size: 9pt;
+  }
+  .flow .box { background:#eaf1fb; border:1px solid #b9cbe8; color:#10203a; padding:6px 10px; border-radius:5px; font-weight:600; }
+  .flow .arrow { color:#5b6b85; font-weight:700; }
+  ul, ol { margin: 6px 0; padding-left: 22px; }
+  li { margin: 3px 0; }
+  .toc { columns: 1; }
+  .toc a { text-decoration: none; color: #1c2431; }
+  .toc-item { display:flex; justify-content:space-between; border-bottom: 1px dotted #c6d1e0; padding: 4px 0; font-size:10pt; }
+  .small { font-size: 8.5pt; color: #5a6577; }
+  .enum-list span { display:inline-block; background:#eef2f8; margin:2px 4px 2px 0; padding:2px 7px; border-radius:3px; font-family:monospace; font-size:8.5pt; }
+  footer.pagefoot { position: running(footer); }
+</style>
+</head>
+<body>
+
+<!-- ============================= COVER ============================= -->
+<div class="cover">
+  <span class="tag">Internal Technical Reference</span>
+  <h1>Database Documentation</h1>
+  <div class="sub">Complete reference for the Quiz Panel database — every table, every column, how the app-owned schema and the legacy university database fit together, and how each part is actually used across the product.</div>
+  <div class="meta">
+    Generated 2026-08-17 &nbsp;·&nbsp; MySQL via Prisma ORM &nbsp;·&nbsp; 28 Prisma-managed tables + dynamic legacy registration tables
+  </div>
+</div>
+
+<!-- ============================= TOC ============================= -->
+<div class="section">
+<h2 style="border:none;margin-top:0;">Contents</h2>
+<div class="toc">
+  <div class="toc-item"><span>1. Architecture at a Glance</span><span class="small">Two databases, one schema</span></div>
+  <div class="toc-item"><span>2. Enums Reference</span><span class="small">Fixed value sets used across tables</span></div>
+  <div class="toc-item"><span>3. Identity &amp; Master Data</span><span class="small">Admin, Department, Course, Academic Session, Building</span></div>
+  <div class="toc-item"><span>4. Section System</span><span class="small">Section, SectionCourse, SectionStudent, SectionFaculty</span></div>
+  <div class="toc-item"><span>5. Legacy University Tables</span><span class="small">isr_* tables — read-mostly, owned by the university system</span></div>
+  <div class="toc-item"><span>6. Legacy Integration Config</span><span class="small">SemesterConfig, BatchTableRegistry</span></div>
+  <div class="toc-item"><span>7. Quiz Domain</span><span class="small">Quiz, Question, Attempt, Answer, Attendance, Result, Anti-Cheat, Geofence</span></div>
+  <div class="toc-item"><span>8. End-to-End Workflows</span><span class="small">Login → Sections → Quiz lifecycle → Grading</span></div>
+  <div class="toc-item"><span>9. Key Design Decisions &amp; Gotchas</span><span class="small">Why the schema looks the way it does</span></div>
+  <div class="toc-item"><span>10. Migration History</span><span class="small">How the schema evolved</span></div>
+</div>
+</div>
+
+<!-- ============================= 1. ARCHITECTURE ============================= -->
+<div class="section">
+<h2>1. Architecture at a Glance</h2>
+<p>The application runs on a single MySQL database, but that database really holds <strong>two schemas with different owners</strong>:</p>
+<ul>
+  <li><strong>App-owned tables</strong> <span class="badge badge-app">APP</span> — everything the quiz platform itself invented: quizzes, questions, attempts, answers, results, attendance, sections, buildings, admins. Prisma fully manages these (create/alter/drop via migrations).</li>
+  <li><strong>Legacy university tables</strong> <span class="badge badge-legacy">LEGACY</span> — <code>isr_*</code> tables that belong to the existing university ERP (student/faculty master data, course catalog, course-faculty mapping, semester-wise registration). The quiz platform <em>reads</em> these constantly and <em>writes</em> to a few of them only where the admin panel explicitly manages accounts (create/update/delete faculty &amp; students, activate/deactivate logins, faculty-course mapping). Prisma models them 1:1 for type-safety, but conceptually they are not "our" tables — the columns must match the real university export exactly.</li>
+</ul>
+
+<div class="flow">
+  <div class="box">isr_* tables<br><span class="small">(university ERP data)</span></div>
+  <div class="arrow">&#8594; read/write &#8594;</div>
+  <div class="box">Quiz Platform (Next.js + Prisma)</div>
+  <div class="arrow">&#8594; owns &#8594;</div>
+  <div class="box">quizzes, questions, attempts,<br>results, attendance, sections...</div>
+</div>
+
+<p><strong>Why no foreign keys between the two sides?</strong> Every place the app needs to reference a student or faculty member (e.g. <span class="mono">Quiz.facultyRoll</span>, <span class="mono">QuizAttempt.studentRoll</span>, <span class="mono">SectionStudent.studentRoll</span>) stores the legacy <span class="mono">roll number</span> as a plain string column — <em>not</em> a Prisma relation/foreign key into <span class="mono">isr_stu_data_tbl</span> or <span class="mono">isr_faculty_tbl</span>. This is deliberate: the legacy tables are outside Prisma's migration control, so a real foreign-key constraint would break the moment the university re-imports or restructures its own data. Every join between "our" tables and "their" tables therefore happens in application code (in <code>src/lib/legacy-db.ts</code>), not at the database constraint level.</p>
+
+<p>A third, small layer sits between the two: <strong>legacy-integration config</strong> <span class="badge badge-config">CONFIG</span> — app-owned tables that don't model quiz data at all, but instead configure <em>how</em> the app talks to the legacy side (which semester cycle is "current", which batch maps to which physical registration table).</p>
+
+<div class="note blue">
+<strong>Physical location:</strong> every table below lives in the same MySQL schema pointed to by <span class="mono">DATABASE_URL</span>. Prisma's <span class="mono">@@map(...)</span> directive is what fixes each model to its real snake_case table name (e.g. model <span class="mono">Quiz</span> → table <span class="mono">quizzes</span>; model <span class="mono">IsrStuDataTbl</span> → table <span class="mono">isr_stu_data_tbl</span>).
+</div>
+</div>
+
+<!-- ============================= 2. ENUMS ============================= -->
+<div class="section">
+<h2>2. Enums Reference</h2>
+<p>MySQL enum columns used to constrain specific fields to a fixed set of values. Referenced throughout the tables below.</p>
+<table>
+<tr><th>Enum</th><th>Values</th><th>Used on</th></tr>
+<tr><td class="mono">AdminRole</td><td class="enum-list"><span>super_admin</span><span>admin</span></td><td class="mono">admins.role</td></tr>
+<tr><td class="mono">PersonStatus</td><td class="enum-list"><span>active</span><span>inactive</span></td><td>reserved / conceptual status</td></tr>
+<tr><td class="mono">QuizStatus</td><td class="enum-list"><span>draft</span><span>scheduled</span><span>live</span><span>completed</span></td><td class="mono">quizzes.status</td></tr>
+<tr><td class="mono">QuestionType</td><td class="enum-list"><span>mcq</span><span>formula</span><span>subjective</span></td><td class="mono">questions.question_type</td></tr>
+<tr><td class="mono">AllotmentStatus</td><td class="enum-list"><span>allotted</span><span>attempted</span><span>absent</span></td><td class="mono">quiz_allotments.status</td></tr>
+<tr><td class="mono">AttemptStatus</td><td class="enum-list"><span>in_progress</span><span>submitted</span><span>auto_submitted</span></td><td class="mono">quiz_attempts.status</td></tr>
+<tr><td class="mono">AttendanceStatus</td><td class="enum-list"><span>present</span><span>absent</span></td><td class="mono">attendance.status</td></tr>
+<tr><td class="mono">ResultStatus</td><td class="enum-list"><span>pending</span><span>declared</span><span>published</span></td><td class="mono">results.status</td></tr>
+<tr><td class="mono">AntiCheatEventType</td><td class="enum-list"><span>screen_switch</span><span>overlay_detected</span><span>background</span></td><td class="mono">anti_cheat_events.event_type</td></tr>
+<tr><td class="mono">SectionMemberSource</td><td class="enum-list"><span>auto</span><span>manual_added</span><span>manual_removed</span></td><td class="mono">section_students.source</td><br><td class="mono">section_faculty.source</td></tr>
+</table>
+</div>
+
+<!-- ============================= 3. IDENTITY & MASTER DATA ============================= -->
+<div class="section">
+<h2>3. Identity &amp; Master Data</h2>
+<p>Core reference tables the rest of the app hangs off. Fully app-owned.</p>
+
+<div class="table-card">
+<h3><span class="mono">admins</span><span class="badge badge-app">APP</span></h3>
+<p class="small">Model: <span class="mono">Admin</span> — the only login table that belongs entirely to this app (faculty/student logins live in the legacy <span class="mono">isr_login_tbl</span> instead, see §5).</p>
+<table>
+<tr><th>Column</th><th>Type</th><th>Notes</th></tr>
+<tr><td class="mono">id</td><td>Int, PK</td><td>Auto-increment</td></tr>
+<tr><td class="mono">name</td><td>String</td><td></td></tr>
+<tr><td class="mono">email</td><td>String</td><td>Unique — login identifier</td></tr>
+<tr><td class="mono">password_hash</td><td>String</td><td>bcrypt hash</td></tr>
+<tr><td class="mono">role</td><td>AdminRole</td><td>Default <code>admin</code>; <code>super_admin</code> for elevated access</td></tr>
+<tr><td class="mono">refresh_token_hash</td><td>String?</td><td>Hashed refresh token for session renewal</td></tr>
+<tr><td class="mono">created_at / updated_at</td><td>DateTime</td><td>Standard audit timestamps</td></tr>
+</table>
+</div>
+
+<div class="table-card">
+<h3><span class="mono">departments</span><span class="badge badge-app">APP</span></h3>
+<p class="small">Model: <span class="mono">Department</span> — app-side department catalog (distinct from the legacy "branch/major" codes used inside <span class="mono">isr_*</span> tables). Created on demand — e.g. when a course is first linked to a section, a department is upserted by name if it doesn't exist yet.</p>
+<table>
+<tr><th>Column</th><th>Type</th><th>Notes</th></tr>
+<tr><td class="mono">id</td><td>Int, PK</td><td></td></tr>
+<tr><td class="mono">name</td><td>String</td><td>Unique</td></tr>
+<tr><td class="mono">created_at / updated_at</td><td>DateTime</td><td></td></tr>
+</table>
+<p class="small">Relations: one department → many <span class="mono">courses</span>.</p>
+</div>
+
+<div class="table-card">
+<h3><span class="mono">courses</span><span class="badge badge-app">APP</span></h3>
+<p class="small">Model: <span class="mono">Course</span> — the app's own course catalog. Not the same thing as the legacy curriculum table (<span class="mono">isr_curriculum_tbl</span>, §5) — a course only appears here once an admin (or an auto-linking flow) has actually used it in a quiz/section context. <span class="mono">code</span> is the join key back to legacy course codes (<span class="mono">isr_sub_available_tbl.sub_code</span>, <span class="mono">isr_curriculum_tbl.bsms_code</span>).</p>
+<table>
+<tr><th>Column</th><th>Type</th><th>Notes</th></tr>
+<tr><td class="mono">id</td><td>Int, PK</td><td></td></tr>
+<tr><td class="mono">name</td><td>String</td><td>Course title (from curriculum, or the bare code as fallback)</td></tr>
+<tr><td class="mono">code</td><td>String</td><td>Unique — matches legacy <span class="mono">sub_code</span> / <span class="mono">bsms_code</span></td></tr>
+<tr><td class="mono">department_id</td><td>Int, FK → departments.id</td><td></td></tr>
+<tr><td class="mono">credits</td><td>Int</td><td>Default 0</td></tr>
+<tr><td class="mono">created_at / updated_at</td><td>DateTime</td><td></td></tr>
+</table>
+<p class="small">Relations: <span class="mono">sectionCourses</span> (→ section_courses), <span class="mono">quizzes</span>, <span class="mono">attendance</span>.</p>
+</div>
+
+<div class="table-card">
+<h3><span class="mono">academic_sessions</span><span class="badge badge-app">APP</span></h3>
+<p class="small">Model: <span class="mono">AcademicSession</span> — a named term (e.g. "Odd 2026") a quiz can optionally be tagged with.</p>
+<table>
+<tr><th>Column</th><th>Type</th><th>Notes</th></tr>
+<tr><td class="mono">id</td><td>Int, PK</td><td></td></tr>
+<tr><td class="mono">name</td><td>String</td><td></td></tr>
+<tr><td class="mono">start_date / end_date</td><td>DateTime</td><td></td></tr>
+<tr><td class="mono">sub_list_code</td><td>String?</td><td>Snapshot of <span class="mono">SemesterConfig.currentSubList</span> at creation time — ties the session to the legacy semester cycle it belongs to</td></tr>
+<tr><td class="mono">created_at / updated_at</td><td>DateTime</td><td></td></tr>
+</table>
+</div>
+
+<div class="table-card">
+<h3><span class="mono">buildings</span><span class="badge badge-app">APP</span></h3>
+<p class="small">Model: <span class="mono">Building</span> — physical exam-center locations used for geofenced quizzes. Each quiz picks one building; the student's live GPS position is checked against it before/during an attempt (see <span class="mono">geofence_logs</span> in §7).</p>
+<table>
+<tr><th>Column</th><th>Type</th><th>Notes</th></tr>
+<tr><td class="mono">id</td><td>Int, PK</td><td></td></tr>
+<tr><td class="mono">name</td><td>String</td><td></td></tr>
+<tr><td class="mono">latitude / longitude</td><td>Decimal(10,7)</td><td>Center point of the allowed radius</td></tr>
+<tr><td class="mono">radius_meters</td><td>Int</td><td>How far from the center a student may attempt from</td></tr>
+<tr><td class="mono">created_at / updated_at</td><td>DateTime</td><td></td></tr>
+</table>
+</div>
+</div>
+
+<!-- ============================= 4. SECTIONS ============================= -->
+<div class="section">
+<h2>4. Section System</h2>
+<p>"Sections" are the app's own concept — the legacy university database has no notion of a section at all (confirmed against the real dump). A section groups students and faculty around one or more courses, and quizzes are assigned to sections (a quiz can target more than one merged section at once).</p>
+
+<div class="table-card">
+<h3><span class="mono">sections</span><span class="badge badge-app">APP</span></h3>
+<table>
+<tr><th>Column</th><th>Type</th><th>Notes</th></tr>
+<tr><td class="mono">id</td><td>Int, PK</td><td></td></tr>
+<tr><td class="mono">name</td><td>String</td><td>Convention: <code>Major_Semester</code>, e.g. <code>CE_3</code> — derived from real student data, never freely typed</td></tr>
+<tr><td class="mono">created_at / updated_at</td><td>DateTime</td><td></td></tr>
+</table>
+</div>
+
+<div class="table-card">
+<h3><span class="mono">section_courses</span><span class="badge badge-join">JOIN</span></h3>
+<p class="small">Model: <span class="mono">SectionCourse</span> — many-to-many between sections and courses, so one merged section can span multiple courses/branches (e.g. a combined CS + IT + Mechanical section).</p>
+<table>
+<tr><th>Column</th><th>Type</th><th>Notes</th></tr>
+<tr><td class="mono">id</td><td>Int, PK</td><td></td></tr>
+<tr><td class="mono">section_id</td><td>Int, FK → sections.id</td><td>Cascade delete</td></tr>
+<tr><td class="mono">course_id</td><td>Int, FK → courses.id</td><td>Cascade delete</td></tr>
+<tr><td class="mono">created_at</td><td>DateTime</td><td></td></tr>
+</table>
+<p class="small">Unique on <span class="mono">(section_id, course_id)</span>.</p>
+</div>
+
+<div class="table-card">
+<h3><span class="mono">section_students</span> &amp; <span class="mono">section_faculty</span><span class="badge badge-app">APP</span></h3>
+<p class="small">Models: <span class="mono">SectionStudent</span>, <span class="mono">SectionFaculty</span> — membership rows keyed by the <em>legacy</em> roll number (<span class="mono">student_roll</span> / <span class="mono">faculty_roll</span> — plain strings, not Prisma FKs into the isr_* tables, per §1). Every row also carries a <span class="mono">source</span> that records where it came from:</p>
+<table>
+<tr><th>Column</th><th>Type</th><th>Notes</th></tr>
+<tr><td class="mono">id</td><td>Int, PK</td><td></td></tr>
+<tr><td class="mono">section_id</td><td>Int, FK → sections.id</td><td>Cascade delete</td></tr>
+<tr><td class="mono">student_roll / faculty_roll</td><td>String</td><td>Legacy roll — no DB-level FK</td></tr>
+<tr><td class="mono">source</td><td>SectionMemberSource</td><td><code>auto</code> / <code>manual_added</code> / <code>manual_removed</code></td></tr>
+<tr><td class="mono">created_at</td><td>DateTime</td><td></td></tr>
+</table>
+<p class="small">Unique on <span class="mono">(section_id, student_roll)</span> resp. <span class="mono">(section_id, faculty_roll)</span>.</p>
+
+<h4>How membership stays in sync (src/lib/section-sync.ts)</h4>
+<p>Every section's roster is periodically reconciled against the legacy course rosters of its linked courses (<span class="mono">syncSectionStudents</span> / <span class="mono">syncSectionFaculty</span>):</p>
+<ul>
+  <li><code>auto</code> rows are pure system state — freely added when a legacy roster gains a matching registrant, freely removed when it no longer does.</li>
+  <li><code>manual_added</code> rows are kept even if the legacy roster later drops that person — an explicit admin override.</li>
+  <li><code>manual_removed</code> rows are kept (never resurrected) even if the roster still lists that roll — records a deliberate exclusion.</li>
+</ul>
+<p>This makes re-sync idempotent and override-preserving: running it repeatedly never undoes a human decision. Student desired-rolls come from <span class="mono">getCourseRegistrations()</span> against the current semester's <span class="mono">isr_reg_&lt;batch&gt;_tbl</span> rows; faculty desired-rolls come from <span class="mono">isr_sub_available_tbl</span> rows whose resolved major matches the section's own major.</p>
+
+<div class="note">
+<strong>Denormalized mirror:</strong> every write to <span class="mono">section_students</span> also updates <span class="mono">isr_stu_main_tbl.section</span> — a comma-joined list of section names — via <span class="mono">refreshStudentSectionColumn()</span>. This column doesn't exist in the real university export; it's an app-added convenience column so legacy-facing screens can show section membership without a join, and it gets rebuilt automatically after every legacy data re-import.
+</div>
+</div>
+</div>
+
+<!-- ============================= 5. LEGACY TABLES ============================= -->
+<div class="section">
+<h2>5. Legacy University Tables</h2>
+<p>These <span class="mono">isr_*</span> tables mirror the real university ERP schema column-for-column. The app treats them as authoritative for identity, academic status, and course offerings. All reads/writes to this layer are centralized in <code>src/lib/legacy-db.ts</code> — no other file in the codebase talks to these tables directly.</p>
+
+<div class="table-card">
+<h3><span class="mono">isr_login_tbl</span><span class="badge badge-legacy">LEGACY</span></h3>
+<p class="small">Model: <span class="mono">IsrLoginTbl</span> — PK <span class="mono">user_roll</span>. Single login table shared by <em>both</em> students and faculty, distinguished by <span class="mono">user_type</span> (<code>FAC</code> / <code>STU</code>). Users can sign in with roll, email, <em>or</em> mobile — login lookup matches whichever identifier was typed.</p>
+<table>
+<tr><th>Column</th><th>Type</th><th>Notes</th></tr>
+<tr><td class="mono">user_roll</td><td>String, PK</td><td></td></tr>
+<tr><td class="mono">user_email</td><td>String</td><td></td></tr>
+<tr><td class="mono">user_password</td><td>String</td><td>bcrypt-compared; legacy hash scheme unconfirmed (flagged TODO in code)</td></tr>
+<tr><td class="mono">user_type</td><td>String</td><td><code>FAC</code> or <code>STU</code></td></tr>
+<tr><td class="mono">status</td><td>Int</td><td>1 = Active, 2 = Inactive — flipped by the admin's activate/deactivate action</td></tr>
+<tr><td class="mono">user_mobile</td><td>String?</td><td>Alternate login identifier</td></tr>
+<tr><td class="mono">branch, batch, program_name, centre_location, ...</td><td>various</td><td>Full structural parity columns, mostly informational</td></tr>
+</table>
+</div>
+
+<div class="table-card">
+<h3><span class="mono">isr_faculty_tbl</span><span class="badge badge-legacy">LEGACY</span></h3>
+<p class="small">Model: <span class="mono">IsrFacultyTbl</span> — PK <span class="mono">roll</span>. Faculty profile data.</p>
+<table>
+<tr><th>Column</th><th>Type</th><th>Notes</th></tr>
+<tr><td class="mono">roll</td><td>String, PK</td><td></td></tr>
+<tr><td class="mono">name</td><td>String</td><td></td></tr>
+<tr><td class="mono">dept</td><td>String?</td><td>Displayed in admin profile view</td></tr>
+<tr><td class="mono">emp_code</td><td>String?</td><td></td></tr>
+<tr><td class="mono">fac_status</td><td>String?</td><td>R-Regular, V-Visiting, P-PFD, T-Temporary</td></tr>
+<tr><td class="mono">~15 more columns</td><td>various</td><td>DOB, joining/exit dates, invigilator status, pay level, address, etc. — kept for structural parity, not all surfaced in the UI</td></tr>
+</table>
+</div>
+
+<div class="table-card">
+<h3><span class="mono">isr_stu_data_tbl</span><span class="badge badge-legacy">LEGACY</span></h3>
+<p class="small">Model: <span class="mono">IsrStuDataTbl</span> — PK <span class="mono">stu_roll</span>. A large (~60-column) personal/family/hostel profile table. Only <span class="mono">stu_roll</span>, <span class="mono">stu_name</span>, <span class="mono">mobile</span> are surfaced on list views by default — sensitive fields (Aadhaar, bank details, parent contact info) are pulled in only on a deliberate detail-view request.</p>
+<table>
+<tr><th>Column</th><th>Type</th><th>Notes</th></tr>
+<tr><td class="mono">stu_roll</td><td>String, PK</td><td></td></tr>
+<tr><td class="mono">stu_name</td><td>String</td><td></td></tr>
+<tr><td class="mono">mobile</td><td>String?</td><td></td></tr>
+<tr><td class="mono">email, blood_group, father_/mother_*, bank_*, hostel_*, aadhaar_card, ...</td><td>various</td><td>Full personal profile — read-only, sensitive fields not shown by default</td></tr>
+</table>
+</div>
+
+<div class="table-card">
+<h3><span class="mono">isr_stu_main_tbl</span><span class="badge badge-legacy">LEGACY</span></h3>
+<p class="small">Model: <span class="mono">IsrStuMainTbl</span> — PK <span class="mono">roll</span>. Academic-status table: major, batch, current semester, registration/attendance/fee status.</p>
+<table>
+<tr><th>Column</th><th>Type</th><th>Notes</th></tr>
+<tr><td class="mono">roll</td><td>String, PK</td><td></td></tr>
+<tr><td class="mono">major</td><td>String</td><td>Drives section-name derivation (<code>Major_Semester</code>)</td></tr>
+<tr><td class="mono">name</td><td>String</td><td></td></tr>
+<tr><td class="mono">batch</td><td>String</td><td>Resolves to a registration table via <span class="mono">batch_table_registry</span></td></tr>
+<tr><td class="mono">sem_now</td><td>Int</td><td>Real column type is INT; app boundary converts to/from string</td></tr>
+<tr><td class="mono">reg_status / attn_ok / stu_status</td><td>String?</td><td>Academic-status flags, read-only</td></tr>
+<tr><td class="mono">fee_OK, cgpa_OK, hostel_status, present_status, ...</td><td>various</td><td>Structural parity columns</td></tr>
+<tr><td class="mono">section</td><td>String? (Text)</td><td><strong>App-added</strong> — not part of the real university dump. Comma-joined list of every <span class="mono">sections.name</span> this student currently belongs to, kept in sync by <span class="mono">refreshStudentSectionColumn()</span> and rewritten after every legacy re-import (which truncates it, since the raw dump has no such column)</td></tr>
+</table>
+</div>
+
+<div class="table-card">
+<h3><span class="mono">isr_sub_available_tbl</span><span class="badge badge-legacy">LEGACY</span></h3>
+<p class="small">Model: <span class="mono">IsrSubAvailableTbl</span> — PK <span class="mono">avai_sr</span> (mapped to Prisma field <span class="mono">id</span>). The faculty ⇄ course mapping table: which faculty teaches which subject code, for which branch/semester, under which semester cycle (<span class="mono">sub_list</span>).</p>
+<table>
+<tr><th>Column</th><th>Type</th><th>Notes</th></tr>
+<tr><td class="mono">avai_sr (id)</td><td>Int, PK</td><td></td></tr>
+<tr><td class="mono">sem</td><td>String?</td><td></td></tr>
+<tr><td class="mono">sub_list</td><td>String?</td><td>Semester-cycle code, e.g. <code>C2</code> — admin-configurable "current" value, default <code>c1</code></td></tr>
+<tr><td class="mono">sub_code</td><td>String?</td><td>Course code — joins to <span class="mono">courses.code</span> / <span class="mono">isr_curriculum_tbl.bsms_code</span></td></tr>
+<tr><td class="mono">fac_roll</td><td>String?</td><td>Nullable — a mapping row can exist with no faculty assigned yet</td></tr>
+<tr><td class="mono">branch</td><td>String?</td><td><strong>Not</strong> the same code space as <span class="mono">isr_stu_main_tbl.major</span> — some values are prefixed with "D" (e.g. <code>DCE</code> for major <code>CE</code>); resolved via <span class="mono">resolveMajorFromBranch()</span></td></tr>
+<tr><td class="mono">b1_sem, sem_list, slot, fac_order</td><td>various</td><td>Structural parity columns</td></tr>
+<tr><td class="mono">section</td><td>String?</td><td><strong>App-added</strong> — the single <code>Major_Semester</code> section this mapping row resolves to, set once at creation and rewritten after every legacy re-import</td></tr>
+</table>
+</div>
+
+<div class="table-card">
+<h3><span class="mono">isr_curriculum_tbl</span><span class="badge badge-legacy">LEGACY</span></h3>
+<p class="small">Model: <span class="mono">IsrCurriculumTbl</span> — PK <span class="mono">sr</span> (mapped to Prisma field <span class="mono">id</span>). The full curriculum/course catalog — resolves a bare <span class="mono">sub_code</span> (from <span class="mono">isr_sub_available_tbl</span> or a registration table) into a human-readable title, credits and branch.</p>
+<table>
+<tr><th>Column</th><th>Type</th><th>Notes</th></tr>
+<tr><td class="mono">sr (id)</td><td>Int, PK</td><td></td></tr>
+<tr><td class="mono">sub_list</td><td>String</td><td>Semester cycle</td></tr>
+<tr><td class="mono">bsms_branch</td><td>String</td><td></td></tr>
+<tr><td class="mono">bsms_code</td><td>String</td><td>Course code — indexed</td></tr>
+<tr><td class="mono">title</td><td>String (Text)</td><td>Human-readable course title</td></tr>
+<tr><td class="mono">l / t / p</td><td>Int</td><td>Lecture/tutorial/practical hours</td></tr>
+<tr><td class="mono">bsms_credit</td><td>Int</td><td></td></tr>
+<tr><td class="mono">sem</td><td>String?</td><td></td></tr>
+<tr><td class="mono">sp, dept_core, dept_elec, elec_num, open_elec, dept_minor</td><td>various</td><td>Structural parity columns</td></tr>
+</table>
+</div>
+
+<div class="table-card">
+<h3><span class="mono">isr_reg_&lt;batch&gt;_tbl</span> <em>(dynamic)</em><span class="badge badge-legacy">LEGACY</span></h3>
+<p class="small">Not a Prisma model — one physical table <em>per student batch</em> (e.g. <span class="mono">isr_reg_btechpeg23_tbl</span>), holding that batch's actual course registrations for the current semester cycle. Accessed exclusively via raw parameterized SQL in <code>legacy-db.ts</code>, gated by an allow-list (<span class="mono">batch_table_registry</span>, §6) so a table name is never built from unvalidated input.</p>
+<table>
+<tr><th>Column</th><th>Notes</th></tr>
+<tr><td class="mono">stu_roll</td><td>Student roll (note: <em>not</em> <span class="mono">roll</span> — this table alone uses <span class="mono">stu_roll</span>)</td></tr>
+<tr><td class="mono">sub_code</td><td>Registered course code</td></tr>
+<tr><td class="mono">sub_list</td><td>Semester cycle this registration belongs to</td></tr>
+<tr><td class="mono">reg_sr</td><td>Real auto-increment PK — used to order "most recent first"</td></tr>
+</table>
+<div class="note red"><strong>Coverage gap (by design, documented in code):</strong> only 3 of the real student batches (<span class="mono">btechpeg23/24/25</span>) actually have a registration table — roughly 94% of students, by roll count, have none. Filtering logic therefore only <em>excludes</em> a student from a course roster when their own batch has a real registration table saying they aren't registered; students whose batch has no table at all are left unfiltered, since section membership is the best available signal for them.</div>
+</div>
+</div>
+
+<!-- ============================= 6. LEGACY CONFIG ============================= -->
+<div class="section">
+<h2>6. Legacy Integration Config</h2>
+<p>Small app-owned tables that don't represent quiz or student data — they configure how the app talks to the legacy layer above.</p>
+
+<div class="table-card">
+<h3><span class="mono">semester_config</span><span class="badge badge-config">CONFIG</span></h3>
+<p class="small">Model: <span class="mono">SemesterConfig</span> — a single-row table holding the "current" semester cycle code, editable by an admin. Every legacy read that needs a <span class="mono">sub_list</span> value (course rosters, faculty mappings, curriculum lookups) defaults to this value unless a specific one is passed.</p>
+<table>
+<tr><th>Column</th><th>Type</th><th>Notes</th></tr>
+<tr><td class="mono">id</td><td>Int, PK</td><td></td></tr>
+<tr><td class="mono">current_sub_list</td><td>String</td><td>e.g. <code>C2</code></td></tr>
+<tr><td class="mono">updated_at</td><td>DateTime</td><td></td></tr>
+</table>
+</div>
+
+<div class="table-card">
+<h3><span class="mono">batch_table_registry</span><span class="badge badge-config">CONFIG</span></h3>
+<p class="small">Model: <span class="mono">BatchTableRegistry</span> — allow-list mapping a batch name to its physical <span class="mono">isr_reg_&lt;batch&gt;_tbl</span> table name. Exists purely so dynamic-table SQL queries never build a table identifier from unvalidated input (SQL-injection guard).</p>
+<table>
+<tr><th>Column</th><th>Type</th><th>Notes</th></tr>
+<tr><td class="mono">id</td><td>Int, PK</td><td></td></tr>
+<tr><td class="mono">batch_name</td><td>String</td><td>Unique, e.g. <code>btechpeg23</code></td></tr>
+<tr><td class="mono">table_name</td><td>String</td><td>Real physical table, e.g. <code>isr_reg_btechpeg23_tbl</code></td></tr>
+<tr><td class="mono">is_active</td><td>Boolean</td><td>Default true — inactive entries are skipped by every registration query</td></tr>
+<tr><td class="mono">created_at</td><td>DateTime</td><td></td></tr>
+</table>
+</div>
+</div>
+
+<!-- ============================= 7. QUIZ DOMAIN ============================= -->
+<div class="section">
+<h2>7. Quiz Domain</h2>
+<p>The core product: everything about creating, running, answering, and grading a quiz. All fully app-owned.</p>
+
+<div class="table-card">
+<h3><span class="mono">quizzes</span><span class="badge badge-app">APP</span></h3>
+<table>
+<tr><th>Column</th><th>Type</th><th>Notes</th></tr>
+<tr><td class="mono">id</td><td>Int, PK</td><td></td></tr>
+<tr><td class="mono">title</td><td>String</td><td></td></tr>
+<tr><td class="mono">course_id</td><td>Int, FK → courses.id</td><td></td></tr>
+<tr><td class="mono">session_id</td><td>Int?, FK → academic_sessions.id</td><td>Optional</td></tr>
+<tr><td class="mono">faculty_roll</td><td>String</td><td>Legacy roll — no DB-level FK, indexed</td></tr>
+<tr><td class="mono">building_id</td><td>Int, FK → buildings.id</td><td>For geofencing</td></tr>
+<tr><td class="mono">start_time / end_time</td><td>DateTime</td><td>Scheduled window</td></tr>
+<tr><td class="mono">duration_minutes</td><td>Int</td><td></td></tr>
+<tr><td class="mono">total_marks</td><td>Int</td><td></td></tr>
+<tr><td class="mono">randomize</td><td>Boolean</td><td>Default true — shuffle question order per student</td></tr>
+<tr><td class="mono">negative_marking</td><td>Boolean</td><td>Default false</td></tr>
+<tr><td class="mono">allow_skip_switch</td><td>Boolean</td><td>Default true</td></tr>
+<tr><td class="mono">require_location</td><td>Boolean</td><td>Default true — gates geofence checks</td></tr>
+<tr><td class="mono">status</td><td>QuizStatus</td><td>draft → scheduled → live → completed</td></tr>
+<tr><td class="mono">actual_start_time / actual_stop_time</td><td>DateTime?</td><td>Set when faculty actually starts/stops (vs. the scheduled window)</td></tr>
+<tr><td class="mono">deleted_at</td><td>DateTime?</td><td>Soft delete</td></tr>
+<tr><td class="mono">created_at / updated_at</td><td>DateTime</td><td></td></tr>
+</table>
+<p class="small">Indexes: <span class="mono">course_id</span>, <span class="mono">session_id</span>, <span class="mono">faculty_roll</span>, <span class="mono">building_id</span>, <span class="mono">status</span>. Relations: <span class="mono">sections</span> (via quiz_sections), <span class="mono">questions</span>, <span class="mono">allotments</span>, <span class="mono">attempts</span>, <span class="mono">attendance</span>, <span class="mono">results</span> — all cascade-deleted with the quiz.</p>
+</div>
+
+<div class="table-card">
+<h3><span class="mono">quiz_sections</span><span class="badge badge-join">JOIN</span></h3>
+<p class="small">Model: <span class="mono">QuizSection</span> — many-to-many so one quiz can target more than one merged section at once (section selection is mandatory at quiz-creation time).</p>
+<table><tr><th>Column</th><th>Type</th><th>Notes</th></tr>
+<tr><td class="mono">id</td><td>Int, PK</td><td></td></tr>
+<tr><td class="mono">quiz_id</td><td>Int, FK → quizzes.id</td><td>Cascade delete</td></tr>
+<tr><td class="mono">section_id</td><td>Int, FK → sections.id</td><td>Cascade delete</td></tr>
+<tr><td class="mono">created_at</td><td>DateTime</td><td></td></tr>
+</table>
+<p class="small">Unique on <span class="mono">(quiz_id, section_id)</span>.</p>
+</div>
+
+<div class="table-card">
+<h3><span class="mono">questions</span>, <span class="mono">question_options</span>, <span class="mono">question_formula</span><span class="badge badge-app">APP</span></h3>
+<p class="small">One quiz has many questions; a question's shape depends on its <span class="mono">question_type</span>:</p>
+<ul>
+  <li><code>mcq</code> → has rows in <span class="mono">question_options</span>, one flagged <span class="mono">is_correct</span></li>
+  <li><code>formula</code> → has exactly one row in <span class="mono">question_formula</span> (numeric answer + tolerance)</li>
+  <li><code>subjective</code> → free-text, graded manually; may carry an optional <span class="mono">reference_answer</span> for the grader (never sent to students)</li>
+</ul>
+<table>
+<tr><th>Table</th><th>Column</th><th>Type</th><th>Notes</th></tr>
+<tr><td rowspan="7" class="mono">questions</td><td class="mono">id</td><td>Int, PK</td><td></td></tr>
+<tr><td class="mono">quiz_id</td><td>Int, FK → quizzes.id</td><td>Cascade delete, indexed</td></tr>
+<tr><td class="mono">question_text</td><td>Text</td><td></td></tr>
+<tr><td class="mono">question_type</td><td>QuestionType</td><td>mcq / formula / subjective</td></tr>
+<tr><td class="mono">marks / negative_marks</td><td>Int</td><td></td></tr>
+<tr><td class="mono">reference_answer</td><td>Text?</td><td>Subjective-only grading guide</td></tr>
+<tr><td class="mono">order_index</td><td>Int</td><td>Display order</td></tr>
+<tr><td rowspan="3" class="mono">question_options</td><td class="mono">id / question_id (FK, cascade)</td><td>Int</td><td>Indexed on question_id</td></tr>
+<tr><td class="mono">option_text</td><td>Text</td><td></td></tr>
+<tr><td class="mono">is_correct</td><td>Boolean</td><td>Default false</td></tr>
+<tr><td rowspan="3" class="mono">question_formula</td><td class="mono">id / question_id (FK, cascade, unique)</td><td>Int</td><td>1:1 with question</td></tr>
+<tr><td class="mono">correct_value</td><td>Float</td><td></td></tr>
+<tr><td class="mono">tolerance</td><td>Float</td><td>Acceptable margin for a numeric match</td></tr>
+</table>
+</div>
+
+<div class="table-card">
+<h3><span class="mono">quiz_allotments</span><span class="badge badge-app">APP</span></h3>
+<p class="small">Model: <span class="mono">QuizAllotment</span> — which students are eligible to attempt a given quiz, and their current status.</p>
+<table>
+<tr><th>Column</th><th>Type</th><th>Notes</th></tr>
+<tr><td class="mono">id</td><td>Int, PK</td><td></td></tr>
+<tr><td class="mono">quiz_id</td><td>Int, FK → quizzes.id</td><td>Cascade delete</td></tr>
+<tr><td class="mono">student_roll</td><td>String</td><td>Legacy roll, indexed</td></tr>
+<tr><td class="mono">status</td><td>AllotmentStatus</td><td>allotted / attempted / absent</td></tr>
+<tr><td class="mono">is_proxy</td><td>Boolean</td><td>Default false — flags a live attempt suspected to be a proxy (someone else attempting on the student's behalf). Always forces status to <code>absent</code>; un-flagging restores real attendance</td></tr>
+<tr><td class="mono">created_at / updated_at</td><td>DateTime</td><td></td></tr>
+</table>
+<p class="small">Unique on <span class="mono">(quiz_id, student_roll)</span>.</p>
+</div>
+
+<div class="table-card">
+<h3><span class="mono">quiz_attempts</span><span class="badge badge-app">APP</span></h3>
+<p class="small">Model: <span class="mono">QuizAttempt</span> — one row per student per quiz once they actually start.</p>
+<table>
+<tr><th>Column</th><th>Type</th><th>Notes</th></tr>
+<tr><td class="mono">id</td><td>Int, PK</td><td></td></tr>
+<tr><td class="mono">quiz_id</td><td>Int, FK → quizzes.id</td><td>Cascade delete</td></tr>
+<tr><td class="mono">student_roll</td><td>String</td><td>Legacy roll, indexed</td></tr>
+<tr><td class="mono">start_time / end_time</td><td>DateTime</td><td></td></tr>
+<tr><td class="mono">status</td><td>AttemptStatus</td><td>in_progress / submitted / auto_submitted</td></tr>
+<tr><td class="mono">latitude / longitude</td><td>Decimal(10,7)?</td><td>Captured at attempt start for geofencing</td></tr>
+<tr><td class="mono">auto_submitted</td><td>Boolean</td><td>True if the system force-submitted (time up, violation limit, etc.)</td></tr>
+<tr><td class="mono">auto_submit_reason</td><td>String?</td><td></td></tr>
+<tr><td class="mono">question_order</td><td>Text?</td><td>Serialized per-student randomized question order (so a submitted attempt can always be re-rendered in the order the student actually saw)</td></tr>
+<tr><td class="mono">created_at / updated_at</td><td>DateTime</td><td></td></tr>
+</table>
+<p class="small">Unique on <span class="mono">(quiz_id, student_roll)</span> — one attempt per student per quiz. Relations: <span class="mono">answers</span>, <span class="mono">antiCheatEvents</span>, <span class="mono">geofenceLogs</span> — all cascade-deleted with the attempt.</p>
+</div>
+
+<div class="table-card">
+<h3><span class="mono">student_answers</span><span class="badge badge-app">APP</span></h3>
+<p class="small">Model: <span class="mono">StudentAnswer</span> — one row per question per attempt, shape depends on the question type.</p>
+<table>
+<tr><th>Column</th><th>Type</th><th>Notes</th></tr>
+<tr><td class="mono">id</td><td>Int, PK</td><td></td></tr>
+<tr><td class="mono">attempt_id</td><td>Int, FK → quiz_attempts.id</td><td>Cascade delete</td></tr>
+<tr><td class="mono">question_id</td><td>Int, FK → questions.id</td><td>Cascade delete, indexed</td></tr>
+<tr><td class="mono">selected_option_id</td><td>Int?, FK → question_options.id</td><td>MCQ answers, indexed</td></tr>
+<tr><td class="mono">answer_value</td><td>Float?</td><td>Formula-type numeric answer</td></tr>
+<tr><td class="mono">written_answer</td><td>Text?</td><td>Subjective free-text answer</td></tr>
+<tr><td class="mono">manually_graded</td><td>Boolean</td><td>Default false — flips true once faculty scores a subjective answer</td></tr>
+<tr><td class="mono">is_correct</td><td>Boolean?</td><td>Auto-evaluated for MCQ/formula</td></tr>
+<tr><td class="mono">marks_obtained</td><td>Float</td><td>Default 0 until graded</td></tr>
+<tr><td class="mono">order_index</td><td>Int</td><td></td></tr>
+<tr><td class="mono">is_skipped</td><td>Boolean</td><td>Default false</td></tr>
+<tr><td class="mono">created_at / updated_at</td><td>DateTime</td><td></td></tr>
+</table>
+<p class="small">Unique on <span class="mono">(attempt_id, question_id)</span> — a student answers each question at most once.</p>
+</div>
+
+<div class="table-card">
+<h3><span class="mono">attendance</span><span class="badge badge-app">APP</span></h3>
+<table>
+<tr><th>Column</th><th>Type</th><th>Notes</th></tr>
+<tr><td class="mono">id</td><td>Int, PK</td><td></td></tr>
+<tr><td class="mono">student_roll</td><td>String</td><td>Legacy roll, indexed</td></tr>
+<tr><td class="mono">course_id</td><td>Int, FK → courses.id</td><td>Cascade delete, indexed</td></tr>
+<tr><td class="mono">quiz_id</td><td>Int, FK → quizzes.id</td><td>Cascade delete</td></tr>
+<tr><td class="mono">date</td><td>Date</td><td>Indexed</td></tr>
+<tr><td class="mono">status</td><td>AttendanceStatus</td><td>present / absent, indexed</td></tr>
+<tr><td class="mono">created_at / updated_at</td><td>DateTime</td><td></td></tr>
+</table>
+<p class="small">Unique on <span class="mono">(student_roll, quiz_id)</span> — attendance is derived from quiz participation, one record per student per quiz.</p>
+</div>
+
+<div class="table-card">
+<h3><span class="mono">results</span><span class="badge badge-app">APP</span></h3>
+<table>
+<tr><th>Column</th><th>Type</th><th>Notes</th></tr>
+<tr><td class="mono">id</td><td>Int, PK</td><td></td></tr>
+<tr><td class="mono">quiz_id</td><td>Int, FK → quizzes.id</td><td>Cascade delete</td></tr>
+<tr><td class="mono">student_roll</td><td>String</td><td>Legacy roll, indexed</td></tr>
+<tr><td class="mono">marks_obtained</td><td>Float</td><td>Default 0</td></tr>
+<tr><td class="mono">percentage</td><td>Float</td><td>Default 0</td></tr>
+<tr><td class="mono">status</td><td>ResultStatus</td><td>pending → declared → published, indexed</td></tr>
+<tr><td class="mono">declared_at / published_at</td><td>DateTime?</td><td></td></tr>
+<tr><td class="mono">created_at / updated_at</td><td>DateTime</td><td></td></tr>
+</table>
+<p class="small">Unique on <span class="mono">(quiz_id, student_roll)</span>.</p>
+</div>
+
+<div class="table-card">
+<h3><span class="mono">anti_cheat_events</span><span class="badge badge-app">APP</span></h3>
+<p class="small">Model: <span class="mono">AntiCheatEvent</span> — logs suspicious behavior during a live attempt (tab switches, overlay apps detected, app backgrounded).</p>
+<table>
+<tr><th>Column</th><th>Type</th><th>Notes</th></tr>
+<tr><td class="mono">id</td><td>Int, PK</td><td></td></tr>
+<tr><td class="mono">attempt_id</td><td>Int, FK → quiz_attempts.id</td><td>Cascade delete, indexed</td></tr>
+<tr><td class="mono">event_type</td><td>AntiCheatEventType</td><td>screen_switch / overlay_detected / background</td></tr>
+<tr><td class="mono">event_time</td><td>DateTime</td><td>Default now()</td></tr>
+<tr><td class="mono">action_taken</td><td>String?</td><td>e.g. "warned", "auto-submitted"</td></tr>
+</table>
+</div>
+
+<div class="table-card">
+<h3><span class="mono">geofence_logs</span><span class="badge badge-app">APP</span></h3>
+<p class="small">Model: <span class="mono">GeofenceLog</span> — every location check performed during an attempt, against the quiz's assigned building.</p>
+<table>
+<tr><th>Column</th><th>Type</th><th>Notes</th></tr>
+<tr><td class="mono">id</td><td>Int, PK</td><td></td></tr>
+<tr><td class="mono">attempt_id</td><td>Int?, FK → quiz_attempts.id</td><td>Cascade delete, indexed, nullable (a check can happen before an attempt row exists)</td></tr>
+<tr><td class="mono">quiz_id</td><td>Int</td><td>Indexed</td></tr>
+<tr><td class="mono">student_roll</td><td>String</td><td>Legacy roll, indexed</td></tr>
+<tr><td class="mono">latitude / longitude</td><td>Decimal(10,7)</td><td>Student's reported position</td></tr>
+<tr><td class="mono">distance_meters</td><td>Float</td><td>Distance from the building's center point</td></tr>
+<tr><td class="mono">is_within_range</td><td>Boolean</td><td>Result of comparing distance to <span class="mono">buildings.radius_meters</span></td></tr>
+<tr><td class="mono">checked_at</td><td>DateTime</td><td>Default now()</td></tr>
+</table>
+</div>
+</div>
+
+<!-- ============================= 8. WORKFLOWS ============================= -->
+<div class="section">
+<h2>8. End-to-End Workflows</h2>
+
+<h3>8.1 Login</h3>
+<div class="flow">
+  <div class="box">User enters roll / email / mobile</div>
+  <div class="arrow">&#8594;</div>
+  <div class="box">isr_login_tbl<br><span class="small">match on any identifier, scoped by user_type</span></div>
+  <div class="arrow">&#8594;</div>
+  <div class="box">bcrypt.compare()<br><span class="small">against user_password</span></div>
+  <div class="arrow">&#8594;</div>
+  <div class="box">JWT session<br><span class="small">roll carried as the identity</span></div>
+</div>
+<p>Admins are the one exception — they authenticate purely against the app-owned <span class="mono">admins</span> table, never touching <span class="mono">isr_login_tbl</span>.</p>
+
+<h3>8.2 Section membership sync</h3>
+<div class="flow">
+  <div class="box">Section linked to Course(s)<br><span class="small">via section_courses</span></div>
+  <div class="arrow">&#8594;</div>
+  <div class="box">syncSection()<br><span class="small">reads isr_reg_&lt;batch&gt;_tbl + isr_sub_available_tbl</span></div>
+  <div class="arrow">&#8594;</div>
+  <div class="box">section_students /<br>section_faculty reconciled</div>
+  <div class="arrow">&#8594;</div>
+  <div class="box">isr_stu_main_tbl.section<br>rewritten (mirror column)</div>
+</div>
+
+<h3>8.3 Quiz lifecycle</h3>
+<div class="flow">
+  <div class="box">Faculty creates Quiz<br><span class="small">picks course, section(s), building</span></div>
+  <div class="arrow">&#8594;</div>
+  <div class="box">Questions added<br><span class="small">mcq / formula / subjective</span></div>
+  <div class="arrow">&#8594;</div>
+  <div class="box">Students allotted<br><span class="small">quiz_allotments</span></div>
+  <div class="arrow">&#8594;</div>
+  <div class="box">Faculty starts quiz<br><span class="small">status → live</span></div>
+</div>
+<div class="flow">
+  <div class="box">Student starts attempt<br><span class="small">quiz_attempts row created, GPS captured</span></div>
+  <div class="arrow">&#8594;</div>
+  <div class="box">Geofence checked<br><span class="small">geofence_logs</span></div>
+  <div class="arrow">&#8594;</div>
+  <div class="box">Answers saved live<br><span class="small">student_answers, upserted per question</span></div>
+  <div class="arrow">&#8594;</div>
+  <div class="box">Submit / auto-submit<br><span class="small">attempt.status updated</span></div>
+</div>
+<div class="flow">
+  <div class="box">Faculty grades subjective answers<br><span class="small">marks_obtained, manually_graded=true</span></div>
+  <div class="arrow">&#8594;</div>
+  <div class="box">Result computed<br><span class="small">results row, status=declared</span></div>
+  <div class="arrow">&#8594;</div>
+  <div class="box">Faculty publishes<br><span class="small">status=published, published_at set</span></div>
+  <div class="arrow">&#8594;</div>
+  <div class="box">Student sees result</div>
+</div>
+<p>Attendance (<span class="mono">attendance</span> table) is derived alongside the attempt/allotment lifecycle: an allotted student who never attempts is <code>absent</code>; one who does is <code>present</code>, unless later flagged <span class="mono">is_proxy</span> on their allotment, which forces them back to absent.</p>
+
+<h3>8.4 Anti-cheat during a live attempt</h3>
+<div class="flow">
+  <div class="box">Client detects violation<br><span class="small">tab switch / overlay / backgrounded</span></div>
+  <div class="arrow">&#8594;</div>
+  <div class="box">anti_cheat_events row logged</div>
+  <div class="arrow">&#8594;</div>
+  <div class="box">Policy check<br><span class="small">allow_skip_switch, violation count</span></div>
+  <div class="arrow">&#8594;</div>
+  <div class="box">Optional auto-submit<br><span class="small">attempt.auto_submitted=true</span></div>
+</div>
+
+<h3>8.5 Faculty ⇄ Course ⇄ Section mapping (legacy-grounded)</h3>
+<p>The Create/Edit Quiz section picker deliberately does <em>not</em> read the app's own <span class="mono">section_faculty</span>/<span class="mono">section_students</span> tables — per an explicit product decision, quiz creation's course → section → student chain must trace back to the real <span class="mono">isr_*</span> tables live, on every call:</p>
+<div class="flow">
+  <div class="box">isr_sub_available_tbl<br><span class="small">facRoll + subCode + subList → section name</span></div>
+  <div class="arrow">&#8594;</div>
+  <div class="box">isr_reg_&lt;batch&gt;_tbl<br><span class="small">confirms real registration</span></div>
+  <div class="arrow">&#8594;</div>
+  <div class="box">isr_stu_main_tbl<br><span class="small">resolves major → roll</span></div>
+  <div class="arrow">&#8594;</div>
+  <div class="box">Candidate student list<br><span class="small">for allotment</span></div>
+</div>
+<p class="small">Master Data &gt; Sections and Manage Members still use the app's own <span class="mono">Section</span> tables — only the quiz-creation candidate list was changed to read live from the legacy tables.</p>
+</div>
+
+<!-- ============================= 9. DESIGN DECISIONS ============================= -->
+<div class="section">
+<h2>9. Key Design Decisions &amp; Gotchas</h2>
+<ul>
+  <li><strong>No foreign keys across the app/legacy boundary.</strong> Every <span class="mono">*_roll</span> column (student_roll, faculty_roll) is a bare string, joined in application code. Protects the app from breaking when the university re-imports or restructures its own tables.</li>
+  <li><strong>Legacy write surface is narrow and explicit.</strong> The app only writes to <span class="mono">isr_login_tbl</span>, <span class="mono">isr_faculty_tbl</span>, <span class="mono">isr_stu_data_tbl</span>, <span class="mono">isr_stu_main_tbl</span>, and <span class="mono">isr_sub_available_tbl</span> — and only through admin-panel CRUD (create/update/delete faculty &amp; students, faculty-course mapping, login activation). Everything else (<span class="mono">isr_curriculum_tbl</span>, <span class="mono">isr_reg_&lt;batch&gt;_tbl</span>) is strictly read-only from this app.</li>
+  <li><strong>Semester cycles (<span class="mono">sub_list</span>).</strong> Nearly every legacy read is scoped to a "current" semester-cycle code (<code>c1</code>, <code>C2</code>, ...) resolved from <span class="mono">semester_config</span>. Academic sessions snapshot this value at creation time so historical quizzes stay tied to the cycle they were actually run under.</li>
+  <li><strong>Dynamic table access is allow-listed.</strong> <span class="mono">batch_table_registry</span> exists solely to prevent building a raw SQL table name from unvalidated input — every <span class="mono">isr_reg_&lt;batch&gt;_tbl</span> query first resolves the batch through this registry and validates the name against a strict pattern.</li>
+  <li><strong>App-added columns inside legacy tables.</strong> <span class="mono">isr_stu_main_tbl.section</span> and <span class="mono">isr_sub_available_tbl.section</span> are not part of the real university export — they're denormalized conveniences the app maintains and rebuilds after every legacy re-import.</li>
+  <li><strong><span class="mono">branch</span> vs. <span class="mono">major</span> mismatch.</strong> <span class="mono">isr_sub_available_tbl.branch</span> uses a different code space than <span class="mono">isr_stu_main_tbl.major</span> (e.g. <code>DCE</code> vs. <code>CE</code>) — always resolved through <span class="mono">resolveMajorFromBranch()</span>, never compared directly.</li>
+  <li><strong>Soft delete on quizzes.</strong> <span class="mono">quizzes.deleted_at</span> means a quiz is hidden, not physically removed — its questions, attempts, results, and attendance history stay intact.</li>
+  <li><strong>Proxy flag forces absence.</strong> <span class="mono">quiz_allotments.is_proxy</span> always overrides <span class="mono">status</span> to <code>absent</code> while set, regardless of whether an attempt exists — un-flagging restores the student's real attendance.</li>
+  <li><strong>Manual overrides always win in section sync.</strong> <span class="mono">manual_added</span>/<span class="mono">manual_removed</span> rows are never touched by the auto-sync reconciliation loop — this is what makes re-running sync safe at any time.</li>
+</ul>
+</div>
+
+<!-- ============================= 10. MIGRATIONS ============================= -->
+<div class="section">
+<h2>10. Migration History</h2>
+<p>Schema evolution, in order, as tracked under <span class="mono">prisma/migrations/</span>:</p>
+<table>
+<tr><th>Migration</th><th>What it did</th></tr>
+<tr><td class="mono">20260805044028_init</td><td>Initial schema — core app tables + first pass at the isr_* mirror tables</td></tr>
+<tr><td class="mono">20260807120000_legacy_curriculum_and_profile_fields</td><td>Added <span class="mono">isr_curriculum_tbl</span> and extra profile columns</td></tr>
+<tr><td class="mono">20260807130000_subjective_questions</td><td>Added subjective question type support (<span class="mono">reference_answer</span>, <span class="mono">written_answer</span>, <span class="mono">manually_graded</span>)</td></tr>
+<tr><td class="mono">20260808120000_section_hub_redesign</td><td>Introduced the Section system (sections, section_courses, section_students, section_faculty) replacing an earlier model</td></tr>
+<tr><td class="mono">20260808140000_quiz_allotment_proxy_flag</td><td>Added <span class="mono">quiz_allotments.is_proxy</span></td></tr>
+<tr><td class="mono">20260808150000_quiz_location_and_soft_delete_fields</td><td>Added <span class="mono">quizzes.deleted_at</span> and location/geofencing fields</td></tr>
+<tr><td class="mono">20260809100000_academic_session_sub_list_code</td><td>Added <span class="mono">academic_sessions.sub_list_code</span> snapshot</td></tr>
+<tr><td class="mono">20260810080000_legacy_full_schema_parity</td><td>Brought <span class="mono">isr_faculty_tbl</span> / <span class="mono">isr_stu_data_tbl</span> / <span class="mono">isr_stu_main_tbl</span> / <span class="mono">isr_sub_available_tbl</span> up to full column parity with the real university export</td></tr>
+<tr><td class="mono">20260810090000_legacy_reg_table_full_parity</td><td>Confirmed/aligned <span class="mono">isr_reg_&lt;batch&gt;_tbl</span> real columns (<span class="mono">reg_sr</span> PK, <span class="mono">stu_roll</span>, <span class="mono">sub_code</span>, <span class="mono">sub_list</span>)</td></tr>
+<tr><td class="mono">20260810100000_sub_available_nullable_fields</td><td>Corrected nullability on <span class="mono">isr_sub_available_tbl</span> columns to match the real table</td></tr>
+<tr><td class="mono">20260811150000_add_section_columns_to_isr_tables</td><td>Added the app-owned <span class="mono">section</span> mirror columns to <span class="mono">isr_stu_main_tbl</span> and <span class="mono">isr_sub_available_tbl</span></td></tr>
+</table>
+<p class="small">Migration provider: MySQL, applied via <span class="mono">prisma migrate</span>. Client generated with <span class="mono">prisma-client-js</span>.</p>
+</div>
+
+</body>
+</html>

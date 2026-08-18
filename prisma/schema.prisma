@@ -603,6 +603,10 @@ model QuizAllotment {
   // (someone else appears to be taking it). A proxy always counts as absent
   // (status flips to "absent"); un-flagging restores their real attendance.
   isProxy     Boolean         @default(false) @map("is_proxy")
+  // Set when a faculty/admin exempts this student from the quiz's GPS/
+  // location requirement. When true, start-attempt and geofence-check skip
+  // the geofence check for this student regardless of Quiz.requireLocation.
+  bypassLocation Boolean      @default(false) @map("bypass_location")
   createdAt   DateTime        @default(now()) @map("created_at")
   updatedAt   DateTime        @updatedAt @map("updated_at")
 

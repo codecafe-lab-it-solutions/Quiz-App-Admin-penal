@@ -88,6 +88,7 @@ interface AttemptEntry {
   student: { roll: string; name: string };
   allotmentStatus: "allotted" | "attempted" | "absent";
   isProxy: boolean;
+  bypassLocation: boolean;
   attempt: {
     status: "in_progress" | "submitted" | "auto_submitted";
     startTime: string;
@@ -598,6 +599,32 @@ export function QuizManagement({
     }
   };
 
+  const handleToggleLocationBypass = async (
+    roll: string,
+    currentlyBypassed: boolean,
+  ) => {
+    try {
+      if (currentlyBypassed) {
+        await apiClient.delete(
+          `/api/faculty/quiz/${quizId}/allotments/${encodeURIComponent(roll)}/location-bypass`,
+        );
+        toast.success(`${roll} must now be at the required location`);
+      } else {
+        await apiClient.post(
+          `/api/faculty/quiz/${quizId}/allotments/${encodeURIComponent(roll)}/location-bypass`,
+        );
+        toast.success(`${roll} can now start from anywhere`);
+      }
+      mutateAttempts();
+    } catch (error) {
+      toast.error(
+        error instanceof ApiClientError
+          ? error.message
+          : "Failed to update location bypass",
+      );
+    }
+  };
+
   const handleImportFile = async (file: File) => {
     const formData = new FormData();
     formData.append("file", file);
@@ -783,6 +810,7 @@ export function QuizManagement({
         <LiveMonitoringCard
           data={attemptsData}
           onToggleProxy={handleToggleProxy}
+          onToggleLocationBypass={handleToggleLocationBypass}
         />
       )}
 
@@ -1223,9 +1251,11 @@ function attemptStatusVariant(
 function LiveMonitoringCard({
   data,
   onToggleProxy,
+  onToggleLocationBypass,
 }: {
   data: AttemptsResponse | undefined;
   onToggleProxy: (roll: string, currentlyProxy: boolean) => void;
+  onToggleLocationBypass: (roll: string, currentlyBypassed: boolean) => void;
 }) {
   const [page, setPage] = useState(1);
   const entries = [
@@ -1275,16 +1305,35 @@ function LiveMonitoringCard({
                   {entry.isProxy && (
                     <Badge variant="destructive">Proxy (absent)</Badge>
                   )}
+                  {entry.bypassLocation && (
+                    <Badge variant="outline">Location bypassed</Badge>
+                  )}
                 </div>
-                <Button
-                  size="sm"
-                  variant={entry.isProxy ? "outline" : "destructive"}
-                  onClick={() =>
-                    onToggleProxy(entry.student.roll, entry.isProxy)
-                  }
-                >
-                  {entry.isProxy ? "Remove Proxy" : "Mark Proxy"}
-                </Button>
+                <div className="flex items-center gap-2">
+                  <Button
+                    size="sm"
+                    variant={entry.bypassLocation ? "outline" : "secondary"}
+                    onClick={() =>
+                      onToggleLocationBypass(
+                        entry.student.roll,
+                        entry.bypassLocation,
+                      )
+                    }
+                  >
+                    {entry.bypassLocation
+                      ? "Require Location"
+                      : "Bypass Location"}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant={entry.isProxy ? "outline" : "destructive"}
+                    onClick={() =>
+                      onToggleProxy(entry.student.roll, entry.isProxy)
+                    }
+                  >
+                    {entry.isProxy ? "Remove Proxy" : "Mark Proxy"}
+                  </Button>
+                </div>
               </div>
             ))}
           </div>

@@ -56,6 +56,7 @@ export async function GET(
         },
         allotmentStatus: allotment.status,
         isProxy: allotment.isProxy,
+        bypassLocation: allotment.bypassLocation,
         attempt: attempt ?? null,
       };
       if (attempt) attempted.push(entry);
