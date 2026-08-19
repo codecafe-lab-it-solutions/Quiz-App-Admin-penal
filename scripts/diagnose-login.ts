@@ -1,5 +1,5 @@
 import { PrismaClient } from "@prisma/client";
-import bcrypt from "bcryptjs";
+import { verifyLegacyPassword } from "@/lib/legacy-db";
 
 // Run this from wherever the app's own DATABASE_URL is loaded (e.g. the
 // deployed "current" release dir) to answer, definitively: which DB is this
@@ -32,10 +32,10 @@ async function main() {
       console.log(`\n${roll}: NOT FOUND in this database`);
       continue;
     }
-    const matchesOwnRoll = await bcrypt.compare(roll, row.userPassword);
+    const matchesOwnRoll = await verifyLegacyPassword(roll, row.userPassword);
     console.log(`\n${roll} (${row.userType}, status=${row.status}):`);
     console.log(`  user_password: ${row.userPassword}`);
-    console.log(`  bcrypt.compare("${roll}", user_password) => ${matchesOwnRoll ? "PASS - login would succeed" : "FAIL - login would be rejected"}`);
+    console.log(`  verifyLegacyPassword("${roll}", user_password) => ${matchesOwnRoll ? "PASS - login would succeed" : "FAIL - login would be rejected"}`);
   }
 
   await prisma.$disconnect();

@@ -1,7 +1,7 @@
 import fs from "fs";
 import path from "path";
-import bcrypt from "bcryptjs";
 import type { PrismaClient } from "@prisma/client";
+import { hashLegacyPassword } from "@/lib/legacy-db";
 
 /**
  * Loads the real legacy university data (quizsample_db (2).sql, sitting at
@@ -24,9 +24,10 @@ import type { PrismaClient } from "@prisma/client";
  *    a separate auto-increment column, not the roll) - loaded with
  *    INSERT IGNORE so the import doesn't fail on those.
  *  - Every imported login's password is overwritten with one shared, known
- *    bcrypt hash (see DEMO_PASSWORD below) - the real password hashes are
- *    real production secrets this app has no business holding even in a
- *    sanitized dump, and they wouldn't be loggable-in with anyway.
+ *    MD5 hash matching isr_login_tbl.user_password's real scheme (see
+ *    DEMO_PASSWORD below) - the real password hashes are real production
+ *    secrets this app has no business holding even in a sanitized dump,
+ *    and they wouldn't be loggable-in with anyway.
  */
 
 const DUMP_FILENAME = "quizsample_db (2).sql";
@@ -180,7 +181,9 @@ export async function importRealLegacyData(prisma: PrismaClient): Promise<Import
   // Real password hashes are real production secrets - never carried over.
   // Every imported account gets the same known demo password instead (see
   // module doc), hashed once and reused rather than re-hashed per row.
-  const demoHash = await bcrypt.hash(process.env.SEED_DEMO_PASSWORD ?? "DemoPass123!", 10);
+  // MD5 to match isr_login_tbl.user_password's real scheme (see
+  // hashLegacyPassword) - a bcrypt hash here would never verify.
+  const demoHash = hashLegacyPassword(process.env.SEED_DEMO_PASSWORD ?? "DemoPass123!");
   await prisma.$executeRawUnsafe("UPDATE `isr_login_tbl` SET `user_password` = ?", demoHash);
 
   await prisma.batchTableRegistry.upsert({

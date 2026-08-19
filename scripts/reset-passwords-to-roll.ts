@@ -1,8 +1,9 @@
 import { PrismaClient } from "@prisma/client";
-import bcrypt from "bcryptjs";
+import { hashLegacyPassword } from "@/lib/legacy-db";
 
-// One-time reset: every isr_login_tbl row's password becomes the bcrypt hash
-// of that row's own userRoll. Dry-run by default - prints what it would do
+// One-time reset: every isr_login_tbl row's password becomes the MD5 hash
+// of that row's own userRoll (isr_login_tbl.user_password's real scheme -
+// see hashLegacyPassword). Dry-run by default - prints what it would do
 // and touches nothing. Pass --apply to actually write.
 //
 // Usage:
@@ -12,7 +13,6 @@ import bcrypt from "bcryptjs";
 //   tsx scripts/reset-passwords-to-roll.ts --apply --type=FAC   (faculty only)
 
 const prisma = new PrismaClient();
-const BCRYPT_COST = 10;
 const BATCH_SIZE = 200;
 
 async function main() {
@@ -42,7 +42,7 @@ async function main() {
     const batch = rows.slice(i, i + BATCH_SIZE);
     await Promise.all(
       batch.map(async (r) => {
-        const hash = await bcrypt.hash(r.userRoll, BCRYPT_COST);
+        const hash = hashLegacyPassword(r.userRoll);
         await prisma.isrLoginTbl.update({ where: { userRoll: r.userRoll }, data: { userPassword: hash } });
       })
     );

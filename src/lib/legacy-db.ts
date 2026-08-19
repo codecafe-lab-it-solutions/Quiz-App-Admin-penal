@@ -1,18 +1,23 @@
 import bcrypt from "bcryptjs";
+import crypto from "crypto";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { listBatchRegistry } from "@/lib/config";
 import { ApiError } from "@/lib/api-response";
-import { hashPassword } from "@/lib/auth";
 
 /**
  * Every read (and, per an explicit product decision, the admin-panel writes
  * below) against the legacy university database (isr_* tables) goes through
- * this file. These tables are otherwise owned by the legacy system. Two open
- * items from the integration spec are isolated here so a later fix only
+ * this file. These tables are otherwise owned by the legacy system. One open
+ * item from the integration spec is isolated here so a later fix only
  * touches one place:
- *  - the password hash scheme in isr_login_tbl.user_password (verifyLegacyPassword)
  *  - the column names inside isr_reg_<batch>_tbl (getStudentCourses / getCourseRegistrations)
+ *
+ * isr_login_tbl.user_password uses MD5 (confirmed against the real legacy
+ * system) - see hashLegacyPassword/verifyLegacyPassword. This is a property
+ * of the external portal, not a choice made here - it must never be changed
+ * to a stronger scheme unilaterally, since that would silently break login
+ * against the real legacy system for anyone whose password was last set there.
  */
 
 export type LegacyUserType = "FAC" | "STU";
@@ -104,10 +109,18 @@ export async function findLoginByIdentifier(identifier: string, userType: Legacy
   });
 }
 
-// TODO: hash scheme unconfirmed (bcrypt/MD5/plaintext) - verify against a real
-// isr_login_tbl.user_password value and adjust this single function.
+// isr_login_tbl.user_password is MD5 - confirmed against the real legacy
+// system (an external portal this app doesn't own; see the file header).
+// Both directions - hashLegacyPassword (writes, see createFaculty/
+// createStudent/updateFaculty/updateStudent below) and verifyLegacyPassword
+// (reads, here) - must stay on this exact scheme, or a password set from
+// this app would stop working in the real legacy portal and vice versa.
+export function hashLegacyPassword(plainPassword: string): string {
+  return crypto.createHash("md5").update(plainPassword).digest("hex");
+}
+
 export async function verifyLegacyPassword(plainPassword: string, storedHash: string): Promise<boolean> {
-  return bcrypt.compare(plainPassword, storedHash);
+  return hashLegacyPassword(plainPassword) === storedHash;
 }
 
 // ---------------------------------------------------------------------------
@@ -342,7 +355,7 @@ export async function createFaculty(data: {
   const existingEmail = await prisma.isrLoginTbl.findFirst({ where: { userEmail: data.email } });
   if (existingEmail) throw new ApiError(409, "A user with this email already exists");
 
-  const passwordHash = await hashPassword(data.password);
+  const passwordHash = hashLegacyPassword(data.password);
 
   await prisma.$transaction([
     prisma.isrLoginTbl.create({
@@ -371,7 +384,7 @@ export async function updateFaculty(
       where: { userRoll: roll },
       data: {
         ...(data.email ? { userEmail: data.email } : {}),
-        ...(data.password ? { userPassword: await hashPassword(data.password) } : {}),
+        ...(data.password ? { userPassword: hashLegacyPassword(data.password) } : {}),
       },
     });
   }
@@ -411,7 +424,7 @@ export async function createStudent(data: {
   const existingEmail = await prisma.isrLoginTbl.findFirst({ where: { userEmail: data.email } });
   if (existingEmail) throw new ApiError(409, "A user with this email already exists");
 
-  const passwordHash = await hashPassword(data.password);
+  const passwordHash = hashLegacyPassword(data.password);
 
   await prisma.$transaction([
     prisma.isrLoginTbl.create({
@@ -449,7 +462,7 @@ export async function updateStudent(
       where: { userRoll: roll },
       data: {
         ...(data.email ? { userEmail: data.email } : {}),
-        ...(data.password ? { userPassword: await hashPassword(data.password) } : {}),
+        ...(data.password ? { userPassword: hashLegacyPassword(data.password) } : {}),
       },
     });
   }
