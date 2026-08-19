@@ -34,7 +34,7 @@ interface FacultyDetail {
     branch: string;
     sem: string;
   }[];
-  sections: { id: number; name: string }[];
+  sections: { name: string }[];
 }
 
 const fetcher = (url: string) => apiClient.get<FacultyDetail>(url);
@@ -108,7 +108,7 @@ export default function FacultyDetailPage() {
         <CardHeader>
           <CardTitle>Sections</CardTitle>
           <CardDescription>
-            Section memberships managed in the section hub.
+            Real Major_Semester sections this faculty teaches under, for the current cycle.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -125,7 +125,7 @@ export default function FacultyDetailPage() {
               </TableHeader>
               <TableBody>
                 {data.sections.map((section) => (
-                  <TableRow key={section.id}>
+                  <TableRow key={section.name}>
                     <TableCell>{section.name}</TableCell>
                   </TableRow>
                 ))}

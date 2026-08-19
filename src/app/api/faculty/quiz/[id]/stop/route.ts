@@ -43,7 +43,8 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
             update: { status: "absent" },
             create: {
               studentRoll,
-              courseId: quiz.courseId,
+              courseCode: quiz.courseCode,
+              courseName: quiz.courseName,
               quizId: id,
               date: quiz.startTime,
               status: "absent",

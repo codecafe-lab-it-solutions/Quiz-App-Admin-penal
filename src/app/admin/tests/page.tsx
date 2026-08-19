@@ -18,8 +18,9 @@ interface QuizRow {
   status: "draft" | "scheduled" | "live" | "completed";
   startTime: string;
   facultyRoll: string;
-  course: { name: string; code: string };
-  sections: { section: { id: number; name: string } }[];
+  courseCode: string;
+  courseName: string;
+  sectionNames: string;
   _count: { questions: number; allotments: number };
 }
 
@@ -67,15 +68,12 @@ export default function AdminTestsPage() {
     {
       key: "course",
       header: "Course",
-      render: (r) => `${r.course.name} (${r.course.code})`,
+      render: (r) => `${r.courseName} (${r.courseCode})`,
     },
     {
       key: "sections",
       header: "Sections",
-      render: (r) =>
-        r.sections.length > 0
-          ? r.sections.map((s) => s.section.name).join(", ")
-          : "—",
+      render: (r) => r.sectionNames.split(",").filter(Boolean).join(", ") || "—",
     },
     { key: "facultyRoll", header: "Faculty", render: (r) => r.facultyRoll },
     {

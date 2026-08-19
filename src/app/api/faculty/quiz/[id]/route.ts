@@ -5,6 +5,9 @@ import { getAuthUser, requireRole } from "@/lib/auth";
 import { quizUpdateSchema } from "@/lib/validators/quiz";
 import { idParamSchema } from "@/lib/validators/common";
 import { loadAccessibleQuiz } from "@/lib/quiz-access";
+import { getCourseTitleByCode } from "@/lib/legacy-db";
+import { getCurrentSubList } from "@/lib/config";
+import { getRealSectionsForFacultyCourse } from "@/lib/section-sync";
 
 export async function GET(
   req: NextRequest,
@@ -20,11 +23,6 @@ export async function GET(
     const quiz = await prisma.quiz.findFirst({
       where: { id, deletedAt: null },
       include: {
-        course: { select: { id: true, name: true, code: true } },
-        sections: {
-          include: { section: { select: { id: true, name: true } } },
-        },
-        session: { select: { id: true, name: true } },
         building: true,
         questions: {
           orderBy: { orderIndex: "asc" },
@@ -55,7 +53,7 @@ export async function PATCH(
       throw new ApiError(400, "A completed quiz cannot be edited");
     }
 
-    const { sectionIds, ...rest } = quizUpdateSchema.parse(await req.json());
+    const { sectionNames, courseCode, ...rest } = quizUpdateSchema.parse(await req.json());
 
     // Faculty reassignment is an admin-only action (2026-08-10 MOM) - a
     // faculty member reassigning their own quiz away isn't part of this
@@ -68,23 +66,30 @@ export async function PATCH(
       if (!faculty) throw new ApiError(404, "No faculty found for this roll number");
     }
 
-    const quiz = await prisma.$transaction(async (tx) => {
-      if (sectionIds) {
-        await tx.quizSection.deleteMany({
-          where: { quizId: id, sectionId: { notIn: sectionIds } },
-        });
-        const existing = await tx.quizSection.findMany({
-          where: { quizId: id },
-        });
-        const existingIds = new Set(existing.map((s) => s.sectionId));
-        const toAdd = sectionIds.filter((sid) => !existingIds.has(sid));
-        if (toAdd.length) {
-          await tx.quizSection.createMany({
-            data: toAdd.map((sectionId) => ({ quizId: id, sectionId })),
-          });
-        }
+    const facultyRoll = rest.facultyRoll ?? existing.facultyRoll;
+    const effectiveCourseCode = courseCode ?? existing.courseCode;
+    const subList = await getCurrentSubList();
+
+    let courseName: string | undefined;
+    if (courseCode) {
+      courseName = await getCourseTitleByCode(courseCode, subList);
+    }
+
+    if (sectionNames) {
+      const validSections = await getRealSectionsForFacultyCourse(facultyRoll, effectiveCourseCode, subList);
+      const validNames = new Set(validSections.map((s) => s.name));
+      if (sectionNames.some((name) => !validNames.has(name))) {
+        throw new ApiError(404, "One or more selected sections were not found");
       }
-      return tx.quiz.update({ where: { id }, data: rest });
+    }
+
+    const quiz = await prisma.quiz.update({
+      where: { id },
+      data: {
+        ...rest,
+        ...(courseCode ? { courseCode, courseName } : {}),
+        ...(sectionNames ? { sectionNames: sectionNames.join(",") } : {}),
+      },
     });
 
     return ok(quiz);

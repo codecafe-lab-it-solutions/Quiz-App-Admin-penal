@@ -38,7 +38,7 @@ interface Registration {
   batch?: string;
   major: string | null;
   semNow: string | null;
-  sections: { id: number; name: string }[];
+  sections: { name: string }[];
 }
 
 interface ListResponse {
@@ -47,15 +47,6 @@ interface ListResponse {
   meta: { total: number; page: number; pageSize: number; totalPages: number };
 }
 
-interface CourseOption {
-  id: number;
-  name: string;
-  code: string;
-}
-interface SectionOption {
-  id: number;
-  name: string;
-}
 interface BatchOption {
   batchName: string;
   isActive: boolean;
@@ -73,8 +64,6 @@ interface RealCourseOption {
 }
 
 const fetcher = (url: string) => apiClient.get<ListResponse>(url);
-const courseFetcher = (url: string) => apiClient.get<{ items: CourseOption[] }>(url);
-const sectionFetcher = (url: string) => apiClient.get<{ items: SectionOption[] }>(url);
 const semesterConfigFetcher = (url: string) =>
   apiClient.get<{ batchRegistry: BatchOption[] }>(url);
 const studentSearchFetcher = (url: string) =>
@@ -93,13 +82,18 @@ export default function StudentMappingPage() {
   const [roll, setRoll] = useState("");
   const [courseCode, setCourseCode] = useState(ALL);
   const [batch, setBatch] = useState(ALL);
-  const [sectionId, setSectionId] = useState(ALL);
+  const [sectionName, setSectionName] = useState("");
   const [page, setPage] = useState(1);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
-  const { data: courseData } = useSWR("/api/admin/courses?pageSize=200", courseFetcher);
-  const { data: sectionData } = useSWR("/api/admin/sections?pageSize=200", sectionFetcher);
+  // Real course catalog for the browse filter - same source the Add Mapping
+  // dialog's course picker uses, fetched unconditionally here (not gated on
+  // dialogOpen) since the filter panel is always visible.
+  const { data: browseCourseData } = useSWR(
+    "/api/admin/mapping/faculty-course-section/courses?pageSize=200",
+    realCourseFetcher,
+  );
   const { data: semesterConfig } = useSWR("/api/admin/config/semester", semesterConfigFetcher);
   const batches = (semesterConfig?.batchRegistry ?? []).filter((b) => b.isActive);
 
@@ -115,7 +109,7 @@ export default function StudentMappingPage() {
   } else {
     if (courseCode !== ALL) params.set("courseCode", courseCode);
     if (batch !== ALL) params.set("batch", batch);
-    if (sectionId !== ALL) params.set("sectionId", sectionId);
+    if (sectionName.trim()) params.set("sectionName", sectionName.trim());
   }
   const query = params.toString();
 
@@ -181,7 +175,7 @@ export default function StudentMappingPage() {
       // Show the result: switch the search to the roll just registered.
       setCourseCode(ALL);
       setBatch(ALL);
-      setSectionId(ALL);
+      setSectionName("");
       setPage(1);
       setRoll(values.roll);
       mutate();
@@ -292,7 +286,7 @@ export default function StudentMappingPage() {
                   if (e.target.value) {
                     setCourseCode(ALL);
                     setBatch(ALL);
-                    setSectionId(ALL);
+                    setSectionName("");
                   }
                 }}
                 placeholder="e.g. 25PE3001"
@@ -309,7 +303,10 @@ export default function StudentMappingPage() {
                 }}
                 options={[
                   { value: ALL, label: "Any course" },
-                  ...(courseData?.items ?? []).map((c) => ({ value: c.code, label: `${c.name} (${c.code})` })),
+                  ...(browseCourseData?.items ?? []).map((c) => ({
+                    value: c.code,
+                    label: c.title === c.code ? c.code : `${c.code} - ${c.title}`,
+                  })),
                 ]}
                 placeholder="Any course"
                 searchPlaceholder="Search courses..."
@@ -333,20 +330,16 @@ export default function StudentMappingPage() {
               />
             </div>
             <div className="space-y-1.5">
-              <Label>Section</Label>
-              <SearchableSelect
-                value={sectionId}
-                onValueChange={(v) => {
-                  setSectionId(v);
+              <Label htmlFor="sectionName">Section</Label>
+              <Input
+                id="sectionName"
+                value={sectionName}
+                onChange={(e) => {
+                  setSectionName(e.target.value);
                   setPage(1);
-                  if (v !== ALL) setRoll("");
+                  if (e.target.value) setRoll("");
                 }}
-                options={[
-                  { value: ALL, label: "Any section" },
-                  ...(sectionData?.items ?? []).map((s) => ({ value: String(s.id), label: s.name })),
-                ]}
-                placeholder="Any section"
-                searchPlaceholder="Search sections..."
+                placeholder="e.g. PE_3"
               />
             </div>
           </div>

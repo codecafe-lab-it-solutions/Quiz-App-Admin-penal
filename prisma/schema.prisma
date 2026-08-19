@@ -57,18 +57,6 @@ enum ResultStatus {
   published
 }
 
-enum AntiCheatEventType {
-  screen_switch
-  overlay_detected
-  background
-}
-
-enum SectionMemberSource {
-  auto
-  manual_added
-  manual_removed
-}
-
 // ---------------------------------------------------------------------------
 // Identity / accounts
 // ---------------------------------------------------------------------------
@@ -84,116 +72,6 @@ model Admin {
   updatedAt      DateTime  @updatedAt @map("updated_at")
 
   @@map("admins")
-}
-
-model Department {
-  id        Int      @id @default(autoincrement())
-  name      String   @unique
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
-
-  courses   Course[]
-
-  @@map("departments")
-}
-
-model Course {
-  id           Int      @id @default(autoincrement())
-  name         String
-  code         String   @unique
-  departmentId Int      @map("department_id")
-  credits      Int      @default(0)
-  createdAt    DateTime @default(now()) @map("created_at")
-  updatedAt    DateTime @updatedAt @map("updated_at")
-
-  department Department @relation(fields: [departmentId], references: [id])
-  sectionCourses SectionCourse[]
-
-  quizzes     Quiz[]
-  attendance  Attendance[]
-
-  @@index([departmentId])
-  @@map("courses")
-}
-
-model AcademicSession {
-  id        Int      @id @default(autoincrement())
-  name      String
-  startDate DateTime @map("start_date")
-  endDate   DateTime @map("end_date")
-  // Snapshot of SemesterConfig.currentSubList at creation time - ties this
-  // session to the semester-cycle it belongs to.
-  subListCode String?  @map("sub_list_code")
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
-
-  quizzes Quiz[]
-
-  @@map("academic_sessions")
-}
-
-model Section {
-  id        Int      @id @default(autoincrement())
-  name      String
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
-
-  courses  SectionCourse[]
-  students SectionStudent[]
-  faculty  SectionFaculty[]
-  quizzes  QuizSection[]
-
-  @@map("sections")
-}
-
-// Many-to-many join so a merged section can span multiple courses/batches
-// (e.g. one combined section covering CS + IT + Mechanical).
-model SectionCourse {
-  id        Int      @id @default(autoincrement())
-  sectionId Int      @map("section_id")
-  courseId  Int      @map("course_id")
-  createdAt DateTime @default(now()) @map("created_at")
-
-  section Section @relation(fields: [sectionId], references: [id], onDelete: Cascade)
-  course  Course  @relation(fields: [courseId], references: [id], onDelete: Cascade)
-
-  @@unique([sectionId, courseId])
-  @@index([courseId])
-  @@map("section_courses")
-}
-
-// Section membership for students, backed by legacy roll numbers (no Prisma
-// FK — see the legacy-integration note further down). `source` distinguishes
-// rows auto-derived from the linked courses' legacy rosters from rows a human
-// has explicitly added or removed, so re-syncing never clobbers an override.
-model SectionStudent {
-  id          Int                 @id @default(autoincrement())
-  sectionId   Int                 @map("section_id")
-  studentRoll String              @map("student_roll")
-  source      SectionMemberSource @default(auto)
-  createdAt   DateTime            @default(now()) @map("created_at")
-
-  section Section @relation(fields: [sectionId], references: [id], onDelete: Cascade)
-
-  @@unique([sectionId, studentRoll])
-  @@index([studentRoll])
-  @@map("section_students")
-}
-
-// Mirrors SectionStudent for faculty membership (legacy isr_faculty_tbl.roll,
-// not a Prisma FK), auto-synced from isr_sub_available_tbl per linked course.
-model SectionFaculty {
-  id          Int                 @id @default(autoincrement())
-  sectionId   Int                 @map("section_id")
-  facultyRoll String              @map("faculty_roll")
-  source      SectionMemberSource @default(auto)
-  createdAt   DateTime            @default(now()) @map("created_at")
-
-  section Section @relation(fields: [sectionId], references: [id], onDelete: Cascade)
-
-  @@unique([sectionId, facultyRoll])
-  @@index([facultyRoll])
-  @@map("section_faculty")
 }
 
 model Building {
@@ -493,8 +371,16 @@ model BatchTableRegistry {
 model Quiz {
   id                Int        @id @default(autoincrement())
   title             String
-  courseId          Int        @map("course_id")
-  sessionId         Int?       @map("session_id")
+  // Legacy isr_curriculum_tbl.bsms_code / isr_sub_available_tbl.sub_code —
+  // not a Prisma FK. courseName is a snapshot of the title at creation time
+  // (isr_curriculum_tbl is sparsely populated, so re-resolving live on every
+  // read can go blank for a code that resolved fine when the quiz was made).
+  courseCode        String     @map("course_code")
+  courseName        String     @map("course_name")
+  // Comma-joined legacy Major_Semester section names (isr_sub_available_tbl.section)
+  // this quiz was offered to, e.g. "PE_3,PE_5" — not a join table, since which
+  // sections exist is always resolved live from the legacy table, never stored.
+  sectionNames      String     @db.Text @map("section_names")
   facultyRoll       String     @map("faculty_roll") // legacy isr_faculty_tbl.roll — not a Prisma FK
   buildingId        Int        @map("building_id")
   startTime         DateTime   @map("start_time")
@@ -512,39 +398,19 @@ model Quiz {
   createdAt         DateTime   @default(now()) @map("created_at")
   updatedAt         DateTime   @updatedAt @map("updated_at")
 
-  course   Course           @relation(fields: [courseId], references: [id])
-  session  AcademicSession? @relation(fields: [sessionId], references: [id])
-  building Building         @relation(fields: [buildingId], references: [id])
+  building Building @relation(fields: [buildingId], references: [id])
 
-  sections    QuizSection[]
   questions   Question[]
   allotments  QuizAllotment[]
   attempts    QuizAttempt[]
   attendance  Attendance[]
   results     Result[]
 
-  @@index([courseId])
-  @@index([sessionId])
+  @@index([courseCode])
   @@index([facultyRoll])
   @@index([buildingId])
   @@index([status])
   @@map("quizzes")
-}
-
-// Many-to-many so a quiz can be given to more than one merged/combined
-// section at once (section selection is mandatory at quiz-creation time).
-model QuizSection {
-  id        Int      @id @default(autoincrement())
-  quizId    Int      @map("quiz_id")
-  sectionId Int      @map("section_id")
-  createdAt DateTime @default(now()) @map("created_at")
-
-  quiz    Quiz    @relation(fields: [quizId], references: [id], onDelete: Cascade)
-  section Section @relation(fields: [sectionId], references: [id], onDelete: Cascade)
-
-  @@unique([quizId, sectionId])
-  @@index([sectionId])
-  @@map("quiz_sections")
 }
 
 model Question {
@@ -636,7 +502,6 @@ model QuizAttempt {
   quiz Quiz @relation(fields: [quizId], references: [id], onDelete: Cascade)
 
   answers          StudentAnswer[]
-  antiCheatEvents  AntiCheatEvent[]
   geofenceLogs     GeofenceLog[]
 
   @@unique([quizId, studentRoll])
@@ -675,18 +540,18 @@ model StudentAnswer {
 model Attendance {
   id          Int               @id @default(autoincrement())
   studentRoll String            @map("student_roll") // legacy isr_stu_data_tbl.stu_roll — not a Prisma FK
-  courseId    Int               @map("course_id")
+  courseCode  String            @map("course_code") // legacy isr_curriculum_tbl.bsms_code — not a Prisma FK
+  courseName  String            @map("course_name")
   quizId      Int               @map("quiz_id")
   date        DateTime          @db.Date
   status      AttendanceStatus
   createdAt   DateTime          @default(now()) @map("created_at")
   updatedAt   DateTime          @updatedAt @map("updated_at")
 
-  course Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
-  quiz   Quiz   @relation(fields: [quizId], references: [id], onDelete: Cascade)
+  quiz Quiz @relation(fields: [quizId], references: [id], onDelete: Cascade)
 
   @@unique([studentRoll, quizId])
-  @@index([courseId])
+  @@index([courseCode])
   @@index([studentRoll])
   @@index([date])
   @@index([status])
@@ -711,19 +576,6 @@ model Result {
   @@index([studentRoll])
   @@index([status])
   @@map("results")
-}
-
-model AntiCheatEvent {
-  id          Int                @id @default(autoincrement())
-  attemptId   Int                @map("attempt_id")
-  eventType   AntiCheatEventType @map("event_type")
-  eventTime   DateTime           @default(now()) @map("event_time")
-  actionTaken String?            @map("action_taken")
-
-  attempt QuizAttempt @relation(fields: [attemptId], references: [id], onDelete: Cascade)
-
-  @@index([attemptId])
-  @@map("anti_cheat_events")
 }
 
 model GeofenceLog {

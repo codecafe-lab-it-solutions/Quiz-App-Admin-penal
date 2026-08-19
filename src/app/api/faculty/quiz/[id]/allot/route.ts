@@ -15,16 +15,12 @@ import { getCurrentSubList } from "@/lib/config";
 // picks students and when they save - silently dropping real registrants the
 // picker had just shown them (confirmed: 2 of 58 real PE312 registrants were
 // dropped here while section_students hadn't caught up).
-async function getSectionDerivedRolls(quizId: number, facultyRoll: string, courseId: number): Promise<Set<string>> {
-  const [course, quizSections] = await Promise.all([
-    prisma.course.findUnique({ where: { id: courseId }, select: { code: true } }),
-    prisma.quizSection.findMany({ where: { quizId }, include: { section: { select: { name: true } } } }),
-  ]);
-  if (!course || quizSections.length === 0) return new Set();
+async function getSectionDerivedRolls(courseCode: string, facultyRoll: string, sectionNames: string): Promise<Set<string>> {
+  const names = sectionNames.split(",").filter(Boolean);
+  if (names.length === 0) return new Set();
 
   const subList = await getCurrentSubList();
-  const sectionNames = quizSections.map((qs) => qs.section.name);
-  const students = await getStudentsForRealSections(facultyRoll, course.code, subList, sectionNames);
+  const students = await getStudentsForRealSections(facultyRoll, courseCode, subList, names);
   return new Set(students.map((s) => s.roll));
 }
 
@@ -48,7 +44,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
 
     const body = allotSchema.parse(await req.json());
 
-    const eligibleRolls = await getSectionDerivedRolls(quizId, quiz.facultyRoll, quiz.courseId);
+    const eligibleRolls = await getSectionDerivedRolls(quiz.courseCode, quiz.facultyRoll, quiz.sectionNames);
     if (eligibleRolls.size === 0) {
       throw new ApiError(400, "No eligible students for this course/section - check the quiz's linked sections have real registrants");
     }

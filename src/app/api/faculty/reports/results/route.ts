@@ -5,6 +5,7 @@ import { getAuthUser, requireRole } from "@/lib/auth";
 import { resultsReportQuerySchema } from "@/lib/validators/reports";
 import { paginationMeta } from "@/lib/validators/common";
 import { getStudentNamesByRolls } from "@/lib/legacy-db";
+import { sectionNameWhere } from "@/lib/section-sync";
 import { buildWorkbookBuffer, excelResponseHeaders } from "@/lib/excel";
 import { buildPdfTableBuffer, pdfResponseHeaders } from "@/lib/pdf";
 
@@ -20,10 +21,8 @@ export async function GET(req: NextRequest) {
     const where = {
       quiz: {
         facultyRoll: String(user.sub),
-        ...(query.courseId ? { courseId: query.courseId } : {}),
-        ...(query.sectionId
-          ? { sections: { some: { sectionId: query.sectionId } } }
-          : {}),
+        ...(query.courseCode ? { courseCode: query.courseCode } : {}),
+        ...(query.sectionName ? sectionNameWhere(query.sectionName) : {}),
       },
       ...(query.resultStatus ? { status: query.resultStatus } : {}),
       ...(query.search
@@ -53,10 +52,9 @@ export async function GET(req: NextRequest) {
             id: true,
             title: true,
             totalMarks: true,
-            course: { select: { id: true, name: true, code: true } },
-            sections: {
-              include: { section: { select: { id: true, name: true } } },
-            },
+            courseCode: true,
+            courseName: true,
+            sectionNames: true,
           },
         },
       },
@@ -82,8 +80,8 @@ export async function GET(req: NextRequest) {
           rows.map((r) => ({
             studentName: names.get(r.studentRoll) ?? r.studentRoll,
             rollNo: r.studentRoll,
-            course: `${r.quiz.course.name} (${r.quiz.course.code})`,
-            section: r.quiz.sections.map((s) => s.section.name).join(", ") || "—",
+            course: `${r.quiz.courseName} (${r.quiz.courseCode})`,
+            section: r.quiz.sectionNames.split(",").filter(Boolean).join(", ") || "—",
             quiz: r.quiz.title,
             marks: `${r.marksObtained} / ${r.quiz.totalMarks}`,
             percentage: `${r.percentage.toFixed(2)}%`,
@@ -101,8 +99,8 @@ export async function GET(req: NextRequest) {
         rows.map((r) => [
           names.get(r.studentRoll) ?? r.studentRoll,
           r.studentRoll,
-          `${r.quiz.course.name} (${r.quiz.course.code})`,
-          r.quiz.sections.map((s) => s.section.name).join(", ") || "—",
+          `${r.quiz.courseName} (${r.quiz.courseCode})`,
+          r.quiz.sectionNames.split(",").filter(Boolean).join(", ") || "—",
           r.quiz.title,
           `${r.marksObtained} / ${r.quiz.totalMarks}`,
           `${r.percentage.toFixed(2)}%`,
@@ -122,6 +120,17 @@ export async function GET(req: NextRequest) {
       items.map((item) => item.studentRoll),
     );
 
+    const own = await prisma.result.findMany({
+      where: { quiz: { facultyRoll: String(user.sub) } },
+      select: { quiz: { select: { courseCode: true, courseName: true, sectionNames: true } } },
+    });
+    const courseOptions = [
+      ...new Map(own.map((r) => [r.quiz.courseCode, { code: r.quiz.courseCode, name: r.quiz.courseName }])).values(),
+    ];
+    const sectionOptions = [
+      ...new Set(own.flatMap((r) => r.quiz.sectionNames.split(",").filter(Boolean))),
+    ].map((name) => ({ name }));
+
     return ok({
       items: items.map((item) => ({
         id: item.id,
@@ -134,6 +143,7 @@ export async function GET(req: NextRequest) {
         quiz: item.quiz,
       })),
       meta: paginationMeta(total, query.page, query.pageSize),
+      filterOptions: { courses: courseOptions, sections: sectionOptions },
     });
   } catch (error) {
     return handleApiError(error);

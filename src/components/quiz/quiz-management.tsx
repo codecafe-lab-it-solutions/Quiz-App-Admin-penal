@@ -60,9 +60,10 @@ interface QuizDetail {
   negativeMarking: boolean;
   allowSkipSwitch: boolean;
   requireLocation: boolean;
-  course: { id: number; name: string; code: string };
+  courseCode: string;
+  courseName: string;
   facultyRoll: string;
-  sections: { section: { id: number; name: string } }[];
+  sectionNames: string;
   building: { id: number; name: string };
   questions: (QuestionRow & { id: number })[];
   _count: { allotments: number };
@@ -76,11 +77,9 @@ interface BuildingOption {
 interface CourseOption {
   subCode: string;
   title: string | null;
-  courseId: number | null;
 }
 
 interface SectionOption {
-  id: number;
   name: string;
 }
 
@@ -175,7 +174,7 @@ export function QuizManagement({
     requireLocation: true,
   });
   const [editCourseCode, setEditCourseCode] = useState("");
-  const [editSectionIds, setEditSectionIds] = useState<number[]>([]);
+  const [editSectionNames, setEditSectionNames] = useState<string[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [importResults, setImportResults] = useState<ImportRowResult[] | null>(null);
 
@@ -206,7 +205,7 @@ export function QuizManagement({
     (url: string) => fetcher<{ items: CourseOption[] }>(url),
   );
   const editCourses = dedupeByCourseCode(
-    (editCoursesData?.items ?? []).filter((c) => c.courseId !== null && hasRealTitle(c)),
+    (editCoursesData?.items ?? []).filter((c) => hasRealTitle(c)),
   );
   const editSelectedCourse = editCourses.find((c) => c.subCode === editCourseCode);
   // Sourced live from isr_sub_available_tbl (real per-branch sections), not
@@ -243,7 +242,8 @@ export function QuizManagement({
           title: string;
           totalMarks: number;
           status: string;
-          course: { name: string; code: string };
+          courseCode: string;
+          courseName: string;
           building: { name: string };
         };
         summary: {
@@ -284,12 +284,12 @@ export function QuizManagement({
   // picker's studentsUrl. Falls back to nothing until a course+section are
   // selected, matching Create's studentsUrl gating.
   const candidatesUrl =
-    editDialogOpen && editSectionIds.length > 0 && editSelectedCourse?.subCode
+    editDialogOpen && editSectionNames.length > 0 && editSelectedCourse?.subCode
       ? role === "admin"
         ? editForm.facultyRoll
-          ? `/api/faculty/quiz/${quizId}/allot/candidates?subCode=${encodeURIComponent(editSelectedCourse.subCode)}&sectionIds=${editSectionIds.join(",")}&facultyRoll=${encodeURIComponent(editForm.facultyRoll)}`
+          ? `/api/faculty/quiz/${quizId}/allot/candidates?subCode=${encodeURIComponent(editSelectedCourse.subCode)}&sectionNames=${editSectionNames.join(",")}&facultyRoll=${encodeURIComponent(editForm.facultyRoll)}`
           : null
-        : `/api/faculty/quiz/${quizId}/allot/candidates?subCode=${encodeURIComponent(editSelectedCourse.subCode)}&sectionIds=${editSectionIds.join(",")}`
+        : `/api/faculty/quiz/${quizId}/allot/candidates?subCode=${encodeURIComponent(editSelectedCourse.subCode)}&sectionNames=${editSectionNames.join(",")}`
       : null;
   const { data: candidatesData, mutate: mutateCandidates } = useSWR(
     candidatesUrl,
@@ -312,7 +312,7 @@ export function QuizManagement({
   useEffect(() => {
     setCheckedRolls(null);
     setCandidateSearch("");
-  }, [editCourseCode, editSectionIds.join(",")]);
+  }, [editCourseCode, editSectionNames.join(",")]);
 
   // Polls only while the quiz is actually live, so submission status/proxy
   // state on screen tracks what's really happening in real time.
@@ -366,8 +366,8 @@ export function QuizManagement({
       allowSkipSwitch: quiz.allowSkipSwitch,
       requireLocation: quiz.requireLocation,
     });
-    setEditCourseCode(quiz.course.code);
-    setEditSectionIds(quiz.sections.map((s) => s.section.id));
+    setEditCourseCode(quiz.courseCode);
+    setEditSectionNames(quiz.sectionNames.split(",").filter(Boolean));
     // Clear any unsaved checkbox/search state from a previous time this
     // dialog was open - otherwise reopening on the same course/section
     // (which wouldn't trigger the change-reset effect) could show stale,
@@ -396,11 +396,11 @@ export function QuizManagement({
       toast.error("Faculty roll is required");
       return;
     }
-    if (!editSelectedCourse || editSelectedCourse.courseId === null) {
+    if (!editSelectedCourse) {
       toast.error("Select a valid course");
       return;
     }
-    if (editSectionIds.length === 0) {
+    if (editSectionNames.length === 0) {
       toast.error("Select at least one section");
       return;
     }
@@ -412,8 +412,8 @@ export function QuizManagement({
         // so a faculty member's save never trips the 403 for a field they
         // can't see or touch.
         ...(role === "admin" ? { facultyRoll: editForm.facultyRoll.trim() } : {}),
-        courseId: editSelectedCourse.courseId,
-        sectionIds: editSectionIds,
+        courseCode: editSelectedCourse.subCode,
+        sectionNames: editSectionNames,
         buildingId: Number(editForm.buildingId),
         startTime: new Date(editForm.startTime).toISOString(),
         endTime: new Date(editForm.endTime).toISOString(),
@@ -758,8 +758,8 @@ export function QuizManagement({
           <div>
             <CardTitle className="text-xl">{quiz.title}</CardTitle>
             <p className="text-sm text-muted-foreground">
-              {quiz.course.name} ({quiz.course.code}) · Section:{" "}
-              {quiz.sections.map((s) => s.section.name).join(", ") || "—"} ·{" "}
+              {quiz.courseName} ({quiz.courseCode}) · Section:{" "}
+              {quiz.sectionNames.split(",").filter(Boolean).join(", ") || "—"} ·{" "}
               {quiz.building.name} · {formatDateTime(quiz.startTime)} –{" "}
               {formatDateTime(quiz.endTime)} · {quiz.totalMarks} marks
             </p>
@@ -990,25 +990,25 @@ export function QuizManagement({
               )}
               {editCourseCode && editSections.length === 0 && (
                 <p className="text-xs text-muted-foreground">
-                  No sections linked to this course yet.
+                  No sections found for this course yet.
                 </p>
               )}
               {editSections.length > 0 && (
                 <div className="max-h-40 space-y-2 overflow-y-auto rounded-md border p-3">
                   {editSections.map((section) => (
-                    <div key={section.id} className="flex items-center gap-2">
+                    <div key={section.name} className="flex items-center gap-2">
                       <Checkbox
-                        checked={editSectionIds.includes(section.id)}
+                        checked={editSectionNames.includes(section.name)}
                         onCheckedChange={(checked) => {
-                          setEditSectionIds((prev) =>
+                          setEditSectionNames((prev) =>
                             checked === true
-                              ? prev.includes(section.id) ? prev : [...prev, section.id]
-                              : prev.filter((id) => id !== section.id)
+                              ? prev.includes(section.name) ? prev : [...prev, section.name]
+                              : prev.filter((name) => name !== section.name)
                           );
                         }}
-                        id={`edit-section-${section.id}`}
+                        id={`edit-section-${section.name}`}
                       />
-                      <label htmlFor={`edit-section-${section.id}`} className="text-sm">
+                      <label htmlFor={`edit-section-${section.name}`} className="text-sm">
                         {section.name}
                       </label>
                     </div>
@@ -1361,7 +1361,8 @@ function ResultsReportCard({
       title: string;
       totalMarks: number;
       status: string;
-      course: { name: string; code: string };
+      courseCode: string;
+      courseName: string;
       building: { name: string };
     };
     summary: {
@@ -1487,7 +1488,7 @@ function ResultsReportCard({
       <CardHeader>
         <CardTitle className="text-lg">Results & Report</CardTitle>
         <p className="text-sm text-muted-foreground">
-          {data.quiz.course.name} ({data.quiz.course.code}) ·{" "}
+          {data.quiz.courseName} ({data.quiz.courseCode}) ·{" "}
           {data.quiz.building.name}
         </p>
       </CardHeader>

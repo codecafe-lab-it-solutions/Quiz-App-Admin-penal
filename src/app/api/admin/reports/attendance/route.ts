@@ -7,6 +7,7 @@ import { paginationMeta } from "@/lib/validators/common";
 import { buildWorkbookBuffer, excelResponseHeaders } from "@/lib/excel";
 import { buildPdfTableBuffer, pdfResponseHeaders } from "@/lib/pdf";
 import { getStudentNamesByRolls } from "@/lib/legacy-db";
+import { sectionNameWhere } from "@/lib/section-sync";
 
 export async function GET(req: NextRequest) {
   try {
@@ -24,10 +25,8 @@ export async function GET(req: NextRequest) {
     const query = attendanceReportQuerySchema.parse(params);
 
     const where = {
-      ...(query.courseId ? { courseId: query.courseId } : {}),
-      ...(query.sectionId
-        ? { quiz: { sections: { some: { sectionId: query.sectionId } } } }
-        : {}),
+      ...(query.courseCode ? { courseCode: query.courseCode } : {}),
+      ...(query.sectionName ? { quiz: sectionNameWhere(query.sectionName) } : {}),
       ...(query.studentRoll?.length
         ? { studentRoll: { in: query.studentRoll } }
         : {}),
@@ -53,16 +52,7 @@ export async function GET(req: NextRequest) {
       where,
       orderBy: { date: query.sortOrder },
       include: {
-        course: { select: { id: true, name: true, code: true } },
-        quiz: {
-          select: {
-            id: true,
-            title: true,
-            sections: {
-              include: { section: { select: { id: true, name: true } } },
-            },
-          },
-        },
+        quiz: { select: { id: true, title: true, sectionNames: true } },
       },
     };
 
@@ -84,8 +74,8 @@ export async function GET(req: NextRequest) {
         rows.map((r) => ({
           studentName: names.get(r.studentRoll) ?? r.studentRoll,
           rollNo: r.studentRoll,
-          course: `${r.course.name} (${r.course.code})`,
-          section: r.quiz.sections.map((s) => s.section.name).join(", ") || "—",
+          course: `${r.courseName} (${r.courseCode})`,
+          section: r.quiz.sectionNames.split(",").filter(Boolean).join(", ") || "—",
           quiz: r.quiz.title,
           date: r.date.toISOString().slice(0, 10),
           status: r.status,
@@ -108,8 +98,8 @@ export async function GET(req: NextRequest) {
         rows.map((r) => [
           names.get(r.studentRoll) ?? r.studentRoll,
           r.studentRoll,
-          `${r.course.name} (${r.course.code})`,
-          r.quiz.sections.map((s) => s.section.name).join(", ") || "—",
+          `${r.courseName} (${r.courseCode})`,
+          r.quiz.sectionNames.split(",").filter(Boolean).join(", ") || "—",
           r.quiz.title,
           r.date.toISOString().slice(0, 10),
           r.status,
@@ -135,9 +125,21 @@ export async function GET(req: NextRequest) {
       studentName: names.get(r.studentRoll) ?? r.studentRoll,
     }));
 
+    // Unfiltered-by-date/course/section list of every course/section that
+    // has ever had attendance recorded, so the filter dropdowns aren't
+    // limited to whatever the current filter already narrowed down to.
+    const own = await prisma.attendance.findMany({
+      select: { courseCode: true, courseName: true, quiz: { select: { sectionNames: true } } },
+    });
+    const courseOptions = [...new Map(own.map((r) => [r.courseCode, { code: r.courseCode, name: r.courseName }])).values()];
+    const sectionOptions = [
+      ...new Set(own.flatMap((r) => r.quiz.sectionNames.split(",").filter(Boolean))),
+    ].map((name) => ({ name }));
+
     return ok({
       items: itemsWithNames,
       meta: paginationMeta(total, query.page, query.pageSize),
+      filterOptions: { courses: courseOptions, sections: sectionOptions },
     });
   } catch (error) {
     return handleApiError(error);

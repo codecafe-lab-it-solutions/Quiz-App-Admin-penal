@@ -17,7 +17,6 @@ import { SearchableSelect } from "@/components/ui/searchable-select";
 interface CourseOption {
   subCode: string;
   title: string | null;
-  courseId: number | null;
 }
 
 interface BuildingOption {
@@ -32,7 +31,6 @@ interface FacultyOption {
 }
 
 interface SectionOption {
-  id: number;
   name: string;
 }
 
@@ -66,7 +64,7 @@ export function QuizCreateForm({ role }: { role: "faculty" | "admin" }) {
   const [allowSkipSwitch, setAllowSkipSwitch] = useState(true);
   const [requireLocation, setRequireLocation] = useState(true);
   const [submitting, setSubmitting] = useState(false);
-  const [selectedSectionIds, setSelectedSectionIds] = useState<number[]>([]);
+  const [selectedSectionNames, setSelectedSectionNames] = useState<string[]>([]);
 
   const { data: facultyData } = useSWR(
     role === "admin" ? `/api/admin/faculty?page=1&pageSize=200` : null,
@@ -93,7 +91,7 @@ export function QuizCreateForm({ role }: { role: "faculty" | "admin" }) {
   // course" list, so collapse to one entry per code, preferring a row that
   // actually resolved a title over one that fell back to null.
   const courses = dedupeByCourseCode(
-    (coursesData?.items ?? []).filter((c) => c.courseId !== null && hasRealTitle(c)),
+    (coursesData?.items ?? []).filter((c) => hasRealTitle(c)),
   );
   const buildings = buildingsData?.items ?? [];
   const selectedCourse = courses.find((c) => c.subCode === courseCode);
@@ -116,23 +114,23 @@ export function QuizCreateForm({ role }: { role: "faculty" | "admin" }) {
     (url: string) => fetcher<{ items: SectionOption[] }>(url),
   );
   const sections = sectionsData?.items ?? [];
-  const sectionIds = sections.map((s) => s.id);
-  const activeSectionIds = selectedSectionIds;
+  const sectionNamesAvailable = sections.map((s) => s.name);
+  const activeSectionNames = selectedSectionNames;
 
   // Reset selection (not auto-check) whenever the available section list
   // changes, e.g. after picking a different course - the faculty member
   // checks which section(s) they actually want via the checkboxes below.
   useEffect(() => {
-    setSelectedSectionIds([]);
-  }, [sectionIds.join(",")]);
+    setSelectedSectionNames([]);
+  }, [sectionNamesAvailable.join(",")]);
 
   const studentsUrl =
-    activeSectionIds.length > 0 && selectedCourse?.subCode
+    activeSectionNames.length > 0 && selectedCourse?.subCode
       ? role === "admin"
         ? facultyRoll
-          ? `/api/faculty/quiz-sections/students?sectionIds=${activeSectionIds.join(",")}&subCode=${encodeURIComponent(selectedCourse.subCode)}&facultyRoll=${encodeURIComponent(facultyRoll)}`
+          ? `/api/faculty/quiz-sections/students?sectionNames=${activeSectionNames.join(",")}&subCode=${encodeURIComponent(selectedCourse.subCode)}&facultyRoll=${encodeURIComponent(facultyRoll)}`
           : null
-        : `/api/faculty/quiz-sections/students?sectionIds=${activeSectionIds.join(",")}&subCode=${encodeURIComponent(selectedCourse.subCode)}`
+        : `/api/faculty/quiz-sections/students?sectionNames=${activeSectionNames.join(",")}&subCode=${encodeURIComponent(selectedCourse.subCode)}`
       : null;
   const { data: studentsData } = useSWR(
     studentsUrl,
@@ -172,15 +170,6 @@ export function QuizCreateForm({ role }: { role: "faculty" | "admin" }) {
     setCheckedRolls(next);
   };
 
-  const toggleSection = (sectionId: number, checked: boolean) => {
-    setSelectedSectionIds((prev) => {
-      if (checked) {
-        return prev.includes(sectionId) ? prev : [...prev, sectionId];
-      }
-      return prev.filter((id) => id !== sectionId);
-    });
-  };
-
   useEffect(() => {
     setCourseCode("");
   }, [facultyRoll]);
@@ -188,7 +177,7 @@ export function QuizCreateForm({ role }: { role: "faculty" | "admin" }) {
   useEffect(() => {
     setCheckedRolls(null);
     setStudentSearch("");
-  }, [courseCode, activeSectionIds.join(",")]);
+  }, [courseCode, activeSectionNames.join(",")]);
 
   const handleSubmit = async () => {
     if (role === "admin" && !facultyRoll) {
@@ -200,11 +189,11 @@ export function QuizCreateForm({ role }: { role: "faculty" | "admin" }) {
       return;
     }
     const course = courses.find((c) => c.subCode === courseCode);
-    if (!course || course.courseId === null) {
+    if (!course) {
       toast.error("Select a course");
       return;
     }
-    if (activeSectionIds.length === 0) {
+    if (activeSectionNames.length === 0) {
       toast.error("Select at least one section for this quiz");
       return;
     }
@@ -223,8 +212,8 @@ export function QuizCreateForm({ role }: { role: "faculty" | "admin" }) {
       const quiz = await apiClient.post<{ id: number }>("/api/faculty/quiz", {
         ...(role === "admin" ? { facultyRoll } : {}),
         title: title.trim(),
-        courseId: course.courseId,
-        sectionIds: activeSectionIds,
+        courseCode: course.subCode,
+        sectionNames: activeSectionNames,
         buildingId: Number(buildingId),
         startTime: new Date(startTime).toISOString(),
         endTime: new Date(endTime).toISOString(),
@@ -310,8 +299,8 @@ export function QuizCreateForm({ role }: { role: "faculty" | "admin" }) {
             />
             {coursesData && courses.length === 0 && !coursesLoading && (
               <p className="text-xs text-muted-foreground">
-                No courses with a catalog entry yet - ask an admin to add one
-                under Master Data → Courses.
+                No courses mapped to this faculty member yet - ask an admin to
+                add one under Mapping → Faculty ↔ Course/Section.
               </p>
             )}
           </div>
@@ -336,29 +325,29 @@ export function QuizCreateForm({ role }: { role: "faculty" | "admin" }) {
           )}
           {courseCode && sections.length === 0 && (
             <p className="p-2 text-xs text-muted-foreground">
-              No sections linked to this course yet - ask an admin to add one
-              under Master Data → Sections.
+              No sections found for this course yet - ask an admin to check
+              the mapping under Mapping → Faculty ↔ Course/Section.
             </p>
           )}
           {courseCode && sections.length > 0 && (
             <div className="max-h-56 space-y-2 overflow-y-auto rounded-md border p-3">
               {sections.map((section) => (
-                <div key={section.id} className="flex items-center gap-2">
+                <div key={section.name} className="flex items-center gap-2">
                   <Checkbox
-                    checked={activeSectionIds.includes(section.id)}
+                    checked={activeSectionNames.includes(section.name)}
                     onCheckedChange={(checked) => {
-                      setSelectedSectionIds((prev) => {
+                      setSelectedSectionNames((prev) => {
                         if (checked === true) {
-                          return prev.includes(section.id)
+                          return prev.includes(section.name)
                             ? prev
-                            : [...prev, section.id];
+                            : [...prev, section.name];
                         }
-                        return prev.filter((id) => id !== section.id);
+                        return prev.filter((name) => name !== section.name);
                       });
                     }}
-                    id={`section-${section.id}`}
+                    id={`section-${section.name}`}
                   />
-                  <label htmlFor={`section-${section.id}`} className="text-sm">
+                  <label htmlFor={`section-${section.name}`} className="text-sm">
                     {section.name}
                   </label>
                 </div>

@@ -6,6 +6,7 @@ import { attendanceReportQuerySchema } from "@/lib/validators/reports";
 import { paginationMeta } from "@/lib/validators/common";
 import { buildWorkbookBuffer, excelResponseHeaders } from "@/lib/excel";
 import { buildPdfTableBuffer, pdfResponseHeaders } from "@/lib/pdf";
+import { sectionNameWhere } from "@/lib/section-sync";
 
 export async function GET(req: NextRequest) {
   try {
@@ -15,12 +16,16 @@ export async function GET(req: NextRequest) {
     const query = attendanceReportQuerySchema.parse(Object.fromEntries(req.nextUrl.searchParams));
     const studentRoll = String(user.sub);
 
+    const quizFilter = {
+      ...(query.courseCode ? { courseCode: query.courseCode } : {}),
+      ...(query.sectionName ? sectionNameWhere(query.sectionName) : {}),
+      ...(query.search ? { title: { contains: query.search } } : {}),
+    };
+
     const where = {
       studentRoll,
       status: "published" as const,
-      ...(query.courseId ? { quiz: { courseId: query.courseId } } : {}),
-      ...(query.sectionId ? { quiz: { sections: { some: { sectionId: query.sectionId } } } } : {}),
-      ...(query.search ? { quiz: { title: { contains: query.search } } } : {}),
+      ...(Object.keys(quizFilter).length > 0 ? { quiz: quizFilter } : {}),
       ...(query.from || query.to
         ? {
             publishedAt: {
@@ -40,8 +45,9 @@ export async function GET(req: NextRequest) {
             id: true,
             title: true,
             totalMarks: true,
-            course: { select: { id: true, name: true, code: true } },
-            sections: { include: { section: { select: { id: true, name: true } } } },
+            courseCode: true,
+            courseName: true,
+            sectionNames: true,
           },
         },
       },
@@ -60,8 +66,8 @@ export async function GET(req: NextRequest) {
         ],
         rows.map((r) => ({
           quiz: r.quiz.title,
-          course: `${r.quiz.course.name} (${r.quiz.course.code})`,
-          section: r.quiz.sections.map((s) => s.section.name).join(", ") || "—",
+          course: `${r.quiz.courseName} (${r.quiz.courseCode})`,
+          section: r.quiz.sectionNames.split(",").filter(Boolean).join(", ") || "—",
           marks: `${r.marksObtained} / ${r.quiz.totalMarks}`,
           percentage: `${r.percentage.toFixed(2)}%`,
           publishedAt: r.publishedAt ? r.publishedAt.toISOString().slice(0, 10) : "—",
@@ -78,8 +84,8 @@ export async function GET(req: NextRequest) {
         ["Quiz", "Course", "Section", "Marks", "Percentage", "Published"],
         rows.map((r) => [
           r.quiz.title,
-          `${r.quiz.course.name} (${r.quiz.course.code})`,
-          r.quiz.sections.map((s) => s.section.name).join(", ") || "—",
+          `${r.quiz.courseName} (${r.quiz.courseCode})`,
+          r.quiz.sectionNames.split(",").filter(Boolean).join(", ") || "—",
           `${r.marksObtained} / ${r.quiz.totalMarks}`,
           `${r.percentage.toFixed(2)}%`,
           r.publishedAt ? r.publishedAt.toISOString().slice(0, 10) : "—",
@@ -94,22 +100,17 @@ export async function GET(req: NextRequest) {
       prisma.result.findMany({
         where: { studentRoll, status: "published" },
         select: {
-          quiz: {
-            select: {
-              course: { select: { id: true, name: true, code: true } },
-              sections: { select: { section: { select: { id: true, name: true } } } },
-            },
-          },
+          quiz: { select: { courseCode: true, courseName: true, sectionNames: true } },
         },
       }),
     ]);
 
-    const courseOptions = [...new Map(own.map((r) => [r.quiz.course.id, r.quiz.course])).values()];
-    const sectionOptions = [
-      ...new Map(
-        own.flatMap((r) => r.quiz.sections.map((s) => [s.section.id, s.section] as const)),
-      ).values(),
+    const courseOptions = [
+      ...new Map(own.map((r) => [r.quiz.courseCode, { code: r.quiz.courseCode, name: r.quiz.courseName }])).values(),
     ];
+    const sectionOptions = [
+      ...new Set(own.flatMap((r) => r.quiz.sectionNames.split(",").filter(Boolean))),
+    ].map((name) => ({ name }));
 
     return ok({
       items,

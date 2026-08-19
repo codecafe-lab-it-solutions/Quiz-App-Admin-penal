@@ -45,7 +45,7 @@ interface Mapping {
   // really means major "CE") - see resolveMajorFromBranch. This is what
   // Sections are actually keyed and matched by, not the raw branch.
   major: string;
-  sections: { id: number; name: string }[];
+  sections: { name: string }[];
 }
 
 interface ListResponse {

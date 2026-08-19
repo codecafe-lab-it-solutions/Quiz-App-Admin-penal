@@ -24,7 +24,7 @@ interface FacultyCourse {
   credits: number | null;
   facRoll: string;
   facultyName: string | null;
-  sections: { id: number; name: string }[];
+  section: string | null;
 }
 
 interface RosterRow {
@@ -55,7 +55,7 @@ export function FacultyCourses() {
   const courseColumns: DataTableColumn<FacultyCourse>[] = [
     { key: "subCode", header: "Code", render: (r) => <span className="font-medium">{r.subCode}</span> },
     { key: "title", header: "Course Name", render: (r) => r.title ?? "—" },
-    { key: "section", header: "Section", render: (r) => r.sections.map((s) => s.name).join(", ") || "—" },
+    { key: "section", header: "Section", render: (r) => r.section ?? "—" },
     { key: "credits", header: "Credits", render: (r) => r.credits ?? "—" },
     {
       key: "actions",

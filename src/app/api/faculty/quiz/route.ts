@@ -3,9 +3,10 @@ import { prisma } from "@/lib/db";
 import { created, handleApiError, ApiError } from "@/lib/api-response";
 import { getAuthUser, requireRole } from "@/lib/auth";
 import { quizCreateSchema } from "@/lib/validators/quiz";
-import { isFacultyMappedToCourse } from "@/lib/legacy-db";
+import { isFacultyMappedToCourse, getCourseTitleByCode } from "@/lib/legacy-db";
 import { getCurrentSubList } from "@/lib/config";
 import { resolveFacultyRoll } from "@/lib/quiz-access";
+import { getRealSectionsForFacultyCourse } from "@/lib/section-sync";
 
 export async function POST(req: NextRequest) {
   try {
@@ -15,15 +16,10 @@ export async function POST(req: NextRequest) {
     const body = quizCreateSchema.parse(await req.json());
     const facultyRoll = resolveFacultyRoll(user, body.facultyRoll);
 
-    const course = await prisma.course.findUnique({
-      where: { id: body.courseId },
-    });
-    if (!course) throw new ApiError(404, "Course not found");
-
     const currentSubList = await getCurrentSubList();
     const mapped = await isFacultyMappedToCourse(
       facultyRoll,
-      course.code,
+      body.courseCode,
       currentSubList,
     );
     if (!mapped) {
@@ -33,21 +29,20 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const sections = await prisma.section.findMany({
-      where: { id: { in: body.sectionIds } },
-    });
-    if (sections.length !== body.sectionIds.length) {
+    const validSections = await getRealSectionsForFacultyCourse(facultyRoll, body.courseCode, currentSubList);
+    const validNames = new Set(validSections.map((s) => s.name));
+    if (body.sectionNames.some((name) => !validNames.has(name))) {
       throw new ApiError(404, "One or more selected sections were not found");
     }
+
+    const courseName = await getCourseTitleByCode(body.courseCode, currentSubList);
 
     const quiz = await prisma.quiz.create({
       data: {
         title: body.title,
-        courseId: body.courseId,
-        sections: {
-          create: body.sectionIds.map((sectionId) => ({ sectionId })),
-        },
-        sessionId: body.sessionId ?? null,
+        courseCode: body.courseCode,
+        courseName,
+        sectionNames: body.sectionNames.join(","),
         buildingId: body.buildingId,
         facultyRoll,
         startTime: body.startTime,

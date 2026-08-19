@@ -26,7 +26,7 @@ export async function GET(req: NextRequest, { params }: { params: { code: string
     const roster = await getCourseRoster(courseCode, subList);
 
     const quizzes = await prisma.quiz.findMany({
-      where: { facultyRoll, course: { code: courseCode } },
+      where: { facultyRoll, courseCode },
       select: { id: true, startTime: true },
       orderBy: { startTime: "desc" },
     });

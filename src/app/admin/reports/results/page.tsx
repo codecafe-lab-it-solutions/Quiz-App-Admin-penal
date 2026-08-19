@@ -15,15 +15,12 @@ import { SearchableSelect } from "@/components/ui/searchable-select";
 import { format } from "@/lib/format-date";
 import { ArrowRight, FileSpreadsheet, FileText } from "lucide-react";
 
-interface Course {
-  id: number;
-  name: string;
+interface CourseOption {
   code: string;
-}
-interface Section {
-  id: number;
   name: string;
-  courseId: number;
+}
+interface SectionOption {
+  name: string;
 }
 interface ResultRow {
   id: number;
@@ -37,13 +34,15 @@ interface ResultRow {
     id: number;
     title: string;
     totalMarks: number;
-    course: { id: number; name: string; code: string };
-    sections: { section: { id: number; name: string } }[];
+    courseCode: string;
+    courseName: string;
+    sectionNames: string;
   };
 }
 interface ListResponse<T> {
   items: T[];
   meta: { total: number; page: number; pageSize: number; totalPages: number };
+  filterOptions: { courses: CourseOption[]; sections: SectionOption[] };
 }
 
 const statusVariant: Record<
@@ -59,29 +58,18 @@ const fetcher = (url: string) => apiClient.get<ListResponse<ResultRow>>(url);
 
 export default function AdminResultsPage() {
   const [page, setPage] = useState(1);
-  const [courseId, setCourseId] = useState<string>("all");
-  const [sectionId, setSectionId] = useState<string>("all");
+  const [courseCode, setCourseCode] = useState<string>("all");
+  const [sectionName, setSectionName] = useState<string>("all");
   const [status, setStatus] = useState<string>("all");
   const [search, setSearch] = useState("");
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
 
-  const { data: courseData } = useSWR(
-    "/api/admin/courses?pageSize=200",
-    (url) => apiClient.get<{ items: Course[] }>(url),
-  );
-  const { data: sectionData } = useSWR(
-    courseId !== "all"
-      ? `/api/admin/sections?pageSize=200&courseId=${courseId}`
-      : "/api/admin/sections?pageSize=200",
-    (url: string) => apiClient.get<{ items: Section[] }>(url),
-  );
-
   const buildParams = (extra?: Record<string, string>) => {
     const params = new URLSearchParams({ page: String(page), pageSize: "20" });
-    if (courseId !== "all") params.set("courseId", courseId);
-    if (sectionId !== "all") params.set("sectionId", sectionId);
+    if (courseCode !== "all") params.set("courseCode", courseCode);
+    if (sectionName !== "all") params.set("sectionName", sectionName);
     if (status !== "all") params.set("resultStatus", status);
     if (search) params.set("search", search);
     if (from) params.set("from", from);
@@ -95,6 +83,8 @@ export default function AdminResultsPage() {
     `/api/admin/reports/results?${buildParams().toString()}`,
     fetcher,
   );
+  const courseOptions = data?.filterOptions.courses ?? [];
+  const sectionOptions = data?.filterOptions.sections ?? [];
 
   const handleExport = (type: "excel" | "pdf") => {
     const params = buildParams({ export: type });
@@ -113,13 +103,12 @@ export default function AdminResultsPage() {
     {
       key: "course",
       header: "Course",
-      render: (row) => `${row.quiz.course.name} (${row.quiz.course.code})`,
+      render: (row) => `${row.quiz.courseName} (${row.quiz.courseCode})`,
     },
     {
       key: "section",
       header: "Section",
-      render: (row) =>
-        row.quiz.sections.map((s) => s.section.name).join(", ") || "—",
+      render: (row) => row.quiz.sectionNames.split(",").filter(Boolean).join(", ") || "—",
     },
     { key: "quiz", header: "Quiz", render: (row) => row.quiz.title },
     {
@@ -192,16 +181,15 @@ export default function AdminResultsPage() {
           <div className="space-y-1.5">
             <Label>Course</Label>
             <SearchableSelect
-              value={courseId}
+              value={courseCode}
               onValueChange={(value) => {
-                setCourseId(value);
-                setSectionId("all");
+                setCourseCode(value);
                 setPage(1);
               }}
               options={[
                 { value: "all", label: "All courses" },
-                ...(courseData?.items ?? []).map((course) => ({
-                  value: String(course.id),
+                ...courseOptions.map((course) => ({
+                  value: course.code,
                   label: `${course.name} (${course.code})`,
                 })),
               ]}
@@ -212,14 +200,14 @@ export default function AdminResultsPage() {
           <div className="space-y-1.5">
             <Label>Section</Label>
             <SearchableSelect
-              value={sectionId}
+              value={sectionName}
               onValueChange={(value) => {
-                setSectionId(value);
+                setSectionName(value);
                 setPage(1);
               }}
               options={[
                 { value: "all", label: "All sections" },
-                ...(sectionData?.items ?? []).map((section) => ({ value: String(section.id), label: section.name })),
+                ...sectionOptions.map((section) => ({ value: section.name, label: section.name })),
               ]}
               searchPlaceholder="Search sections..."
             />

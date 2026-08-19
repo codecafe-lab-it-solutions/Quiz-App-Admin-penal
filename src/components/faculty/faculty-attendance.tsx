@@ -4,7 +4,6 @@ import { useState } from "react";
 import useSWR from "swr";
 import { format } from "@/lib/format-date";
 import { apiClient, downloadFile } from "@/lib/api-client";
-import { dedupeByCourseCode, hasRealTitle } from "@/lib/course-catalog";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -15,13 +14,11 @@ import { DataTable, DataTableColumn } from "@/components/admin/data-table";
 import { PaginationBar } from "@/components/admin/pagination-bar";
 import { FileSpreadsheet, FileText } from "lucide-react";
 
-interface CourseCatalogEntry {
-  subCode: string;
-  title: string | null;
-  courseId: number | null;
+interface CourseFilterOption {
+  code: string;
+  name: string;
 }
-interface Section {
-  id: number;
+interface SectionFilterOption {
   name: string;
 }
 interface AttendanceRow {
@@ -30,13 +27,15 @@ interface AttendanceRow {
   studentName: string;
   status: "present" | "absent";
   date: string;
-  course: { name: string; code: string };
-  quiz: { title: string; sections: { section: { id: number; name: string } }[] };
+  courseCode: string;
+  courseName: string;
+  quiz: { title: string; sectionNames: string };
 }
 
 interface ListResponse<T> {
   items: T[];
   meta: { total: number; page: number; pageSize: number; totalPages: number };
+  filterOptions: { courses: CourseFilterOption[]; sections: SectionFilterOption[] };
 }
 
 const statusVariant: Record<string, "default" | "secondary" | "success" | "warning" | "destructive" | "outline"> = {
@@ -46,28 +45,17 @@ const statusVariant: Record<string, "default" | "secondary" | "success" | "warni
 
 export function FacultyAttendance() {
   const [page, setPage] = useState(1);
-  const [courseId, setCourseId] = useState("all");
-  const [sectionId, setSectionId] = useState("all");
+  const [courseCode, setCourseCode] = useState("all");
+  const [sectionName, setSectionName] = useState("all");
   const [search, setSearch] = useState("");
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
 
-  const { data: courseData } = useSWR("/api/faculty/courses", (url: string) =>
-    apiClient.get<{ items: CourseCatalogEntry[] }>(url)
-  );
-  const { data: sectionData } = useSWR(
-    courseId !== "all" ? `/api/faculty/sections?courseId=${courseId}` : "/api/faculty/sections",
-    (url: string) => apiClient.get<{ items: Section[] }>(url)
-  );
-  const courses = dedupeByCourseCode(
-    (courseData?.items ?? []).filter((c) => c.courseId !== null && hasRealTitle(c)),
-  );
-
   const buildParams = (extra?: Record<string, string>) => {
     const params = new URLSearchParams({ page: String(page), pageSize: "10" });
-    if (courseId !== "all") params.set("courseId", courseId);
-    if (sectionId !== "all") params.set("sectionId", sectionId);
+    if (courseCode !== "all") params.set("courseCode", courseCode);
+    if (sectionName !== "all") params.set("sectionName", sectionName);
     if (search) params.set("search", search);
     if (from) params.set("from", from);
     if (to) params.set("to", to);
@@ -80,6 +68,7 @@ export function FacultyAttendance() {
     apiClient.get<ListResponse<AttendanceRow>>(url)
   );
   const attendance = data?.items ?? [];
+  const filterOptions = data?.filterOptions ?? { courses: [], sections: [] };
 
   const handleExport = (type: "excel" | "pdf") => {
     const params = buildParams({ export: type });
@@ -88,11 +77,11 @@ export function FacultyAttendance() {
 
   const columns: DataTableColumn<AttendanceRow>[] = [
     { key: "student", header: "Student", render: (r) => `${r.studentName} (${r.studentRoll})` },
-    { key: "course", header: "Course", render: (r) => `${r.course.name} (${r.course.code})` },
+    { key: "course", header: "Course", render: (r) => `${r.courseName} (${r.courseCode})` },
     {
       key: "section",
       header: "Section",
-      render: (r) => r.quiz.sections.map((s) => s.section.name).join(", ") || "—",
+      render: (r) => r.quiz.sectionNames.split(",").filter(Boolean).join(", ") || "—",
     },
     { key: "quiz", header: "Quiz", render: (r) => r.quiz.title },
     { key: "date", header: "Date", render: (r) => format(r.date) },
@@ -126,11 +115,11 @@ export function FacultyAttendance() {
           <div className="space-y-1.5">
             <Label>Course</Label>
             <SearchableSelect
-              value={courseId}
-              onValueChange={(v) => { setCourseId(v); setSectionId("all"); setPage(1); }}
+              value={courseCode}
+              onValueChange={(v) => { setCourseCode(v); setPage(1); }}
               options={[
                 { value: "all", label: "All courses" },
-                ...courses.map((c) => ({ value: String(c.courseId), label: `${c.title ?? c.subCode} (${c.subCode})` })),
+                ...filterOptions.courses.map((c) => ({ value: c.code, label: `${c.name} (${c.code})` })),
               ]}
               searchPlaceholder="Search courses..."
             />
@@ -138,11 +127,11 @@ export function FacultyAttendance() {
           <div className="space-y-1.5">
             <Label>Section</Label>
             <SearchableSelect
-              value={sectionId}
-              onValueChange={(v) => { setSectionId(v); setPage(1); }}
+              value={sectionName}
+              onValueChange={(v) => { setSectionName(v); setPage(1); }}
               options={[
                 { value: "all", label: "All sections" },
-                ...(sectionData?.items ?? []).map((s) => ({ value: String(s.id), label: s.name })),
+                ...filterOptions.sections.map((s) => ({ value: s.name, label: s.name })),
               ]}
               searchPlaceholder="Search sections..."
             />

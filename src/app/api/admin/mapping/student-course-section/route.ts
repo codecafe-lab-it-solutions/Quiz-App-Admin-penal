@@ -16,7 +16,6 @@ import {
   createStudentCourseMapping,
 } from "@/lib/legacy-db";
 import { getCurrentSubList } from "@/lib/config";
-import { assignStudentToDefaultSection } from "@/lib/section-sync";
 
 // Paginates an already-fetched, size-bounded array (bounded by a real roll
 // set - a section's membership - not by an unbounded DB scan) - used for the
@@ -26,6 +25,17 @@ function paginateArray<T>(items: T[], page: number, pageSize: number): { items: 
   const total = items.length;
   const start = (page - 1) * pageSize;
   return { items: items.slice(start, start + pageSize), total };
+}
+
+// A section name is always Major_Semester (e.g. "PE_3") - split back into
+// its two real isr_stu_main_tbl columns to resolve membership live.
+function parseSectionName(name: string): { major: string; semNow: number } | null {
+  const idx = name.indexOf("_");
+  if (idx < 0) return null;
+  const major = name.slice(0, idx);
+  const sem = Number(name.slice(idx + 1));
+  if (!major || !Number.isFinite(sem)) return null;
+  return { major, semNow: sem };
 }
 
 // Sourced live from the legacy per-batch isr_reg_<batch>_tbl tables. GET
@@ -44,74 +54,45 @@ export async function GET(req: NextRequest) {
     if (!parsed.success) {
       return fail(400, "Provide either roll or courseCode to search");
     }
-    const { roll, courseCode, batch, sectionId, page, pageSize } = parsed.data;
+    const { roll, courseCode, batch, sectionName, page, pageSize } = parsed.data;
     const subList = await getCurrentSubList();
 
     // Section browse filter - resolves once, reused by both the courseCode
     // branch (as a post-filter) and the batch/section browse branch (as the
     // roll scope for whichever batch tables those members are actually in).
-    const sectionRolls = sectionId
+    const parsedSection = sectionName ? parseSectionName(sectionName) : null;
+    const sectionRolls = parsedSection
       ? new Set(
           (
-            await prisma.sectionStudent.findMany({
-              where: { sectionId },
-              select: { studentRoll: true },
+            await prisma.isrStuMainTbl.findMany({
+              where: { major: parsedSection.major, semNow: parsedSection.semNow },
+              select: { roll: true },
             })
-          ).map((r) => r.studentRoll),
+          ).map((r) => r.roll),
         )
       : null;
 
-    // A student's Sections column must be scoped to the specific course each
-    // row represents, not their entire combined section list - a student
-    // registered for both CS201 and CS301 should see their CS301 section
-    // only on the CS301 row, not repeated on every one of their rows. Major
-    // + Semester (the real isr_stu_main_tbl columns each row's Section is
-    // itself derived from - see assignStudentToDefaultSection) are attached
-    // alongside so the mapping reads clearly without decoding the section name.
+    // A student's Section column is derived live from their own real Major +
+    // Semester (isr_stu_main_tbl) - the same value on every row for that
+    // student, since there's no per-course section concept anymore.
     const attachSections = async <T extends { roll: string; subCode: string }>(items: T[]) => {
       const studentRolls = [...new Set(items.map((item) => item.roll))];
       if (studentRolls.length === 0) {
-        return items.map((item) => ({ ...item, sections: [], major: null, semNow: null }));
+        return items.map((item) => ({ ...item, sections: [] as { name: string }[], major: null, semNow: null }));
       }
 
-      const [sectionRows, studentInfoRows] = await Promise.all([
-        prisma.sectionStudent.findMany({
-          where: { studentRoll: { in: studentRolls } },
-          include: {
-            section: {
-              select: {
-                id: true,
-                name: true,
-                courses: { select: { course: { select: { code: true } } } },
-              },
-            },
-          },
-        }),
-        prisma.isrStuMainTbl.findMany({
-          where: { roll: { in: studentRolls } },
-          select: { roll: true, major: true, semNow: true },
-        }),
-      ]);
-
-      const sectionsByRoll = sectionRows.reduce((map, row) => {
-        const existing = map.get(row.studentRoll) ?? [];
-        existing.push({
-          id: row.section.id,
-          name: row.section.name,
-          courseCodes: row.section.courses.map((c) => c.course.code),
-        });
-        map.set(row.studentRoll, existing);
-        return map;
-      }, new Map<string, { id: number; name: string; courseCodes: string[] }[]>());
+      const studentInfoRows = await prisma.isrStuMainTbl.findMany({
+        where: { roll: { in: studentRolls } },
+        select: { roll: true, major: true, semNow: true },
+      });
       const infoByRoll = new Map(studentInfoRows.map((s) => [s.roll, s]));
 
       return items.map((item) => {
         const info = infoByRoll.get(item.roll);
+        const name = info ? `${info.major}_${info.semNow}` : null;
         return {
           ...item,
-          sections: (sectionsByRoll.get(item.roll) ?? [])
-            .filter((s) => s.courseCodes.includes(item.subCode))
-            .map((s) => ({ id: s.id, name: s.name })),
+          sections: name ? [{ name }] : [],
           major: info?.major ?? null,
           semNow: info?.semNow != null ? String(info.semNow) : null,
         };
@@ -213,15 +194,6 @@ export async function POST(req: NextRequest) {
     const body = studentCourseMappingCreateSchema.parse(await req.json());
     const subList = await getCurrentSubList();
     const mapping = await createStudentCourseMapping({ ...body, subList });
-
-    // Section is always derived from Major + Semester (Major_Semester),
-    // auto-created if it doesn't exist yet - matches the Faculty <-> Course
-    // mapping flow. Also links this course to that section, same as the
-    // faculty side, so the mapping page's Sections column reflects it.
-    await assignStudentToDefaultSection(mapping.major, mapping.semNow, body.roll, {
-      subCode: body.subCode,
-      subList,
-    });
 
     return created(mapping);
   } catch (error) {

@@ -7,10 +7,7 @@ import { resolveFacultyRoll } from "@/lib/quiz-access";
 
 // Real per-branch sections a faculty teaches a given course under, for the
 // Create/Edit Quiz section picker - sourced live from isr_sub_available_tbl
-// on every call (see getRealSectionsForFacultyCourse's doc comment), not
-// from the app's own section_courses/section_faculty tables. Distinct from
-// GET /api/faculty/sections (Master Data > Sections, My Sections, Results/
-// Attendance filters), which is unchanged.
+// on every call (see getRealSectionsForFacultyCourse's doc comment).
 export async function GET(req: NextRequest) {
   try {
     const user = getAuthUser(req);

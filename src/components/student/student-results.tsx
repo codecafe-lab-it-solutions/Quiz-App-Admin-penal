@@ -22,27 +22,31 @@ interface StudentResult {
     id: number;
     title: string;
     totalMarks: number;
-    course: { name: string; code: string };
-    sections: { section: { id: number; name: string } }[];
+    courseCode: string;
+    courseName: string;
+    sectionNames: string;
   };
 }
 
-interface FilterOption {
-  id: number;
+interface CourseFilterOption {
+  code: string;
   name: string;
-  code?: string;
+}
+
+interface SectionFilterOption {
+  name: string;
 }
 
 interface ResultsResponse {
   items: StudentResult[];
   meta: { total: number; page: number; pageSize: number; totalPages: number };
-  filterOptions: { courses: FilterOption[]; sections: FilterOption[] };
+  filterOptions: { courses: CourseFilterOption[]; sections: SectionFilterOption[] };
 }
 
 export function StudentResults() {
   const [page, setPage] = useState(1);
-  const [courseId, setCourseId] = useState("all");
-  const [sectionId, setSectionId] = useState("all");
+  const [courseCode, setCourseCode] = useState("all");
+  const [sectionName, setSectionName] = useState("all");
   const [search, setSearch] = useState("");
   const [from, setFrom] = useState(todayInputValue());
   const [to, setTo] = useState(todayInputValue());
@@ -50,8 +54,8 @@ export function StudentResults() {
 
   const buildParams = (extra?: Record<string, string>) => {
     const params = new URLSearchParams({ page: String(page), pageSize: "10" });
-    if (courseId !== "all") params.set("courseId", courseId);
-    if (sectionId !== "all") params.set("sectionId", sectionId);
+    if (courseCode !== "all") params.set("courseCode", courseCode);
+    if (sectionName !== "all") params.set("sectionName", sectionName);
     if (search) params.set("search", search);
     if (from) params.set("from", from);
     if (to) params.set("to", to);
@@ -72,8 +76,8 @@ export function StudentResults() {
   };
 
   const clearFilters = () => {
-    setCourseId("all");
-    setSectionId("all");
+    setCourseCode("all");
+    setSectionName("all");
     setSearch("");
     setFrom("");
     setTo("");
@@ -82,11 +86,11 @@ export function StudentResults() {
 
   const columns: DataTableColumn<StudentResult>[] = [
     { key: "title", header: "Quiz", render: (r) => <span className="font-medium">{r.quiz.title}</span> },
-    { key: "course", header: "Course", render: (r) => `${r.quiz.course.name} (${r.quiz.course.code})` },
+    { key: "course", header: "Course", render: (r) => `${r.quiz.courseName} (${r.quiz.courseCode})` },
     {
       key: "section",
       header: "Section",
-      render: (r) => r.quiz.sections.map((s) => s.section.name).join(", ") || "—",
+      render: (r) => r.quiz.sectionNames.split(",").filter(Boolean).join(", ") || "—",
     },
     { key: "marks", header: "Marks", render: (r) => `${r.marksObtained} / ${r.quiz.totalMarks}` },
     { key: "percentage", header: "Percentage", render: (r) => `${r.percentage.toFixed(2)}%` },
@@ -122,11 +126,11 @@ export function StudentResults() {
           <div className="space-y-1.5">
             <Label>Course</Label>
             <SearchableSelect
-              value={courseId}
-              onValueChange={(v) => { setCourseId(v); setSectionId("all"); setPage(1); }}
+              value={courseCode}
+              onValueChange={(v) => { setCourseCode(v); setPage(1); }}
               options={[
                 { value: "all", label: "All courses" },
-                ...filterOptions.courses.map((c) => ({ value: String(c.id), label: `${c.name} (${c.code})` })),
+                ...filterOptions.courses.map((c) => ({ value: c.code, label: `${c.name} (${c.code})` })),
               ]}
               searchPlaceholder="Search courses..."
             />
@@ -134,11 +138,11 @@ export function StudentResults() {
           <div className="space-y-1.5">
             <Label>Section</Label>
             <SearchableSelect
-              value={sectionId}
-              onValueChange={(v) => { setSectionId(v); setPage(1); }}
+              value={sectionName}
+              onValueChange={(v) => { setSectionName(v); setPage(1); }}
               options={[
                 { value: "all", label: "All sections" },
-                ...filterOptions.sections.map((s) => ({ value: String(s.id), label: s.name })),
+                ...filterOptions.sections.map((s) => ({ value: s.name, label: s.name })),
               ]}
               searchPlaceholder="Search sections..."
             />

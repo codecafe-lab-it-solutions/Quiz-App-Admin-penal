@@ -22,7 +22,8 @@ export async function GET(
         totalMarks: true,
         status: true,
         facultyRoll: true,
-        course: { select: { name: true, code: true } },
+        courseCode: true,
+        courseName: true,
         building: { select: { name: true } },
       },
     });

@@ -25,8 +25,6 @@ export async function GET(req: NextRequest) {
         skip: (page - 1) * pageSize,
         take: pageSize,
         include: {
-          course: { select: { id: true, name: true, code: true } },
-          sections: { include: { section: { select: { id: true, name: true } } } },
           building: { select: { id: true, name: true } },
           _count: { select: { allotments: true } },
         },
@@ -75,8 +73,8 @@ export async function GET(req: NextRequest) {
         return {
           id: quiz.id,
           title: quiz.title,
-          course: quiz.course,
-          sections: quiz.sections.map((s) => s.section),
+          course: { code: quiz.courseCode, name: quiz.courseName },
+          sections: quiz.sectionNames.split(",").filter(Boolean).map((name) => ({ name })),
           faculty: { roll: quiz.facultyRoll, name: facultyNames.get(quiz.facultyRoll) ?? quiz.facultyRoll },
           building: quiz.building,
           startTime: quiz.startTime,

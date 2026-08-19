@@ -12,7 +12,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     const { id } = idParamSchema.parse(params);
     const source = await prisma.quiz.findUnique({
       where: { id },
-      include: { questions: { include: { options: true, formula: true } }, sections: true },
+      include: { questions: { include: { options: true, formula: true } } },
     });
     if (!source || (user.role === "faculty" && source.facultyRoll !== String(user.sub))) throw new ApiError(404, "Quiz not found");
 
@@ -20,9 +20,9 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       const newQuiz = await tx.quiz.create({
         data: {
           title: `${source.title} (Copy)`,
-          courseId: source.courseId,
-          sections: { create: source.sections.map((s) => ({ sectionId: s.sectionId })) },
-          sessionId: source.sessionId,
+          courseCode: source.courseCode,
+          courseName: source.courseName,
+          sectionNames: source.sectionNames,
           facultyRoll: source.facultyRoll,
           buildingId: source.buildingId,
           startTime: source.startTime,

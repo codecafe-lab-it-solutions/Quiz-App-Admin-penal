@@ -18,8 +18,9 @@ interface FacultyQuiz {
   startTime: string;
   endTime: string;
   totalMarks: number;
-  course: { name: string; code: string };
-  sections: { section: { name: string } }[];
+  courseCode: string;
+  courseName: string;
+  sectionNames: string;
   building: { name: string };
   _count: { questions: number; allotments: number };
 }
@@ -54,8 +55,8 @@ export function FacultyQuizzes() {
         </Link>
       ),
     },
-    { key: "course", header: "Course", render: (r) => `${r.course.name} (${r.course.code})` },
-    { key: "section", header: "Section", render: (r) => r.sections.map((s) => s.section.name).join(", ") || "—" },
+    { key: "course", header: "Course", render: (r) => `${r.courseName} (${r.courseCode})` },
+    { key: "section", header: "Section", render: (r) => r.sectionNames.split(",").filter(Boolean).join(", ") || "—" },
     { key: "building", header: "Building", render: (r) => r.building.name },
     { key: "startTime", header: "Start", render: (r) => formatDateTime(r.startTime) },
     { key: "questions", header: "Questions", render: (r) => r._count.questions },

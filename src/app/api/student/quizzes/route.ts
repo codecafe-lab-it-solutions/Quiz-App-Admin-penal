@@ -33,10 +33,6 @@ export async function GET(req: NextRequest) {
         take: pageSize,
         orderBy: { startTime: "desc" },
         include: {
-          course: { select: { id: true, name: true, code: true } },
-          sections: {
-            include: { section: { select: { id: true, name: true } } },
-          },
           building: {
             select: {
               id: true,

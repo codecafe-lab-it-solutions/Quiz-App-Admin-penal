@@ -1,7 +1,6 @@
 import { PrismaClient } from "@prisma/client";
 import bcrypt from "bcryptjs";
-import { addManualSectionStudent, addManualSectionFaculty, assignFacultyToDefaultSection } from "@/lib/section-sync";
-import { getRealMajors, resolveMajorFromBranch } from "@/lib/legacy-db";
+import { getRealMajors, resolveMajorFromBranch, getCourseRegistrations, getCourseTitleByCode } from "@/lib/legacy-db";
 import { importRealLegacyData } from "./import-legacy-data";
 
 const prisma = new PrismaClient();
@@ -27,30 +26,6 @@ async function ensureAdminUser(data: { name: string; email: string; password: st
   });
 }
 
-async function ensureDepartment(name: string) {
-  return prisma.department.upsert({ where: { name }, update: {}, create: { name } });
-}
-
-async function ensureCourse(data: { name: string; code: string; departmentId: number; credits: number }) {
-  return prisma.course.upsert({ where: { code: data.code }, update: {}, create: data });
-}
-
-async function ensureSession(name: string, startDate: Date, endDate: Date) {
-  const existing = await prisma.academicSession.findFirst({ where: { name } });
-  if (existing) return existing;
-  return prisma.academicSession.create({ data: { name, startDate, endDate } });
-}
-
-// One section per (major, semester) cohort - names are unique by construction
-// (each cohort key only ever gets processed once per run), so a plain name
-// match is enough; no need for the "match on exact course set" logic a
-// generic reusable ensureSection would need.
-async function ensureSectionByName(name: string) {
-  const existing = await prisma.section.findFirst({ where: { name } });
-  if (existing) return existing;
-  return prisma.section.create({ data: { name } });
-}
-
 async function ensureBuilding(data: { name: string; latitude: number; longitude: number; radiusMeters: number }) {
   const existing = await prisma.building.findFirst({ where: { name: data.name } });
   if (existing) return existing;
@@ -63,15 +38,22 @@ async function ensureSemesterConfig() {
   return prisma.semesterConfig.create({ data: { currentSubList: "C2" } });
 }
 
+// Real registrants for a course, sorted for determinism - used to pick a
+// handful of demo participants per demo quiz.
+async function pickRegisteredStudents(subCode: string, subList: string, count: number): Promise<string[]> {
+  const registrations = await getCourseRegistrations(subCode, subList);
+  return [...new Set(registrations.map((r) => r.roll))].sort().slice(0, count);
+}
+
 // --- Demo quiz builders (course/section/faculty/roll identity is real; the
 // quiz shell, questions, and outcomes around them are still made up, since
 // none of that exists in the legacy dump) -----------------------------------
 
 async function ensureCompletedDemoQuiz(params: {
   title: string;
-  courseId: number;
-  sectionId: number;
-  sessionId: number;
+  courseCode: string;
+  courseName: string;
+  sectionNames: string;
   facultyRoll: string;
   buildingId: number;
   studentRolls: string[];
@@ -88,9 +70,9 @@ async function ensureCompletedDemoQuiz(params: {
   const quiz = await prisma.quiz.create({
     data: {
       title: params.title,
-      courseId: params.courseId,
-      sections: { create: [{ sectionId: params.sectionId }] },
-      sessionId: params.sessionId,
+      courseCode: params.courseCode,
+      courseName: params.courseName,
+      sectionNames: params.sectionNames,
       facultyRoll: params.facultyRoll,
       buildingId: params.buildingId,
       startTime: start,
@@ -119,18 +101,18 @@ async function ensureCompletedDemoQuiz(params: {
   await prisma.quizAllotment.create({ data: { quizId: quiz.id, studentRoll: first, status: "attempted" } });
   const attempt1 = await prisma.quizAttempt.create({ data: { quizId: quiz.id, studentRoll: first, startTime: start, endTime: end, status: "submitted" } });
   await prisma.studentAnswer.create({ data: { attemptId: attempt1.id, questionId: q.id, selectedOptionId: options[0].id, isCorrect: true, marksObtained: 10, orderIndex: 1 } });
-  await prisma.attendance.create({ data: { studentRoll: first, courseId: params.courseId, quizId: quiz.id, date: attendanceDate, status: "present" } });
+  await prisma.attendance.create({ data: { studentRoll: first, courseCode: params.courseCode, courseName: params.courseName, quizId: quiz.id, date: attendanceDate, status: "present" } });
   await prisma.result.create({ data: { quizId: quiz.id, studentRoll: first, marksObtained: 10, percentage: 100, status: "published", declaredAt: end, publishedAt: end } });
 
   await prisma.quizAllotment.create({ data: { quizId: quiz.id, studentRoll: second, status: "attempted" } });
   const attempt2 = await prisma.quizAttempt.create({ data: { quizId: quiz.id, studentRoll: second, startTime: start, endTime: end, status: "submitted" } });
   await prisma.studentAnswer.create({ data: { attemptId: attempt2.id, questionId: q.id, selectedOptionId: options[1].id, isCorrect: false, marksObtained: 0, orderIndex: 1 } });
-  await prisma.attendance.create({ data: { studentRoll: second, courseId: params.courseId, quizId: quiz.id, date: attendanceDate, status: "present" } });
+  await prisma.attendance.create({ data: { studentRoll: second, courseCode: params.courseCode, courseName: params.courseName, quizId: quiz.id, date: attendanceDate, status: "present" } });
   await prisma.result.create({ data: { quizId: quiz.id, studentRoll: second, marksObtained: 0, percentage: 0, status: "published", declaredAt: end, publishedAt: end } });
 
   for (const roll of rest.slice(0, 1)) {
     await prisma.quizAllotment.create({ data: { quizId: quiz.id, studentRoll: roll, status: "absent" } });
-    await prisma.attendance.create({ data: { studentRoll: roll, courseId: params.courseId, quizId: quiz.id, date: attendanceDate, status: "absent" } });
+    await prisma.attendance.create({ data: { studentRoll: roll, courseCode: params.courseCode, courseName: params.courseName, quizId: quiz.id, date: attendanceDate, status: "absent" } });
   }
 
   return quiz;
@@ -138,8 +120,9 @@ async function ensureCompletedDemoQuiz(params: {
 
 async function ensureTimedDemoQuiz(params: {
   title: string;
-  courseId: number;
-  sectionIds: number[];
+  courseCode: string;
+  courseName: string;
+  sectionNames: string;
   facultyRoll: string;
   buildingId: number;
   status: "draft" | "scheduled" | "live";
@@ -159,8 +142,9 @@ async function ensureTimedDemoQuiz(params: {
   return prisma.quiz.create({
     data: {
       title: params.title,
-      courseId: params.courseId,
-      sections: { create: params.sectionIds.map((sectionId) => ({ sectionId })) },
+      courseCode: params.courseCode,
+      courseName: params.courseName,
+      sectionNames: params.sectionNames,
       facultyRoll: params.facultyRoll,
       buildingId: params.buildingId,
       startTime: params.startTime,
@@ -202,219 +186,12 @@ async function ensureQuestionAndAllotments(params: {
   }
 }
 
-// ---------------------------------------------------------------------------
-// The single section model: one Section per real (Major, current Semester)
-// cohort - every student, always, no exceptions and no second naming scheme.
-//
-// Why not "one section per course" (this app's earlier design): the real
-// data's own tables have no section/slot concept at all (confirmed directly
-// - isr_sub_available_tbl.slot and .sem_list are NULL on every real C2 row),
-// and a real course is routinely shared across many different majors at once
-// (e.g. "CDC" is taken by 9 different branches, all at semester 7 - confirmed
-// against the real data). One-section-per-course would mean a course's
-// entire real roster - across every major that takes it - dumps into the
-// same section, which isn't what a "section" should mean.
-//
-// So instead: a cohort's membership comes directly from Major+Semester
-// matching on isr_stu_main_tbl (never from a shared course's combined
-// roster, which is exactly the cross-contamination that model would cause).
-// The real courses that cohort's own students are actually registered for
-// (and the real faculty teaching those courses) get linked to that same
-// cohort's section - enrichment, not a second section type. A cohort with no
-// real registrations (their batch has no isr_reg_<batch>_tbl in the dump)
-// still gets a section, just with no linked courses/faculty - same section
-// model, not a different fallback kind.
-// ---------------------------------------------------------------------------
-
-interface CohortBuildResult {
-  sections: Map<string, Awaited<ReturnType<typeof ensureSectionByName>>>;
-  courses: Map<string, Awaited<ReturnType<typeof ensureCourse>>>;
-  coursesByRoll: Map<string, Set<string>>;
-  cohortCount: number;
-  studentCount: number;
-  courseLinkCount: number;
-  facultyLinkCount: number;
-}
-
-function pickRegisteredStudents(coursesByRoll: Map<string, Set<string>>, subCode: string, count: number): string[] {
-  const rolls: string[] = [];
-  for (const [roll, codes] of coursesByRoll) {
-    if (codes.has(subCode)) rolls.push(roll);
-  }
-  return rolls.sort().slice(0, count);
-}
-
-async function buildCohortSections(subList: string): Promise<CohortBuildResult> {
-  const allStudents = await prisma.isrStuMainTbl.findMany({ select: { roll: true, major: true, semNow: true } });
-
-  // Every real registration, loaded once (not per-cohort) - roll -> the set
-  // of real course codes they're actually registered for.
-  const allRegs = await prisma.$queryRawUnsafe<{ stu_roll: string; sub_code: string }[]>(
-    `
-    SELECT stu_roll, sub_code FROM isr_reg_btechpeg23_tbl WHERE sub_list = ? AND sub_code IS NOT NULL AND stu_roll IS NOT NULL
-    UNION ALL SELECT stu_roll, sub_code FROM isr_reg_btechpeg24_tbl WHERE sub_list = ? AND sub_code IS NOT NULL AND stu_roll IS NOT NULL
-    UNION ALL SELECT stu_roll, sub_code FROM isr_reg_btechpeg25_tbl WHERE sub_list = ? AND sub_code IS NOT NULL AND stu_roll IS NOT NULL
-    `,
-    subList, subList, subList
-  );
-  const coursesByRoll = new Map<string, Set<string>>();
-  for (const r of allRegs) {
-    const set = coursesByRoll.get(r.stu_roll) ?? new Set<string>();
-    set.add(r.sub_code);
-    coursesByRoll.set(r.stu_roll, set);
-  }
-
-  // Every real faculty assignment, loaded once - course code -> the faculty
-  // teaching it, each tagged with their real major (branch, resolved - see
-  // resolveMajorFromBranch). A real course is routinely shared across many
-  // different majors at once (e.g. "CDC" taken by 9 branches, each with its
-  // own faculty row) - so this can't just be a course -> faculty set, or
-  // every one of those 9 faculty would get linked into every cohort that
-  // happens to take CDC, regardless of whether they actually teach that
-  // cohort's own branch.
-  const realMajors = new Set(allStudents.map((s) => s.major));
-  const allFac = await prisma.isrSubAvailableTbl.findMany({
-    where: { subList, facRoll: { not: null }, subCode: { not: null } },
-    select: { subCode: true, facRoll: true, branch: true },
-  });
-  const facultyByCourse = new Map<string, { facRoll: string; major: string }[]>();
-  for (const f of allFac) {
-    const list = facultyByCourse.get(f.subCode!) ?? [];
-    list.push({ facRoll: f.facRoll!, major: resolveMajorFromBranch(f.branch ?? "", realMajors) });
-    facultyByCourse.set(f.subCode!, list);
-  }
-
-  // Course metadata, loaded once - real curriculum title/branch/credits,
-  // falling back to isr_sub_available_tbl's branch for courses curriculum
-  // doesn't cover (matches the same fallback getFacultyCourseCatalog uses).
-  const curriculumRows = await prisma.$queryRawUnsafe<{ subCode: string; title: string; branch: string | null; credits: number }[]>(
-    `SELECT bsms_code AS subCode, MIN(title) AS title, MIN(bsms_branch) AS branch, MIN(bsms_credit) AS credits
-     FROM isr_curriculum_tbl WHERE sub_list = ? GROUP BY bsms_code`,
-    subList
-  );
-  const curriculumByCode = new Map(curriculumRows.map((c) => [c.subCode, c]));
-  const branchFallbackRows = await prisma.$queryRawUnsafe<{ subCode: string; branch: string }[]>(
-    `SELECT sub_code AS subCode, MIN(branch) AS branch FROM isr_sub_available_tbl WHERE sub_list = ? AND branch IS NOT NULL GROUP BY sub_code`,
-    subList
-  );
-  const branchFallback = new Map(branchFallbackRows.map((b) => [b.subCode, b.branch]));
-
-  const byCohort = new Map<string, string[]>();
-  for (const s of allStudents) {
-    const key = `${s.major}_${s.semNow}`;
-    const rolls = byCohort.get(key) ?? [];
-    rolls.push(s.roll);
-    byCohort.set(key, rolls);
-  }
-
-  const sections = new Map<string, Awaited<ReturnType<typeof ensureSectionByName>>>();
-  const courses = new Map<string, Awaited<ReturnType<typeof ensureCourse>>>();
-  const departmentIds = new Map<string, number>();
-  let studentCount = 0;
-  let courseLinkCount = 0;
-  let facultyLinkCount = 0;
-
-  for (const [key, rolls] of byCohort) {
-    const section = await ensureSectionByName(key);
-    sections.set(key, section);
-    const cohortMajor = key.split("_")[0];
-
-    for (const roll of rolls) {
-      await addManualSectionStudent(section.id, roll);
-    }
-    studentCount += rolls.length;
-
-    const cohortCourseCodes = new Set<string>();
-    for (const roll of rolls) {
-      const set = coursesByRoll.get(roll);
-      if (set) for (const code of set) cohortCourseCodes.add(code);
-    }
-
-    const cohortFacultyRolls = new Set<string>();
-    for (const code of cohortCourseCodes) {
-      let course = courses.get(code);
-      if (!course) {
-        const meta = curriculumByCode.get(code);
-        const branch = meta?.branch ?? branchFallback.get(code) ?? "General";
-        if (!departmentIds.has(branch)) {
-          const dept = await ensureDepartment(branch);
-          departmentIds.set(branch, dept.id);
-        }
-        course = await ensureCourse({
-          name: meta?.title ?? code,
-          code,
-          departmentId: departmentIds.get(branch)!,
-          // MIN() on an INT column comes back as a JS bigint via the raw
-          // query driver - coerce to a plain number for the Int column.
-          credits: Number(meta?.credits ?? 0),
-        });
-        courses.set(code, course);
-      }
-      await prisma.sectionCourse.create({ data: { sectionId: section.id, courseId: course.id } });
-      courseLinkCount++;
-
-      const facEntries = facultyByCourse.get(code);
-      if (facEntries) {
-        for (const entry of facEntries) {
-          if (entry.major === cohortMajor) cohortFacultyRolls.add(entry.facRoll);
-        }
-      }
-    }
-
-    for (const fr of cohortFacultyRolls) {
-      await addManualSectionFaculty(section.id, fr);
-      facultyLinkCount++;
-    }
-  }
-
-  return { sections, courses, coursesByRoll, cohortCount: byCohort.size, studentCount, courseLinkCount, facultyLinkCount };
-}
-
-// buildCohortSections only links a cohort's courses/faculty from real student
-// *registrations* - and only btechpeg23/24/25 (all real PE-major batches)
-// have a registration table in the dump. Every other branch's students have
-// no registration rows at all, so their cohort sections come out of
-// buildCohortSections with zero linked courses and zero faculty - not
-// because they don't teach anything, but because isr_sub_available_tbl (the
-// actual real record of "this faculty teaches this course, for this branch,
-// this semester") was never consulted as its own source of truth.
-//
-// This closes that gap: every real isr_sub_available_tbl row for the current
-// cycle gets its Major_Semester section resolved (branch normalized against
-// real majors - see resolveMajorFromBranch, since e.g. branch "DCE" really
-// means major "CE") and the course/faculty linked to it, covering every
-// branch regardless of whether it has a registration table. Idempotent - the
-// section wipe at the top of main() means this always runs against a clean
-// slate, so there's nothing stale to clean up here, only real data to add.
-async function ensureFacultyCourseSectionLinks(subList: string) {
-  const realMajors = await getRealMajors();
-  const rows = await prisma.isrSubAvailableTbl.findMany({
-    where: { subList, facRoll: { not: null }, subCode: { not: null }, sem: { not: null } },
-    select: { id: true, subCode: true, branch: true, facRoll: true, sem: true },
-  });
-
-  const sectionNames = new Set<string>();
-  for (const row of rows) {
-    const major = resolveMajorFromBranch(row.branch ?? "", realMajors);
-    const name = `${major.trim()}_${row.sem!.trim()}`;
-    await assignFacultyToDefaultSection(major, row.sem!, row.subCode!, row.facRoll!, subList);
-    // Backfill the app-added isr_sub_available_tbl.section column for rows
-    // imported straight from the dump (createFacultyCourseMapping sets this
-    // for rows created through the admin panel, but the real dump's INSERTs
-    // obviously predate that column).
-    await prisma.isrSubAvailableTbl.update({ where: { id: row.id }, data: { section: name } });
-    sectionNames.add(name);
-  }
-  return { rowCount: rows.length, sectionCount: sectionNames.size };
-}
-
-// Pure label backfill for isr_sub_available_tbl.section across EVERY real
-// sub_list (not just the current cycle) - e.g. old "c1" rows the dump also
-// carries. Deliberately does NOT call assignFacultyToDefaultSection or touch
-// Section/SectionFaculty/SectionCourse: those must stay scoped to the
-// current cycle only (see ensureFacultyCourseSectionLinks) - a past cycle's
-// faculty must never get pulled into a *current* section's membership just
-// because their old row now has a label. This only ever writes the column.
+// Labels isr_sub_available_tbl.section for EVERY real sub_list (not just the
+// current cycle) - e.g. old "c1" rows the dump also carries - so quiz
+// creation's live section picker (getRealSectionsForFacultyCourse) always has
+// a real name to resolve, for any cycle. Section identity is otherwise
+// entirely derived at request time (no app-owned Section table since
+// 2026-08-18), so this is the only "section" bootstrapping seed needs to do.
 async function backfillSectionColumnAcrossAllCycles(): Promise<number> {
   const realMajors = await getRealMajors();
   const rows = await prisma.isrSubAvailableTbl.findMany({
@@ -452,57 +229,34 @@ async function main() {
   const currentSubList = (await ensureSemesterConfig()).currentSubList;
 
   // Same one-time-bootstrap guard as importRealLegacyData, and for the same
-  // reason: this block unconditionally deletes EVERY quiz, section, course,
-  // department, and academic session app-wide, then rebuilds only a fixed
-  // set of demo cohorts/quizzes. On an already-live system that means every
-  // real quiz a real faculty member created (anything other than the 3
-  // hardcoded demo quizzes below) is deleted on every deploy and never comes
-  // back - confirmed happening in production via post-deploy.sh's
+  // reason: this block unconditionally deletes EVERY quiz app-wide, then
+  // rebuilds only a fixed set of demo quizzes. On an already-live system that
+  // means every real quiz a real faculty member created (anything other than
+  // the 3 hardcoded demo quizzes below) is deleted on every deploy and never
+  // comes back - confirmed happening in production via post-deploy.sh's
   // unconditional `prisma db seed`. Only ever safe to run against a genuinely
   // fresh/empty database, which importResult.imported already tells us.
   if (!importResult.imported) {
     console.log(
-      "Skipping demo quiz/section/course rebuild - real data already exists, so it's not a fresh bootstrap (this only ever runs once, against an empty database)."
+      "Skipping demo quiz rebuild - real data already exists, so it's not a fresh bootstrap (this only ever runs once, against an empty database)."
     );
     return;
   }
 
-  console.log("Clearing previously-seeded app-domain data (quizzes/sections/courses)...");
+  console.log("Clearing previously-seeded demo quizzes...");
   // Quiz cascades to Question/QuestionOption/QuestionFormula/QuizAllotment/
-  // QuizAttempt/StudentAnswer/AntiCheatEvent/GeofenceLog/Attendance/Result/
-  // QuizSection (all onDelete: Cascade in schema.prisma). Section cascades
-  // to SectionCourse/SectionStudent/SectionFaculty. Order matters: Quiz
-  // before Section/Course (Quiz.courseId and QuizSection.sectionId aren't
-  // cascade-deletable from the other direction).
+  // QuizAttempt/StudentAnswer/GeofenceLog/Attendance/Result (all
+  // onDelete: Cascade in schema.prisma).
   await prisma.quiz.deleteMany({});
-  await prisma.section.deleteMany({});
-  await prisma.course.deleteMany({});
-  await prisma.department.deleteMany({});
-  await prisma.academicSession.deleteMany({});
 
-  console.log("Building one section per real Major+Semester cohort, with real courses/faculty linked from actual registrations (this covers every student, so it takes a minute)...");
-  const cohorts = await buildCohortSections(currentSubList);
-  console.log(
-    `  ${cohorts.cohortCount} cohort sections, ${cohorts.studentCount} real student memberships, ` +
-      `${cohorts.courses.size} real courses discovered, ${cohorts.courseLinkCount} course links, ${cohorts.facultyLinkCount} faculty memberships.`
-  );
-
-  console.log("Linking every real faculty-course mapping (isr_sub_available_tbl) to its Major_Semester section - covers branches with no registration table too...");
-  const facultyMappingLinks = await ensureFacultyCourseSectionLinks(currentSubList);
-  console.log(
-    `  ${facultyMappingLinks.rowCount} real faculty-course mapping rows processed, ${facultyMappingLinks.sectionCount} Major_Semester sections linked.`
-  );
-
-  console.log("Labeling isr_sub_available_tbl.section for every real cycle (not just the current one) - display-only, no section membership changes...");
+  console.log("Labeling isr_sub_available_tbl.section for every real cycle - this is the only source of section identity now (no app-owned Section table)...");
   const labeledRows = await backfillSectionColumnAcrossAllCycles();
   console.log(`  ${labeledRows} rows labeled.`);
-
-  const session = await ensureSession("C2 Semester", new Date("2025-07-01"), new Date("2025-12-15"));
 
   const mainBlock = await ensureBuilding({ name: "Main Academic Block", latitude: 28.6139, longitude: 77.209, radiusMeters: 40 });
   const engBlock = await ensureBuilding({ name: "Engineering Block", latitude: 28.6145, longitude: 77.2101, radiusMeters: 50 });
 
-  console.log("Seeding demo quizzes in every status, against real cohorts/courses/faculty/students...");
+  console.log("Seeding demo quizzes in every status, against real courses/faculty/students...");
 
   const now = new Date();
 
@@ -510,16 +264,18 @@ async function main() {
   // registrants each - confirmed by query); PE331 is dominated by PE_5 (56
   // real registrants). Picked for the same reason as before: real faculty +
   // a healthy real roster, not because they're special otherwise.
-  const pe3Section = cohorts.sections.get("PE_3");
-  const pe5Section = cohorts.sections.get("PE_5");
+  const pe241Title = await getCourseTitleByCode("PE241", currentSubList);
+  const pe331Title = await getCourseTitleByCode("PE331", currentSubList);
+  const ece102Title = await getCourseTitleByCode("ECE102", currentSubList);
+  const pe202Title = await getCourseTitleByCode("PE202", currentSubList);
 
-  if (pe3Section && cohorts.courses.has("PE241")) {
-    const pe241Rolls = pickRegisteredStudents(cohorts.coursesByRoll, "PE241", 3);
+  const pe241Rolls = await pickRegisteredStudents("PE241", currentSubList, 3);
+  if (pe241Rolls.length >= 2) {
     await ensureCompletedDemoQuiz({
       title: "Reservoir Engineering I Midterm",
-      courseId: cohorts.courses.get("PE241")!.id,
-      sectionId: pe3Section.id,
-      sessionId: session.id,
+      courseCode: "PE241",
+      courseName: pe241Title,
+      sectionNames: "PE_3",
       facultyRoll: "RF0210",
       buildingId: mainBlock.id,
       studentRolls: pe241Rolls,
@@ -527,11 +283,13 @@ async function main() {
     });
   }
 
-  if (pe5Section && cohorts.courses.has("PE331")) {
+  const pe331Rolls = await pickRegisteredStudents("PE331", currentSubList, 3);
+  if (pe331Rolls.length > 0) {
     const draftQuiz = await ensureTimedDemoQuiz({
       title: "Offshore Technology Quiz 1 (Draft)",
-      courseId: cohorts.courses.get("PE331")!.id,
-      sectionIds: [pe5Section.id],
+      courseCode: "PE331",
+      courseName: pe331Title,
+      sectionNames: "PE_5",
       facultyRoll: "RF0240",
       buildingId: engBlock.id,
       status: "draft",
@@ -543,12 +301,13 @@ async function main() {
     await ensureQuestionAndAllotments({ quizId: draftQuiz.id, questionText: "What is a jack-up rig primarily used for?", marks: 10, allotRolls: [] });
   }
 
-  if (pe3Section && cohorts.courses.has("ECE102")) {
-    const ece102Rolls = pickRegisteredStudents(cohorts.coursesByRoll, "ECE102", 3);
+  const ece102Rolls = await pickRegisteredStudents("ECE102", currentSubList, 3);
+  if (ece102Rolls.length > 0) {
     const scheduledQuiz = await ensureTimedDemoQuiz({
       title: "Electronics Fundamentals Pop Quiz (Scheduled)",
-      courseId: cohorts.courses.get("ECE102")!.id,
-      sectionIds: [pe3Section.id],
+      courseCode: "ECE102",
+      courseName: ece102Title,
+      sectionNames: "PE_3",
       facultyRoll: "RF0259",
       buildingId: mainBlock.id,
       status: "scheduled",
@@ -560,12 +319,13 @@ async function main() {
     await ensureQuestionAndAllotments({ quizId: scheduledQuiz.id, questionText: "A NAND gate is a universal gate. True or False?", marks: 10, allotRolls: ece102Rolls });
   }
 
-  if (pe3Section && cohorts.courses.has("PE202")) {
-    const pe202Rolls = pickRegisteredStudents(cohorts.coursesByRoll, "PE202", 3);
+  const pe202Rolls = await pickRegisteredStudents("PE202", currentSubList, 3);
+  if (pe202Rolls.length > 0) {
     const liveQuiz = await ensureTimedDemoQuiz({
       title: "Mechanical Engineering Fundamentals Live Test",
-      courseId: cohorts.courses.get("PE202")!.id,
-      sectionIds: [pe3Section.id],
+      courseCode: "PE202",
+      courseName: pe202Title,
+      sectionNames: "PE_3",
       facultyRoll: "RF0223",
       buildingId: mainBlock.id,
       status: "live",

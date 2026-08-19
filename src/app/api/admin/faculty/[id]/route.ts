@@ -35,17 +35,18 @@ export async function GET(
         pageSize: 200,
       },
     );
-    const sections = await prisma.sectionFaculty.findMany({
-      where: { facultyRoll: roll },
-      include: { section: { select: { id: true, name: true } } },
-      orderBy: [{ section: { name: "asc" } }],
+    const sectionRows = await prisma.isrSubAvailableTbl.findMany({
+      where: { facRoll: roll, subList: currentSubList, section: { not: null } },
+      select: { section: true },
+      distinct: ["section"],
+      orderBy: { section: "asc" },
     });
 
     return ok({
       ...faculty,
       currentSubList,
       courseMappings,
-      sections: sections.map((s) => s.section),
+      sections: sectionRows.map((s) => ({ name: s.section! })),
     });
   } catch (error) {
     return handleApiError(error);

@@ -21,15 +21,12 @@ import { SearchableSelect } from "@/components/ui/searchable-select";
 import { format } from "@/lib/format-date";
 import { FileSpreadsheet, FileText } from "lucide-react";
 
-interface Course {
-  id: number;
-  name: string;
+interface CourseOption {
   code: string;
-}
-interface Section {
-  id: number;
   name: string;
-  courseId: number;
+}
+interface SectionOption {
+  name: string;
 }
 interface AttendanceRow {
   id: number;
@@ -37,11 +34,12 @@ interface AttendanceRow {
   status: "present" | "absent";
   studentRoll: string;
   studentName: string;
-  course: { id: number; name: string; code: string };
+  courseCode: string;
+  courseName: string;
   quiz: {
     id: number;
     title: string;
-    sections: { section: { id: number; name: string } }[];
+    sectionNames: string;
   };
 }
 interface StudentOption {
@@ -51,6 +49,7 @@ interface StudentOption {
 interface ListResponse<T> {
   items: T[];
   meta: { total: number; page: number; pageSize: number; totalPages: number };
+  filterOptions: { courses: CourseOption[]; sections: SectionOption[] };
 }
 
 const listFetcher = <T,>(url: string) => apiClient.get<{ items: T[] }>(url);
@@ -59,25 +58,14 @@ const fetcher = (url: string) =>
 
 export default function AttendanceReportPage() {
   const [page, setPage] = useState(1);
-  const [courseId, setCourseId] = useState<string>("all");
-  const [sectionId, setSectionId] = useState<string>("all");
+  const [courseCode, setCourseCode] = useState<string>("all");
+  const [sectionName, setSectionName] = useState<string>("all");
   const [search, setSearch] = useState("");
   const [studentSearch, setStudentSearch] = useState("");
   const [selectedStudents, setSelectedStudents] = useState<StudentOption[]>([]);
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
-
-  const { data: courseData } = useSWR(
-    "/api/admin/courses?pageSize=200",
-    listFetcher<Course>,
-  );
-  const { data: sectionData } = useSWR(
-    courseId !== "all"
-      ? `/api/admin/sections?pageSize=200&courseId=${courseId}`
-      : "/api/admin/sections?pageSize=200",
-    listFetcher<Section>,
-  );
 
   const studentListUrl = `/api/admin/students?page=1&pageSize=50${studentSearch.trim() ? `&search=${encodeURIComponent(studentSearch.trim())}` : ""}`;
   const { data: studentData } = useSWR(
@@ -92,8 +80,8 @@ export default function AttendanceReportPage() {
 
   const buildParams = (extra?: Record<string, string>) => {
     const params = new URLSearchParams({ page: String(page), pageSize: "20" });
-    if (courseId !== "all") params.set("courseId", courseId);
-    if (sectionId !== "all") params.set("sectionId", sectionId);
+    if (courseCode !== "all") params.set("courseCode", courseCode);
+    if (sectionName !== "all") params.set("sectionName", sectionName);
     if (search) params.set("search", search);
     if (from) params.set("from", from);
     if (to) params.set("to", to);
@@ -107,6 +95,8 @@ export default function AttendanceReportPage() {
     `/api/admin/reports/attendance?${buildParams().toString()}`,
     fetcher,
   );
+  const courseOptions = data?.filterOptions.courses ?? [];
+  const sectionOptions = data?.filterOptions.sections ?? [];
 
   const handleExport = (type: "excel" | "pdf") => {
     const params = buildParams({ export: type });
@@ -125,13 +115,12 @@ export default function AttendanceReportPage() {
     {
       key: "course",
       header: "Course",
-      render: (r) => `${r.course.name} (${r.course.code})`,
+      render: (r) => `${r.courseName} (${r.courseCode})`,
     },
     {
       key: "section",
       header: "Section",
-      render: (r) =>
-        r.quiz.sections.map((s) => s.section.name).join(", ") || "—",
+      render: (r) => r.quiz.sectionNames.split(",").filter(Boolean).join(", ") || "—",
     },
     { key: "quiz", header: "Quiz", render: (r) => r.quiz.title },
     { key: "date", header: "Date", render: (r) => format(r.date) },
@@ -177,15 +166,14 @@ export default function AttendanceReportPage() {
           <div className="space-y-1.5">
             <Label>Course</Label>
             <SearchableSelect
-              value={courseId}
+              value={courseCode}
               onValueChange={(v) => {
-                setCourseId(v);
-                setSectionId("all");
+                setCourseCode(v);
                 setPage(1);
               }}
               options={[
                 { value: "all", label: "All courses" },
-                ...(courseData?.items ?? []).map((c) => ({ value: String(c.id), label: `${c.name} (${c.code})` })),
+                ...courseOptions.map((c) => ({ value: c.code, label: `${c.name} (${c.code})` })),
               ]}
               searchPlaceholder="Search courses..."
             />
@@ -193,14 +181,14 @@ export default function AttendanceReportPage() {
           <div className="space-y-1.5">
             <Label>Section</Label>
             <SearchableSelect
-              value={sectionId}
+              value={sectionName}
               onValueChange={(v) => {
-                setSectionId(v);
+                setSectionName(v);
                 setPage(1);
               }}
               options={[
                 { value: "all", label: "All sections" },
-                ...(sectionData?.items ?? []).map((s) => ({ value: String(s.id), label: s.name })),
+                ...sectionOptions.map((s) => ({ value: s.name, label: s.name })),
               ]}
               searchPlaceholder="Search sections..."
             />

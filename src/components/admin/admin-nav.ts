@@ -3,7 +3,6 @@ import {
   Users,
   GraduationCap,
   Link2,
-  LayoutGrid,
   MapPin,
   Radio,
   FileBarChart,
@@ -50,14 +49,6 @@ export const ADMIN_NAV_GROUPS: NavGroup[] = [
   {
     title: "Master Data",
     items: [
-      // Courses and Sessions menu items hidden per 2026-08-10 MOM (Sachin) -
-      // routes still exist (/admin/master-data/courses, /sessions), just not
-      // linked from the nav.
-      {
-        label: "Sections",
-        href: "/admin/master-data/sections",
-        icon: LayoutGrid,
-      },
       {
         label: "Buildings",
         href: "/admin/master-data/buildings",

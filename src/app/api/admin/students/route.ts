@@ -1,11 +1,9 @@
 import { NextRequest } from "next/server";
-import { prisma } from "@/lib/db";
-import { ok, created, handleApiError, ApiError } from "@/lib/api-response";
+import { ok, created, handleApiError } from "@/lib/api-response";
 import { getAuthUser, requireRole } from "@/lib/auth";
 import { paginationSchema, paginationMeta } from "@/lib/validators/common";
 import { studentCreateSchema } from "@/lib/validators/directory";
 import { listStudents, createStudent } from "@/lib/legacy-db";
-import { assignStudentToDefaultSection, addManualSectionStudent } from "@/lib/section-sync";
 
 // Student master data is sourced live from the legacy isr_login_tbl /
 // isr_stu_data_tbl / isr_stu_main_tbl tables. POST writes directly into
@@ -35,23 +33,14 @@ export async function POST(req: NextRequest) {
     const user = getAuthUser(req);
     requireRole(user, "admin");
 
-    const { sectionId, ...studentData } = studentCreateSchema.parse(await req.json());
+    const studentData = studentCreateSchema.parse(await req.json());
     const student = await createStudent(studentData);
 
-    let sectionName: string;
-    if (sectionId) {
-      const existing = await prisma.section.findUnique({ where: { id: sectionId } });
-      if (!existing) throw new ApiError(404, "Section not found");
-      await addManualSectionStudent(sectionId, studentData.roll);
-      sectionName = existing.name;
-    } else {
-      // No sectionId picked - derive the default section from this student's
-      // own real Major + Semester, not a typed code.
-      const section = await assignStudentToDefaultSection(studentData.major, studentData.semNow, studentData.roll);
-      sectionName = section.name;
-    }
+    // The student's section is always derived live from Major + Semester -
+    // no separate assignment step needed.
+    const section = `${studentData.major}_${studentData.semNow}`;
 
-    return created({ ...student, section: sectionName });
+    return created({ ...student, section });
   } catch (error) {
     return handleApiError(error);
   }

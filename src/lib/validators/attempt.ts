@@ -27,8 +27,3 @@ export const submitAttemptSchema = z.object({
   reason: z.string().trim().optional(),
 });
 export type SubmitAttemptInput = z.infer<typeof submitAttemptSchema>;
-
-export const antiCheatEventSchema = z.object({
-  eventType: z.enum(["screen_switch", "overlay_detected", "background"]),
-});
-export type AntiCheatEventInput = z.infer<typeof antiCheatEventSchema>;

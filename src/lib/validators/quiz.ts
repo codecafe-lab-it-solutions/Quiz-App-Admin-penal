@@ -7,11 +7,10 @@ export const quizCreateSchema = z
     // Only used when an admin creates a quiz on a faculty member's behalf -
     // ignored (the caller's own roll is used) when a faculty member creates it.
     facultyRoll: z.string().trim().min(1).optional(),
-    courseId: z.coerce.number().int().positive("Select a course"),
-    sectionIds: z
-      .array(z.coerce.number().int().positive())
+    courseCode: z.string().trim().min(1, "Select a course"),
+    sectionNames: z
+      .array(z.string().trim().min(1))
       .min(1, "Select at least one section"),
-    sessionId: z.coerce.number().int().positive().optional(),
     buildingId: z.coerce.number().int().positive("Select a building"),
     startTime: z.coerce.date(),
     endTime: z.coerce.date(),
@@ -36,9 +35,8 @@ export const quizUpdateSchema = z.object({
   // whole PATCH; deliberately allowed even on a live quiz, same as every
   // other field on this schema.
   facultyRoll: z.string().trim().min(1).optional(),
-  courseId: z.coerce.number().int().positive().optional(),
-  sectionIds: z.array(z.coerce.number().int().positive()).min(1).optional(),
-  sessionId: z.coerce.number().int().positive().optional(),
+  courseCode: z.string().trim().min(1).optional(),
+  sectionNames: z.array(z.string().trim().min(1)).min(1).optional(),
   buildingId: z.coerce.number().int().positive().optional(),
   startTime: z.coerce.date().optional(),
   endTime: z.coerce.date().optional(),

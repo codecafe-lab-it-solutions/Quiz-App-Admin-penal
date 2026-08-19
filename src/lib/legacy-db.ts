@@ -38,8 +38,9 @@ export interface LegacyStudent {
   regStatus: string | null;
   attnOk: string | null;
   stuStatus: string | null;
-  // App-owned Section membership (2026-08-10 MOM), not a legacy column -
-  // comma-joined names if the student is in more than one section, null if none.
+  // Derived live from major+semNow (2026-08-18: the app-owned Section table
+  // this used to read no longer exists), e.g. "CE_3". Null if major or semNow
+  // is missing.
   section: string | null;
 }
 
@@ -52,6 +53,8 @@ export interface FacultyCourseMapping {
   facultyName: string | null;
   branch: string;
   major: string;
+  // This row's own real Major_Semester section (isr_sub_available_tbl.section).
+  section: string | null;
 }
 
 export interface StudentCourseRow {
@@ -72,13 +75,6 @@ export interface CourseCatalogEntry {
   credits: number | null;
   facRoll: string;
   facultyName: string | null;
-  // The app-owned Course.id this legacy code resolves to, if the admin has
-  // added it to the local course catalog yet (Quiz.courseId needs this FK -
-  // null means "ask admin to add this course under Master Data > Courses").
-  courseId: number | null;
-  // Sections linked to this course (Master Data > Sections) - empty until an
-  // admin creates one, since quiz creation now requires picking a section.
-  sections: { id: number; name: string }[];
   // This row's own real Major_Semester section (isr_sub_available_tbl.section
   // - see resolveMajorFromBranch/assignFacultyToDefaultSection), independent
   // of whether a Course/SectionCourse link exists in the app's own catalog.
@@ -161,7 +157,6 @@ export async function getStudentByRoll(roll: string): Promise<LegacyStudent | nu
   `;
   const row = rows[0];
   if (!row) return null;
-  const sections = await getSectionNamesByRolls([row.roll]);
   return {
     roll: row.roll,
     name: row.stu_name,
@@ -170,7 +165,7 @@ export async function getStudentByRoll(roll: string): Promise<LegacyStudent | nu
     batch: row.batch ?? "",
     semNow: row.sem_now == null ? "" : String(row.sem_now),
     status: row.status,
-    section: sections.get(row.roll) ?? null,
+    section: row.major && row.sem_now != null ? `${row.major}_${row.sem_now}` : null,
     regStatus: row.reg_status,
     attnOk: row.attn_ok,
     stuStatus: row.stu_status,
@@ -205,31 +200,21 @@ export async function getStudentNamesByRolls(rolls: string[]): Promise<Map<strin
   return new Map(rows.map((r) => [r.stuRoll, r.stuName]));
 }
 
-// App-owned Section membership (2026-08-10 MOM) - joined in for the admin
-// student list/detail views. A student can be in more than one section (e.g.
-// a Major+Semester default plus a course-driven merged section); excludes
-// rows a human has explicitly removed. Structured (id+name), so callers that
-// need to let an admin remove a specific membership (not just display it)
-// have the section id to act on - see getSectionNamesByRolls for the
-// display-only comma-joined-name form most callers actually want.
-export async function getSectionsByRolls(rolls: string[]): Promise<Map<string, { id: number; name: string }[]>> {
+// Derived live from major+semNow (2026-08-18: the app-owned SectionStudent
+// table this used to read no longer exists) - joined in for the admin
+// student list/detail views and report exports.
+export async function getSectionNamesByRolls(rolls: string[]): Promise<Map<string, string>> {
   if (rolls.length === 0) return new Map();
-  const rows = await prisma.sectionStudent.findMany({
-    where: { studentRoll: { in: [...new Set(rolls)] }, source: { not: "manual_removed" } },
-    include: { section: { select: { id: true, name: true } } },
+  const rows = await prisma.isrStuMainTbl.findMany({
+    where: { roll: { in: [...new Set(rolls)] } },
+    select: { roll: true, major: true, semNow: true },
   });
-  const byRoll = new Map<string, { id: number; name: string }[]>();
+  const byRoll = new Map<string, string>();
   for (const row of rows) {
-    const list = byRoll.get(row.studentRoll) ?? [];
-    list.push({ id: row.section.id, name: row.section.name });
-    byRoll.set(row.studentRoll, list);
+    if (!row.major || row.semNow == null) continue;
+    byRoll.set(row.roll, `${row.major}_${row.semNow}`);
   }
   return byRoll;
-}
-
-export async function getSectionNamesByRolls(rolls: string[]): Promise<Map<string, string>> {
-  const sections = await getSectionsByRolls(rolls);
-  return new Map([...sections.entries()].map(([roll, list]) => [roll, list.map((s) => s.name).join(", ")]));
 }
 
 export async function getFacultyNamesByRolls(rolls: string[]): Promise<Map<string, string>> {
@@ -322,24 +307,18 @@ export async function listStudents(params: {
     `),
   ]);
 
-  const sectionsByRoll = await getSectionsByRolls(items.map((r) => r.roll));
-
   return {
-    items: items.map((r) => {
-      const sections = sectionsByRoll.get(r.roll) ?? [];
-      return {
-        roll: r.roll,
-        name: r.stu_name,
-        email: r.user_email,
-        major: r.major ?? "",
-        batch: r.batch ?? "",
-        semNow: r.sem_now == null ? "" : String(r.sem_now),
-        status: r.status,
-        category: r.category,
-        section: sections.length ? sections.map((s) => s.name).join(", ") : null,
-        sections,
-      };
-    }),
+    items: items.map((r) => ({
+      roll: r.roll,
+      name: r.stu_name,
+      email: r.user_email,
+      major: r.major ?? "",
+      batch: r.batch ?? "",
+      semNow: r.sem_now == null ? "" : String(r.sem_now),
+      status: r.status,
+      category: r.category,
+      section: r.major && r.sem_now != null ? `${r.major}_${r.sem_now}` : null,
+    })),
     total: Number(countRows[0]?.total ?? 0),
   };
 }
@@ -582,6 +561,7 @@ export async function getFacultyCourseMappings(
     facultyName: nameByRoll.get(r.facRoll!) ?? null,
     branch: r.branch ?? "",
     major: resolveMajorFromBranch(r.branch ?? "", realMajors),
+    section: r.section,
   }));
 
   return { items, total };
@@ -630,6 +610,7 @@ export async function createFacultyCourseMapping(data: {
     facultyName: faculty.name,
     branch: data.branch,
     major: data.major,
+    section: row.section,
   };
 }
 
@@ -1040,6 +1021,18 @@ export async function deleteStudentCourseMapping(roll: string, subCode: string, 
 // the spec calls out as the literal "Prog/Dept always blank" fix (§5, §8).
 // ---------------------------------------------------------------------------
 
+// Resolves a bare course code to its title, preferring the current cycle's
+// isr_curriculum_tbl row but falling back to any cycle - some codes (e.g.
+// old electives) only have a curriculum row under a past cycle. Falls back
+// to the code itself when no curriculum row exists at all (e.g. Quiz.courseCode
+// values already stored in the isr_curriculum_tbl-sparse era).
+export async function getCourseTitleByCode(subCode: string, subList: string): Promise<string> {
+  const rows = await prisma.isrCurriculumTbl.findMany({ where: { bsmsCode: subCode } });
+  if (rows.length === 0) return subCode;
+  const current = rows.find((r) => r.subList === subList);
+  return (current ?? rows[0]).title;
+}
+
 export async function getFacultyCourseCatalog(facultyRoll: string, subList: string): Promise<CourseCatalogEntry[]> {
   const rows = await prisma.isrSubAvailableTbl.findMany({
     where: { facRoll: facultyRoll, subList },
@@ -1051,18 +1044,12 @@ export async function getFacultyCourseCatalog(facultyRoll: string, subList: stri
   if (mappings.length === 0) return [];
 
   const codes = [...new Set(mappings.map((m) => m.subCode))];
-  const [curriculum, appCourses] = await Promise.all([
-    // Not filtered to the current subList: titles are static across cycles,
-    // but some codes (e.g. old electives) only have a curriculum row under a
-    // past cycle (subList='C1') with nothing under the current one - scoping
-    // this to `subList` misses those and leaves title null even though a
-    // real title exists one cycle back.
-    prisma.isrCurriculumTbl.findMany({ where: { bsmsCode: { in: codes } } }),
-    prisma.course.findMany({
-      where: { code: { in: codes } },
-      select: { id: true, code: true, name: true, credits: true, sectionCourses: { include: { section: { select: { id: true, name: true } } } } },
-    }),
-  ]);
+  // Not filtered to the current subList: titles are static across cycles,
+  // but some codes (e.g. old electives) only have a curriculum row under a
+  // past cycle (subList='C1') with nothing under the current one - scoping
+  // this to `subList` misses those and leaves title null even though a
+  // real title exists one cycle back.
+  const curriculum = await prisma.isrCurriculumTbl.findMany({ where: { bsmsCode: { in: codes } } });
   // Keyed by (code, branch) - a shared course (e.g. "CDC") has one real
   // curriculum row PER branch, each with its own sem/credits. A plain
   // by-code Map would collapse all of those down to whichever one happened
@@ -1076,7 +1063,6 @@ export async function getFacultyCourseCatalog(facultyRoll: string, subList: stri
   );
   const byCodeAndBranch = new Map(bySubListThenCurrent.map((c) => [`${c.bsmsCode}::${c.bsmsBranch}`, c]));
   const byCode = new Map(bySubListThenCurrent.map((c) => [c.bsmsCode, c]));
-  const appCourseByCode = new Map(appCourses.map((c) => [c.code, c]));
   const faculty = await getFacultyByRoll(facultyRoll);
 
   return mappings.map((m) => {
@@ -1084,25 +1070,18 @@ export async function getFacultyCourseCatalog(facultyRoll: string, subList: stri
     // back to any curriculum row for the code (better than nothing) only
     // when there's no exact branch match.
     const c = byCodeAndBranch.get(`${m.subCode}::${m.branch}`) ?? byCode.get(m.subCode);
-    const appCourse = appCourseByCode.get(m.subCode);
     return {
       id: m.id,
       subCode: m.subCode,
-      // The legacy curriculum table (isr_curriculum_tbl) is the primary
-      // source, but it's sparsely populated in practice - fall back to the
-      // admin-managed local Course catalog (Master Data > Courses) rather
-      // than showing a blank name/credit count when that lookup misses.
-      title: c?.title ?? appCourse?.name ?? null,
+      title: c?.title ?? null,
       // This row's own real branch/sem always win over curriculum - they're
       // the authoritative source for THIS specific mapping row, not a
       // course-wide generality.
       branch: m.branch ?? c?.bsmsBranch ?? null,
       sem: m.sem ?? c?.sem ?? null,
-      credits: c?.bsmsCredit ?? appCourse?.credits ?? null,
+      credits: c?.bsmsCredit ?? null,
       facRoll: m.facRoll!,
       facultyName: faculty?.name ?? null,
-      courseId: appCourse?.id ?? null,
-      sections: appCourse?.sectionCourses.map((sc) => sc.section) ?? [],
       section: m.section,
     };
   });
