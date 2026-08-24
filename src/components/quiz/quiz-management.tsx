@@ -31,7 +31,7 @@ import {
   QuestionRow,
 } from "@/components/quiz/question-editor-dialog";
 import { RichTextDisplay } from "@/components/quiz/rich-text-display";
-import { Copy, Pencil, Plus, Trash2, Upload } from "lucide-react";
+import { Copy, Pencil, Plus, Smartphone, Trash2, Upload } from "lucide-react";
 
 const CLIENT_PAGE_SIZE = 10;
 
@@ -728,9 +728,25 @@ export function QuizManagement({
   return (
     <div className="space-y-6">
       <Card>
-        <CardHeader className="flex flex-row items-center justify-between space-y-0">
-          <div>
-            <CardTitle className="text-xl">{quiz.title}</CardTitle>
+        <CardHeader className="flex flex-col gap-4 space-y-0 lg:flex-row lg:items-start lg:justify-between">
+          <div className="min-w-0 flex-1 space-y-1.5">
+            <div className="flex flex-wrap items-center gap-2">
+              <CardTitle className="text-xl">{quiz.title}</CardTitle>
+              <Badge variant={statusVariant[quiz.status]}>{quiz.status}</Badge>
+              {(quiz.status === "draft" ||
+                quiz.status === "scheduled" ||
+                quiz.status === "live") && (
+                <Badge
+                  variant="outline"
+                  className="gap-1 font-normal text-muted-foreground"
+                >
+                  <Smartphone className="h-3 w-3" />
+                  {quiz.status === "live"
+                    ? "Stop via faculty app"
+                    : "Start via faculty app"}
+                </Badge>
+              )}
+            </div>
             <p className="text-sm text-muted-foreground">
               {quiz.courseName} ({quiz.courseCode}) · Section:{" "}
               {quiz.sectionNames.split(",").filter(Boolean).join(", ") || "—"} ·{" "}
@@ -738,17 +754,7 @@ export function QuizManagement({
               {formatDateTime(quiz.endTime)} · {quiz.totalMarks} marks
             </p>
           </div>
-          <div className="flex items-center gap-2">
-            <Badge variant={statusVariant[quiz.status]}>{quiz.status}</Badge>
-            {(quiz.status === "draft" ||
-              quiz.status === "scheduled" ||
-              quiz.status === "live") && (
-              <span className="text-sm text-muted-foreground">
-                {quiz.status === "live"
-                  ? "Stop this test from the faculty app"
-                  : "Start this test from the faculty app"}
-              </span>
-            )}
+          <div className="flex flex-wrap items-center gap-2 lg:shrink-0 lg:justify-end">
             {canEditQuestions && (
               <Button size="sm" variant="outline" onClick={openEditDialog}>
                 <Pencil className="mr-2 h-4 w-4" />
