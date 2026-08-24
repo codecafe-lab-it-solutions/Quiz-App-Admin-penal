@@ -1065,33 +1065,35 @@ export interface SectionAllotmentResult {
   skippedNoBatchCount: number;
 }
 
-// Bulk version of createStudentCourseMapping - every real isr_stu_main_tbl
-// student in this exact major+sem (i.e. every real member of the section)
-// gets registered for the course, batch table by batch table, the same way
-// a single manual "Add Mapping" in Student <-> Course does. A student already
-// registered, or with no batch on record (so no registration table to write
-// into), is skipped rather than failing the whole call.
-export async function bulkRegisterStudentsForSection(data: {
-  subCode: string;
-  subList: string;
-  major: string;
-  sem: string;
-}): Promise<SectionAllotmentResult> {
-  const semNow = Number(data.sem);
-  if (!Number.isFinite(semNow)) {
-    return { registeredCount: 0, alreadyRegisteredCount: 0, skippedNoBatchCount: 0 };
-  }
+export interface SectionStudentCandidate {
+  roll: string;
+  name: string;
+  batch: string | null;
+  // eligible - can be registered now; already_registered - already has a real
+  // registration row for this course, nothing to do; no_batch_table - real
+  // student with no batch, or a batch with no isr_reg_<batch>_tbl configured
+  // in the batch registry, so there's nowhere to write a registration row.
+  status: "eligible" | "already_registered" | "no_batch_table";
+}
 
-  const students = await prisma.isrStuMainTbl.findMany({
-    where: { major: data.major, semNow },
-    select: { roll: true, batch: true },
-  });
-
+// Shared registration-status lookup for a set of students against one
+// course - batch table resolved once per batch, one bounded IN(...) query
+// per batch for who's already registered, instead of the per-student
+// existence check createStudentCourseMapping does. Used by both the
+// candidate preview (getSectionStudentCandidates) and the actual bulk write
+// (bulkRegisterStudentsForSection) so they can never disagree about who's
+// eligible.
+async function resolveRegistrationStatus(
+  subCode: string,
+  subList: string,
+  students: { roll: string; batch: string | null }[],
+): Promise<Map<string, { tableName: string | null; alreadyRegistered: boolean }>> {
+  const result = new Map<string, { tableName: string | null; alreadyRegistered: boolean }>();
   const rollsByBatch = new Map<string, string[]>();
-  let skippedNoBatchCount = 0;
+
   for (const s of students) {
     if (!s.batch) {
-      skippedNoBatchCount++;
+      result.set(s.roll, { tableName: null, alreadyRegistered: false });
       continue;
     }
     const list = rollsByBatch.get(s.batch) ?? [];
@@ -1099,38 +1101,106 @@ export async function bulkRegisterStudentsForSection(data: {
     rollsByBatch.set(s.batch, list);
   }
 
-  let registeredCount = 0;
-  let alreadyRegisteredCount = 0;
-
   for (const [batch, rolls] of rollsByBatch) {
     const tableName = await resolveBatchTable(batch);
     if (!tableName) {
-      skippedNoBatchCount += rolls.length;
+      for (const roll of rolls) result.set(roll, { tableName: null, alreadyRegistered: false });
       continue;
     }
 
     const placeholders = rolls.map(() => "?").join(",");
     const existingRows = await prisma.$queryRawUnsafe<{ roll: string }[]>(
       `SELECT \`${REG_ROLL_COLUMN}\` AS roll FROM \`${tableName}\` WHERE \`${REG_SUB_CODE_COLUMN}\` = ? AND \`${REG_SUB_LIST_COLUMN}\` = ? AND \`${REG_ROLL_COLUMN}\` IN (${placeholders})`,
-      data.subCode,
-      data.subList,
+      subCode,
+      subList,
       ...rolls,
     );
     const existingRolls = new Set(existingRows.map((r) => r.roll));
-
     for (const roll of rolls) {
-      if (existingRolls.has(roll)) {
-        alreadyRegisteredCount++;
-        continue;
-      }
-      await prisma.$executeRawUnsafe(
-        `INSERT INTO \`${tableName}\` (\`${REG_ROLL_COLUMN}\`, \`${REG_SUB_CODE_COLUMN}\`, \`${REG_SUB_LIST_COLUMN}\`) VALUES (?, ?, ?)`,
-        roll,
-        data.subCode,
-        data.subList,
-      );
-      registeredCount++;
+      result.set(roll, { tableName, alreadyRegistered: existingRolls.has(roll) });
     }
+  }
+
+  return result;
+}
+
+// Real students who'd be affected by allotting this section - every
+// isr_stu_main_tbl member of the given major+sem, each tagged with whether
+// they'd actually be registered (eligible), are already registered, or can't
+// be (no batch table) - so the admin can see and choose exactly who gets
+// allotted before creating the section, not just a blind count after.
+export async function getSectionStudentCandidates(data: {
+  subCode: string;
+  subList: string;
+  major: string;
+  sem: string;
+}): Promise<SectionStudentCandidate[]> {
+  const semNow = Number(data.sem);
+  if (!Number.isFinite(semNow)) return [];
+
+  const students = await prisma.isrStuMainTbl.findMany({
+    where: { major: data.major, semNow },
+    select: { roll: true, name: true, batch: true },
+  });
+  if (students.length === 0) return [];
+
+  const statusByRoll = await resolveRegistrationStatus(data.subCode, data.subList, students);
+
+  return students
+    .map((s) => {
+      const info = statusByRoll.get(s.roll);
+      const status: SectionStudentCandidate["status"] = !info?.tableName
+        ? "no_batch_table"
+        : info.alreadyRegistered
+          ? "already_registered"
+          : "eligible";
+      return { roll: s.roll, name: s.name, batch: s.batch, status };
+    })
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
+
+// Registers exactly the given rolls for the course - the admin's selection
+// from getSectionStudentCandidates's eligible list, not a re-derived
+// major+sem query, so what gets written matches what was shown and picked.
+// A roll that's already registered, or has no batch table, is silently
+// skipped (same as before) rather than failing the whole call - defense in
+// depth in case the selection is stale by the time this runs.
+export async function bulkRegisterStudentsForSection(data: {
+  subCode: string;
+  subList: string;
+  rolls: string[];
+}): Promise<SectionAllotmentResult> {
+  if (data.rolls.length === 0) {
+    return { registeredCount: 0, alreadyRegisteredCount: 0, skippedNoBatchCount: 0 };
+  }
+
+  const students = await prisma.isrStuMainTbl.findMany({
+    where: { roll: { in: data.rolls } },
+    select: { roll: true, batch: true },
+  });
+  const statusByRoll = await resolveRegistrationStatus(data.subCode, data.subList, students);
+
+  let registeredCount = 0;
+  let alreadyRegisteredCount = 0;
+  let skippedNoBatchCount = data.rolls.length - students.length; // rolls that weren't even real students
+
+  for (const s of students) {
+    const info = statusByRoll.get(s.roll);
+    if (!info?.tableName) {
+      skippedNoBatchCount++;
+      continue;
+    }
+    if (info.alreadyRegistered) {
+      alreadyRegisteredCount++;
+      continue;
+    }
+    await prisma.$executeRawUnsafe(
+      `INSERT INTO \`${info.tableName}\` (\`${REG_ROLL_COLUMN}\`, \`${REG_SUB_CODE_COLUMN}\`, \`${REG_SUB_LIST_COLUMN}\`) VALUES (?, ?, ?)`,
+      s.roll,
+      data.subCode,
+      data.subList,
+    );
+    registeredCount++;
   }
 
   return { registeredCount, alreadyRegisteredCount, skippedNoBatchCount };

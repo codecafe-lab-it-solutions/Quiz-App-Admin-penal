@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import useSWR from "swr";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -17,6 +17,7 @@ import {
 import { DataTable, DataTableColumn } from "@/components/admin/data-table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { SearchableSelect, SearchableSelectOption } from "@/components/ui/searchable-select";
 import {
@@ -27,7 +28,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Plus, Users } from "lucide-react";
+import { BookOpen, Plus, Users } from "lucide-react";
 
 interface SectionCourse {
   id: number;
@@ -66,10 +67,24 @@ interface BranchSemOption {
   major: string;
 }
 
+interface StudentCandidate {
+  roll: string;
+  name: string;
+  batch: string | null;
+  status: "eligible" | "already_registered" | "no_batch_table";
+}
+
+interface CandidatesResponse {
+  items: StudentCandidate[];
+  major: string;
+  sem: string;
+}
+
 const fetcher = (url: string) => apiClient.get<ListResponse>(url);
 const facultyFetcher = (url: string) => apiClient.get<{ items: FacultyOption[] }>(url);
 const courseFetcher = (url: string) => apiClient.get<{ items: CourseOption[] }>(url);
 const branchSemFetcher = (url: string) => apiClient.get<{ items: BranchSemOption[] }>(url);
+const candidatesFetcher = (url: string) => apiClient.get<CandidatesResponse>(url);
 
 const schema = z.object({
   facRoll: z.string().trim().min(1, "Faculty is required"),
@@ -85,9 +100,17 @@ interface AllotmentResult {
   skippedNoBatchCount: number;
 }
 
+const STATUS_LABEL: Record<StudentCandidate["status"], string> = {
+  eligible: "Will be allotted",
+  already_registered: "Already registered",
+  no_batch_table: "No registration table for this batch",
+};
+
 export default function SectionsPage() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [viewingSection, setViewingSection] = useState<Section | null>(null);
+  const [selectedRolls, setSelectedRolls] = useState<Set<string>>(new Set());
 
   const { data, isLoading, mutate } = useSWR("/api/admin/sections", fetcher);
 
@@ -105,6 +128,7 @@ export default function SectionsPage() {
 
   // Faculty dropdown - server-searched, real isr_faculty_tbl rolls only.
   const [facSearch, setFacSearch] = useState("");
+  const [facLabel, setFacLabel] = useState("");
   const facSearchDebounced = useDebouncedValue(facSearch, 250);
   const { data: facData, isLoading: facLoading } = useSWR(
     dialogOpen
@@ -120,6 +144,7 @@ export default function SectionsPage() {
   // Course dropdown - server-searched, same real catalog Faculty <-> Course
   // mapping uses.
   const [courseSearch, setCourseSearch] = useState("");
+  const [courseLabel, setCourseLabel] = useState("");
   const courseSearchDebounced = useDebouncedValue(courseSearch, 250);
   const { data: courseData, isLoading: courseLoading } = useSWR(
     dialogOpen
@@ -160,23 +185,61 @@ export default function SectionsPage() {
     .map((o) => ({ value: o.sem, label: `Semester ${o.sem}` }));
 
   const selectedMajor = branchSemOptions.find((o) => o.branch === branch && o.sem === sem)?.major ?? null;
+  const sectionName = selectedMajor && sem ? `${selectedMajor}_${sem}` : null;
+
+  // Live candidate list for the picked course+branch+semester - who's
+  // actually a real member of this section, and whether they'd be newly
+  // allotted, are already registered, or can't be (no batch table).
+  const { data: candidatesData, isLoading: candidatesLoading } = useSWR(
+    dialogOpen && subCode && branch && sem
+      ? `/api/admin/sections/candidates?subCode=${encodeURIComponent(subCode)}&branch=${encodeURIComponent(branch)}&sem=${encodeURIComponent(sem)}`
+      : null,
+    candidatesFetcher,
+  );
+  const candidates = candidatesData?.items ?? [];
+  const eligibleCandidates = candidates.filter((c) => c.status === "eligible");
+
+  // Default selection: every eligible student, reset whenever the candidate
+  // list itself changes (new course/branch/semester picked).
+  useEffect(() => {
+    setSelectedRolls(new Set(eligibleCandidates.map((c) => c.roll)));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [candidatesData]);
+
+  const toggleRoll = (roll: string) => {
+    setSelectedRolls((prev) => {
+      const next = new Set(prev);
+      if (next.has(roll)) next.delete(roll);
+      else next.add(roll);
+      return next;
+    });
+  };
+
+  const allEligibleSelected =
+    eligibleCandidates.length > 0 && eligibleCandidates.every((c) => selectedRolls.has(c.roll));
+  const toggleSelectAll = () => {
+    setSelectedRolls(allEligibleSelected ? new Set() : new Set(eligibleCandidates.map((c) => c.roll)));
+  };
 
   const openCreate = () => {
     reset({ facRoll: "", subCode: "", branch: "", sem: "" });
     setFacSearch("");
+    setFacLabel("");
     setCourseSearch("");
+    setCourseLabel("");
     setBranchSearch("");
     setSemSearch("");
+    setSelectedRolls(new Set());
     setDialogOpen(true);
   };
 
   const onSubmit = async (values: FormValues) => {
     setSubmitting(true);
     try {
-      const result = await apiClient.post<{ allotment: AllotmentResult }>(
-        "/api/admin/sections",
-        values,
-      );
+      const result = await apiClient.post<{ allotment: AllotmentResult }>("/api/admin/sections", {
+        ...values,
+        rolls: [...selectedRolls],
+      });
       const { registeredCount, alreadyRegisteredCount } = result.allotment;
       toast.success(
         `Section created — ${registeredCount} student${registeredCount === 1 ? "" : "s"} allotted` +
@@ -185,9 +248,7 @@ export default function SectionsPage() {
       setDialogOpen(false);
       mutate();
     } catch (error) {
-      toast.error(
-        error instanceof ApiClientError ? error.message : "Failed to create section",
-      );
+      toast.error(error instanceof ApiClientError ? error.message : "Failed to create section");
     } finally {
       setSubmitting(false);
     }
@@ -213,15 +274,12 @@ export default function SectionsPage() {
     },
     {
       key: "courses",
-      header: "Courses",
+      header: "Courses & Faculty",
       render: (r) => (
-        <div className="flex flex-wrap gap-1">
-          {r.courses.map((c) => (
-            <Badge key={c.id} variant="secondary" className="font-normal">
-              {c.subCode} · {c.facultyName ?? c.facRoll}
-            </Badge>
-          ))}
-        </div>
+        <Button variant="outline" size="sm" onClick={() => setViewingSection(r)}>
+          <BookOpen className="mr-2 h-3.5 w-3.5" />
+          {r.courses.length} course{r.courses.length === 1 ? "" : "s"}
+        </Button>
       ),
     },
   ];
@@ -262,23 +320,65 @@ export default function SectionsPage() {
         </CardContent>
       </Card>
 
+      {/* Courses & faculty for one section - kept out of the main table so a
+          section with a dozen+ courses doesn't turn every row into a wall of
+          badges. */}
+      <Dialog open={viewingSection != null} onOpenChange={(open) => !open && setViewingSection(null)}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>{viewingSection?.name} - Courses & Faculty</DialogTitle>
+            <DialogDescription>
+              Every course this section is mapped to, and who teaches it.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="max-h-[60vh] space-y-2 overflow-y-auto">
+            {viewingSection?.courses.map((c) => (
+              <div
+                key={c.id}
+                className="flex items-center justify-between rounded-md border p-2.5 text-sm"
+              >
+                <div className="min-w-0">
+                  <p className="font-medium">{c.courseTitle}</p>
+                  <p className="text-xs text-muted-foreground">{c.subCode}</p>
+                </div>
+                <Badge variant="secondary" className="shrink-0 font-normal">
+                  {c.facultyName ?? c.facRoll}
+                </Badge>
+              </div>
+            ))}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setViewingSection(null)}>
+              Close
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="flex max-h-[85vh] flex-col sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>Create Section</DialogTitle>
             <DialogDescription>
               Maps a faculty to a course for a branch/semester
-              {data?.currentSubList ? ` (${data.currentSubList})` : ""} - every real student in
-              that Major_Semester is automatically registered for the course. Every field is
-              picked from real data - nothing typed.
+              {data?.currentSubList ? ` (${data.currentSubList})` : ""} - pick which real students
+              in that Major_Semester get registered for the course. Every field is picked from
+              real data - nothing typed.
             </DialogDescription>
           </DialogHeader>
-          <form onSubmit={handleSubmit(onSubmit)} className="space-y-4" noValidate>
+          <form
+            onSubmit={handleSubmit(onSubmit)}
+            className="flex-1 space-y-4 overflow-y-auto pr-1"
+            noValidate
+          >
             <div className="space-y-1.5">
               <Label>Faculty</Label>
               <SearchableSelect
                 value={facRoll || null}
-                onValueChange={(v) => setValue("facRoll", v, { shouldValidate: true })}
+                onValueChange={(v) => {
+                  setValue("facRoll", v, { shouldValidate: true });
+                  setFacLabel(facOptions.find((o) => o.value === v)?.label ?? v);
+                }}
                 options={facOptions}
                 search={facSearch}
                 onSearchChange={setFacSearch}
@@ -297,6 +397,7 @@ export default function SectionsPage() {
                 value={subCode || null}
                 onValueChange={(v) => {
                   setValue("subCode", v, { shouldValidate: true });
+                  setCourseLabel(courseOptions.find((o) => o.value === v)?.label ?? v);
                   setValue("branch", "");
                   setValue("sem", "");
                   setBranchSearch("");
@@ -357,23 +458,93 @@ export default function SectionsPage() {
                 )}
               </div>
             </div>
-            <div className="space-y-1.5">
-              <Label>Section</Label>
-              <p className="text-xs text-muted-foreground">
-                {selectedMajor && sem
-                  ? `Section: "${selectedMajor}_${sem}" - every student in this Major_Semester will be allotted.`
-                  : "Pick a Branch (and Semester, if it offers more than one) to determine the section."}
-              </p>
-            </div>
-            <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>
-                Cancel
-              </Button>
-              <Button type="submit" disabled={submitting}>
-                {submitting ? "Creating..." : "Create & Allot Students"}
-              </Button>
-            </DialogFooter>
+
+            {sectionName && (
+              <div className="space-y-1 rounded-md border bg-muted/40 p-3 text-sm">
+                <p>
+                  <span className="text-muted-foreground">Faculty:</span> {facLabel || "—"}
+                </p>
+                <p>
+                  <span className="text-muted-foreground">Course:</span> {courseLabel || "—"}
+                </p>
+                <p>
+                  <span className="text-muted-foreground">Section:</span>{" "}
+                  <span className="font-medium">{sectionName}</span>
+                </p>
+              </div>
+            )}
+
+            {sectionName && (
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <Label>
+                    Students in {sectionName}
+                    {candidates.length > 0 ? ` (${candidates.length})` : ""}
+                  </Label>
+                  {eligibleCandidates.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={toggleSelectAll}
+                      className="text-xs font-medium text-primary hover:underline"
+                    >
+                      {allEligibleSelected ? "Deselect all" : "Select all"}
+                    </button>
+                  )}
+                </div>
+                <div className="max-h-56 overflow-y-auto rounded-md border">
+                  {candidatesLoading ? (
+                    <p className="p-3 text-sm text-muted-foreground">Loading students...</p>
+                  ) : candidates.length === 0 ? (
+                    <p className="p-3 text-sm text-muted-foreground">
+                      No real students found in this Major_Semester yet.
+                    </p>
+                  ) : (
+                    <div className="divide-y">
+                      {candidates.map((c) => {
+                        const disabled = c.status !== "eligible";
+                        const checked = c.status === "eligible" ? selectedRolls.has(c.roll) : c.status === "already_registered";
+                        return (
+                          <div
+                            key={c.roll}
+                            onClick={() => !disabled && toggleRoll(c.roll)}
+                            className={`flex items-center gap-2.5 p-2 text-sm ${
+                              disabled ? "opacity-60" : "cursor-pointer hover:bg-accent/50"
+                            }`}
+                          >
+                            <Checkbox checked={checked} disabled={disabled} />
+                            <span className="min-w-0 flex-1">
+                              <span className="block truncate font-medium">{c.name}</span>
+                              <span className="block truncate text-xs text-muted-foreground">
+                                {c.roll} · {c.batch ?? "no batch"}
+                              </span>
+                            </span>
+                            <Badge
+                              variant={c.status === "eligible" ? "success" : "outline"}
+                              className="shrink-0 font-normal"
+                            >
+                              {STATUS_LABEL[c.status]}
+                            </Badge>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  {selectedRolls.size} student{selectedRolls.size === 1 ? "" : "s"} will be
+                  allotted to this course on create.
+                </p>
+              </div>
+            )}
           </form>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button type="button" onClick={handleSubmit(onSubmit)} disabled={submitting}>
+              {submitting ? "Creating..." : "Create & Allot Students"}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

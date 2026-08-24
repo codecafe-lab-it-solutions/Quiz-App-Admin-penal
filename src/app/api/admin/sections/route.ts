@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { ok, created, handleApiError } from "@/lib/api-response";
 import { getAuthUser, requireRole } from "@/lib/auth";
-import { facultyCourseMappingCreateSchema } from "@/lib/validators/directory";
+import { sectionCreateSchema } from "@/lib/validators/directory";
 import {
   getAllSections,
   createFacultyCourseMapping,
@@ -38,12 +38,15 @@ export async function POST(req: NextRequest) {
     const user = getAuthUser(req);
     requireRole(user, "admin");
 
-    const body = facultyCourseMappingCreateSchema.parse(await req.json());
+    const body = sectionCreateSchema.parse(await req.json());
     const major = resolveMajorFromBranch(body.branch, await getRealMajors());
     const currentSubList = await getCurrentSubList();
 
     const mapping = await createFacultyCourseMapping({
-      ...body,
+      facRoll: body.facRoll,
+      subCode: body.subCode,
+      branch: body.branch,
+      sem: body.sem,
       major,
       subList: currentSubList,
     });
@@ -51,8 +54,7 @@ export async function POST(req: NextRequest) {
     const allotment = await bulkRegisterStudentsForSection({
       subCode: body.subCode,
       subList: currentSubList,
-      major,
-      sem: body.sem,
+      rolls: body.rolls,
     });
 
     return created({ mapping, allotment });

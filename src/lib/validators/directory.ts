@@ -52,3 +52,14 @@ export const studentCourseMappingCreateSchema = z.object({
   roll: z.string().trim().min(1, "Student roll is required"),
   subCode: z.string().trim().min(1, "Course code is required"),
 });
+
+// Same shape as facultyCourseMappingCreateSchema, plus the exact students
+// (from the Sections page's candidate checklist) to allot into the course -
+// an empty array is valid (create the section with nobody allotted yet).
+export const sectionCreateSchema = z.object({
+  facRoll: z.string().trim().min(1, "Faculty roll is required"),
+  subCode: z.string().trim().min(1, "Course code is required"),
+  branch: z.string().trim().min(1, "Branch is required"),
+  sem: z.string().trim().min(1, "Semester is required"),
+  rolls: z.array(z.string().trim().min(1)).default([]),
+});
