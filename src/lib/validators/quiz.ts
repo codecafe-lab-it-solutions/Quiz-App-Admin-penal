@@ -15,7 +15,7 @@ export const quizCreateSchema = z
     startTime: z.coerce.date(),
     endTime: z.coerce.date(),
     durationMinutes: z.coerce.number().int().min(1),
-    totalMarks: z.coerce.number().int().min(1),
+    totalMarks: z.coerce.number().min(1),
     randomize: z.boolean().default(true),
     negativeMarking: z.boolean().default(false),
     allowSkipSwitch: z.boolean().default(true),
@@ -41,12 +41,15 @@ export const quizUpdateSchema = z.object({
   startTime: z.coerce.date().optional(),
   endTime: z.coerce.date().optional(),
   durationMinutes: z.coerce.number().int().min(1).optional(),
-  totalMarks: z.coerce.number().int().min(1).optional(),
+  totalMarks: z.coerce.number().min(1).optional(),
   randomize: z.boolean().optional(),
   negativeMarking: z.boolean().optional(),
   allowSkipSwitch: z.boolean().optional(),
   requireLocation: z.boolean().optional(),
-  status: z.enum(["draft", "scheduled", "live", "completed"]).optional(),
+  // No `status` field here on purpose - a quiz may only go live/completed
+  // through the dedicated /start and /stop routes, which run the side
+  // effects (actualStartTime/actualStopTime, allotment/question checks,
+  // marking absentees) this generic edit endpoint doesn't.
 });
 export type QuizUpdateInput = z.infer<typeof quizUpdateSchema>;
 
@@ -63,9 +66,8 @@ const mcqQuestionSchema = z.object({
   id: z.number().int().positive().optional(),
   questionType: z.literal("mcq"),
   questionText: richText("Question text is required"),
-  // Question.marks/negativeMarks are Int columns - Prisma throws if given a float.
-  marks: z.coerce.number().int().min(0),
-  negativeMarks: z.coerce.number().int().min(0).default(0),
+  marks: z.coerce.number().min(0),
+  negativeMarks: z.coerce.number().min(0).default(0),
   orderIndex: z.coerce.number().int().min(0).default(0),
   options: z
     .array(
@@ -85,8 +87,8 @@ const formulaQuestionSchema = z.object({
   id: z.number().int().positive().optional(),
   questionType: z.literal("formula"),
   questionText: richText("Question text is required"),
-  marks: z.coerce.number().int().min(0),
-  negativeMarks: z.coerce.number().int().min(0).default(0),
+  marks: z.coerce.number().min(0),
+  negativeMarks: z.coerce.number().min(0).default(0),
   orderIndex: z.coerce.number().int().min(0).default(0),
   correctValue: z.coerce.number(),
   tolerance: z.coerce.number().min(0),
@@ -99,7 +101,7 @@ const subjectiveQuestionSchema = z.object({
   id: z.number().int().positive().optional(),
   questionType: z.literal("subjective"),
   questionText: richText("Question text is required"),
-  marks: z.coerce.number().int().positive("Marks must be greater than 0"),
+  marks: z.coerce.number().positive("Marks must be greater than 0"),
   orderIndex: z.coerce.number().int().min(0).default(0),
   referenceAnswer: richTextOptional(),
 });

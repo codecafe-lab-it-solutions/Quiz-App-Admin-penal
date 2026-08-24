@@ -208,8 +208,8 @@ export function QuestionEditorDialog({
               <Input
                 id="marks"
                 type="number"
-                min={1}
-                step="1"
+                min={0.01}
+                step="0.01"
                 value={marks}
                 onChange={(e) => setMarks(e.target.value)}
               />
@@ -220,7 +220,7 @@ export function QuestionEditorDialog({
                 id="negativeMarks"
                 type="number"
                 min={0}
-                step="1"
+                step="0.01"
                 value={negativeMarks}
                 onChange={(e) => setNegativeMarks(e.target.value)}
               />

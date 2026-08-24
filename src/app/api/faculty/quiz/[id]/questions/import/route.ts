@@ -73,8 +73,8 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       }
 
       const marks = Number(r.Marks);
-      if (!Number.isInteger(marks) || marks <= 0) {
-        results.push({ row: rowNum, question: questionText, status: "skipped", reason: "Marks must be a positive whole number" });
+      if (!Number.isFinite(marks) || marks <= 0) {
+        results.push({ row: rowNum, question: questionText, status: "skipped", reason: "Marks must be a positive number" });
         continue;
       }
 
@@ -123,8 +123,8 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       }
 
       const negativeMarks = Number(r.NegativeMarks ?? 0);
-      if (!Number.isInteger(negativeMarks) || negativeMarks < 0) {
-        results.push({ row: rowNum, question: questionText, status: "skipped", reason: "Negative marks must be zero or a positive whole number" });
+      if (!Number.isFinite(negativeMarks) || negativeMarks < 0) {
+        results.push({ row: rowNum, question: questionText, status: "skipped", reason: "Negative marks must be zero or a positive number" });
         continue;
       }
 

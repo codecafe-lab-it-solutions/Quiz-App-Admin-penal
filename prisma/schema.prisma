@@ -386,7 +386,7 @@ model Quiz {
   startTime         DateTime   @map("start_time")
   endTime           DateTime   @map("end_time")
   durationMinutes   Int        @map("duration_minutes")
-  totalMarks        Int        @map("total_marks")
+  totalMarks        Float      @map("total_marks")
   randomize         Boolean    @default(true)
   negativeMarking   Boolean    @default(false) @map("negative_marking")
   allowSkipSwitch   Boolean    @default(true) @map("allow_skip_switch")
@@ -418,8 +418,8 @@ model Question {
   quizId          Int          @map("quiz_id")
   questionText    String       @db.Text @map("question_text")
   questionType    QuestionType @map("question_type")
-  marks           Int
-  negativeMarks   Int          @default(0) @map("negative_marks")
+  marks           Float
+  negativeMarks   Float        @default(0) @map("negative_marks")
   // Subjective-only, always optional even when questionType = subjective -
   // a manual-grading guide the faculty may leave blank. Never sent to students.
   referenceAnswer String?      @db.Text @map("reference_answer")
