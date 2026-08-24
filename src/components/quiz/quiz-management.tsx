@@ -31,7 +31,7 @@ import {
   QuestionRow,
 } from "@/components/quiz/question-editor-dialog";
 import { RichTextDisplay } from "@/components/quiz/rich-text-display";
-import { Copy, Pencil, Play, Plus, Square, Trash2, Upload } from "lucide-react";
+import { Copy, Pencil, Plus, Trash2, Upload } from "lucide-react";
 
 const CLIENT_PAGE_SIZE = 10;
 
@@ -325,32 +325,6 @@ export function QuizManagement({
   if (isLoading || !quiz) {
     return <p className="text-sm text-muted-foreground">Loading quiz...</p>;
   }
-
-  const handleStart = async () => {
-    try {
-      await apiClient.post(`/api/faculty/quiz/${quizId}/start`);
-      toast.success("Quiz is now live");
-      mutate();
-    } catch (error) {
-      toast.error(
-        error instanceof ApiClientError
-          ? error.message
-          : "Failed to start quiz",
-      );
-    }
-  };
-
-  const handleStop = async () => {
-    try {
-      await apiClient.post(`/api/faculty/quiz/${quizId}/stop`);
-      toast.success("Quiz stopped");
-      mutate();
-    } catch (error) {
-      toast.error(
-        error instanceof ApiClientError ? error.message : "Failed to stop quiz",
-      );
-    }
-  };
 
   const openEditDialog = () => {
     setEditForm({
@@ -766,17 +740,14 @@ export function QuizManagement({
           </div>
           <div className="flex items-center gap-2">
             <Badge variant={statusVariant[quiz.status]}>{quiz.status}</Badge>
-            {(quiz.status === "draft" || quiz.status === "scheduled") && (
-              <Button size="sm" onClick={handleStart}>
-                <Play className="mr-2 h-4 w-4" />
-                Start
-              </Button>
-            )}
-            {quiz.status === "live" && (
-              <Button size="sm" variant="destructive" onClick={handleStop}>
-                <Square className="mr-2 h-4 w-4" />
-                Stop
-              </Button>
+            {(quiz.status === "draft" ||
+              quiz.status === "scheduled" ||
+              quiz.status === "live") && (
+              <span className="text-sm text-muted-foreground">
+                {quiz.status === "live"
+                  ? "Stop this test from the faculty app"
+                  : "Start this test from the faculty app"}
+              </span>
             )}
             {canEditQuestions && (
               <Button size="sm" variant="outline" onClick={openEditDialog}>
