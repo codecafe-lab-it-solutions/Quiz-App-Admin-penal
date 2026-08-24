@@ -633,6 +633,84 @@ export async function deleteFacultyCourseMapping(id: number): Promise<void> {
   await prisma.isrSubAvailableTbl.delete({ where: { id } });
 }
 
+export interface SectionSummary {
+  name: string;
+  major: string;
+  sem: string;
+  studentCount: number;
+  courses: {
+    id: number;
+    subCode: string;
+    courseTitle: string;
+    facRoll: string;
+    facultyName: string | null;
+  }[];
+}
+
+// Section-first view over the same isr_sub_available_tbl rows the Faculty <->
+// Course mapping page manages - grouped by section name (a section is real
+// data only, never typed: every row that resolves to the same Major_Semester
+// is the same section, whichever course/faculty it happens to be under).
+// studentCount is the real isr_stu_main_tbl membership for that major+sem,
+// same live-derivation the quiz section picker uses (see section-sync.ts) -
+// not a cached count.
+export async function getAllSections(subList: string): Promise<SectionSummary[]> {
+  const rows = await prisma.isrSubAvailableTbl.findMany({
+    where: { subList, section: { not: null }, subCode: { not: null }, facRoll: { not: null } },
+  });
+  if (rows.length === 0) return [];
+
+  const realMajors = await getRealMajors();
+  const facultyRolls = [...new Set(rows.map((r) => r.facRoll!))];
+  const subCodes = [...new Set(rows.map((r) => r.subCode!))];
+
+  const [facultyRows, curriculumRows] = await Promise.all([
+    facultyRolls.length
+      ? prisma.isrFacultyTbl.findMany({ where: { roll: { in: facultyRolls } } })
+      : Promise.resolve([]),
+    subCodes.length
+      ? prisma.isrCurriculumTbl.findMany({ where: { bsmsCode: { in: subCodes }, subList } })
+      : Promise.resolve([]),
+  ]);
+  const facultyNameByRoll = new Map(facultyRows.map((f) => [f.roll, f.name]));
+  const titleByCode = new Map(curriculumRows.map((c) => [c.bsmsCode, c.title]));
+
+  const bySection = new Map<
+    string,
+    { major: string; sem: string; courses: SectionSummary["courses"] }
+  >();
+  for (const row of rows) {
+    const name = row.section!;
+    const major = resolveMajorFromBranch(row.branch ?? "", realMajors);
+    const entry = bySection.get(name) ?? { major, sem: row.sem ?? "", courses: [] };
+    entry.courses.push({
+      id: row.id,
+      subCode: row.subCode!,
+      courseTitle: titleByCode.get(row.subCode!) ?? row.subCode!,
+      facRoll: row.facRoll!,
+      facultyName: facultyNameByRoll.get(row.facRoll!) ?? null,
+    });
+    bySection.set(name, entry);
+  }
+
+  const entries = [...bySection.entries()];
+  const counts = await Promise.all(
+    entries.map(([, v]) =>
+      prisma.isrStuMainTbl.count({ where: { major: v.major, semNow: Number(v.sem) } }),
+    ),
+  );
+
+  return entries
+    .map(([name, v], i) => ({
+      name,
+      major: v.major,
+      sem: v.sem,
+      studentCount: counts[i],
+      courses: v.courses,
+    }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
+
 // Real course catalog for the "Add Mapping" course picker - a proper union
 // of isr_curriculum_tbl and isr_sub_available_tbl, since neither is a
 // complete list on its own (confirmed against the real C2 dump: 21 real
@@ -979,6 +1057,83 @@ export async function getBatchRegistrationsPaged(
     console.error(`getBatchRegistrationsPaged: query against ${tableName} failed`, error);
     return { items: [], total: 0 };
   }
+}
+
+export interface SectionAllotmentResult {
+  registeredCount: number;
+  alreadyRegisteredCount: number;
+  skippedNoBatchCount: number;
+}
+
+// Bulk version of createStudentCourseMapping - every real isr_stu_main_tbl
+// student in this exact major+sem (i.e. every real member of the section)
+// gets registered for the course, batch table by batch table, the same way
+// a single manual "Add Mapping" in Student <-> Course does. A student already
+// registered, or with no batch on record (so no registration table to write
+// into), is skipped rather than failing the whole call.
+export async function bulkRegisterStudentsForSection(data: {
+  subCode: string;
+  subList: string;
+  major: string;
+  sem: string;
+}): Promise<SectionAllotmentResult> {
+  const semNow = Number(data.sem);
+  if (!Number.isFinite(semNow)) {
+    return { registeredCount: 0, alreadyRegisteredCount: 0, skippedNoBatchCount: 0 };
+  }
+
+  const students = await prisma.isrStuMainTbl.findMany({
+    where: { major: data.major, semNow },
+    select: { roll: true, batch: true },
+  });
+
+  const rollsByBatch = new Map<string, string[]>();
+  let skippedNoBatchCount = 0;
+  for (const s of students) {
+    if (!s.batch) {
+      skippedNoBatchCount++;
+      continue;
+    }
+    const list = rollsByBatch.get(s.batch) ?? [];
+    list.push(s.roll);
+    rollsByBatch.set(s.batch, list);
+  }
+
+  let registeredCount = 0;
+  let alreadyRegisteredCount = 0;
+
+  for (const [batch, rolls] of rollsByBatch) {
+    const tableName = await resolveBatchTable(batch);
+    if (!tableName) {
+      skippedNoBatchCount += rolls.length;
+      continue;
+    }
+
+    const placeholders = rolls.map(() => "?").join(",");
+    const existingRows = await prisma.$queryRawUnsafe<{ roll: string }[]>(
+      `SELECT \`${REG_ROLL_COLUMN}\` AS roll FROM \`${tableName}\` WHERE \`${REG_SUB_CODE_COLUMN}\` = ? AND \`${REG_SUB_LIST_COLUMN}\` = ? AND \`${REG_ROLL_COLUMN}\` IN (${placeholders})`,
+      data.subCode,
+      data.subList,
+      ...rolls,
+    );
+    const existingRolls = new Set(existingRows.map((r) => r.roll));
+
+    for (const roll of rolls) {
+      if (existingRolls.has(roll)) {
+        alreadyRegisteredCount++;
+        continue;
+      }
+      await prisma.$executeRawUnsafe(
+        `INSERT INTO \`${tableName}\` (\`${REG_ROLL_COLUMN}\`, \`${REG_SUB_CODE_COLUMN}\`, \`${REG_SUB_LIST_COLUMN}\`) VALUES (?, ?, ?)`,
+        roll,
+        data.subCode,
+        data.subList,
+      );
+      registeredCount++;
+    }
+  }
+
+  return { registeredCount, alreadyRegisteredCount, skippedNoBatchCount };
 }
 
 export async function createStudentCourseMapping(data: {

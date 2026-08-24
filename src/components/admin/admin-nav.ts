@@ -3,6 +3,7 @@ import {
   Users,
   GraduationCap,
   Link2,
+  Layers,
   MapPin,
   Radio,
   FileBarChart,
@@ -34,6 +35,11 @@ export const ADMIN_NAV_GROUPS: NavGroup[] = [
   {
     title: "Mapping",
     items: [
+      {
+        label: "Sections",
+        href: "/admin/sections",
+        icon: Layers,
+      },
       {
         label: "Faculty ↔ Course/Section",
         href: "/admin/mapping/faculty-course-section",
