@@ -111,6 +111,7 @@ export default function SectionsPage() {
   const [submitting, setSubmitting] = useState(false);
   const [viewingSection, setViewingSection] = useState<Section | null>(null);
   const [selectedRolls, setSelectedRolls] = useState<Set<string>>(new Set());
+  const [showOthers, setShowOthers] = useState(false);
 
   const { data, isLoading, mutate } = useSWR("/api/admin/sections", fetcher);
 
@@ -198,11 +199,14 @@ export default function SectionsPage() {
   );
   const candidates = candidatesData?.items ?? [];
   const eligibleCandidates = candidates.filter((c) => c.status === "eligible");
+  const alreadyRegisteredCandidates = candidates.filter((c) => c.status === "already_registered");
+  const noTableCandidates = candidates.filter((c) => c.status === "no_batch_table");
 
   // Default selection: every eligible student, reset whenever the candidate
   // list itself changes (new course/branch/semester picked).
   useEffect(() => {
     setSelectedRolls(new Set(eligibleCandidates.map((c) => c.roll)));
+    setShowOthers(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [candidatesData]);
 
@@ -230,6 +234,7 @@ export default function SectionsPage() {
     setBranchSearch("");
     setSemSearch("");
     setSelectedRolls(new Set());
+    setShowOthers(false);
     setDialogOpen(true);
   };
 
@@ -474,13 +479,28 @@ export default function SectionsPage() {
               </div>
             )}
 
+            {sectionName && !candidatesLoading && candidates.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 text-xs">
+                <Badge variant="success" className="font-normal">
+                  {eligibleCandidates.length} can be allotted
+                </Badge>
+                {alreadyRegisteredCandidates.length > 0 && (
+                  <Badge variant="outline" className="font-normal">
+                    {alreadyRegisteredCandidates.length} already registered
+                  </Badge>
+                )}
+                {noTableCandidates.length > 0 && (
+                  <Badge variant="outline" className="font-normal">
+                    {noTableCandidates.length} no registration table
+                  </Badge>
+                )}
+              </div>
+            )}
+
             {sectionName && (
               <div className="space-y-1.5">
                 <div className="flex items-center justify-between">
-                  <Label>
-                    Students in {sectionName}
-                    {candidates.length > 0 ? ` (${candidates.length})` : ""}
-                  </Label>
+                  <Label>Students to allot</Label>
                   {eligibleCandidates.length > 0 && (
                     <button
                       type="button"
@@ -498,35 +518,28 @@ export default function SectionsPage() {
                     <p className="p-3 text-sm text-muted-foreground">
                       No real students found in this Major_Semester yet.
                     </p>
+                  ) : eligibleCandidates.length === 0 ? (
+                    <p className="p-3 text-sm text-muted-foreground">
+                      Nobody new to allot — every real student here is either already registered
+                      for this course, or their batch has no registration table on record.
+                    </p>
                   ) : (
                     <div className="divide-y">
-                      {candidates.map((c) => {
-                        const disabled = c.status !== "eligible";
-                        const checked = c.status === "eligible" ? selectedRolls.has(c.roll) : c.status === "already_registered";
-                        return (
-                          <div
-                            key={c.roll}
-                            onClick={() => !disabled && toggleRoll(c.roll)}
-                            className={`flex items-center gap-2.5 p-2 text-sm ${
-                              disabled ? "opacity-60" : "cursor-pointer hover:bg-accent/50"
-                            }`}
-                          >
-                            <Checkbox checked={checked} disabled={disabled} />
-                            <span className="min-w-0 flex-1">
-                              <span className="block truncate font-medium">{c.name}</span>
-                              <span className="block truncate text-xs text-muted-foreground">
-                                {c.roll} · {c.batch ?? "no batch"}
-                              </span>
+                      {eligibleCandidates.map((c) => (
+                        <div
+                          key={c.roll}
+                          onClick={() => toggleRoll(c.roll)}
+                          className="flex cursor-pointer items-center gap-2.5 p-2 text-sm hover:bg-accent/50"
+                        >
+                          <Checkbox checked={selectedRolls.has(c.roll)} />
+                          <span className="min-w-0 flex-1">
+                            <span className="block truncate font-medium">{c.name}</span>
+                            <span className="block truncate text-xs text-muted-foreground">
+                              {c.roll} · {c.batch ?? "no batch"}
                             </span>
-                            <Badge
-                              variant={c.status === "eligible" ? "success" : "outline"}
-                              className="shrink-0 font-normal"
-                            >
-                              {STATUS_LABEL[c.status]}
-                            </Badge>
-                          </div>
-                        );
-                      })}
+                          </span>
+                        </div>
+                      ))}
                     </div>
                   )}
                 </div>
@@ -534,6 +547,41 @@ export default function SectionsPage() {
                   {selectedRolls.size} student{selectedRolls.size === 1 ? "" : "s"} will be
                   allotted to this course on create.
                 </p>
+              </div>
+            )}
+
+            {sectionName && (alreadyRegisteredCandidates.length > 0 || noTableCandidates.length > 0) && (
+              <div className="space-y-1.5">
+                <button
+                  type="button"
+                  onClick={() => setShowOthers((v) => !v)}
+                  className="text-xs font-medium text-primary hover:underline"
+                >
+                  {showOthers ? "Hide" : "Show"} the{" "}
+                  {alreadyRegisteredCandidates.length + noTableCandidates.length} other student
+                  {alreadyRegisteredCandidates.length + noTableCandidates.length === 1 ? "" : "s"} already
+                  accounted for
+                </button>
+                {showOthers && (
+                  <div className="max-h-40 overflow-y-auto rounded-md border">
+                    <div className="divide-y">
+                      {[...alreadyRegisteredCandidates, ...noTableCandidates].map((c) => (
+                        <div key={c.roll} className="flex items-center gap-2.5 p-2 text-sm opacity-60">
+                          <Checkbox checked={c.status === "already_registered"} disabled />
+                          <span className="min-w-0 flex-1">
+                            <span className="block truncate font-medium">{c.name}</span>
+                            <span className="block truncate text-xs text-muted-foreground">
+                              {c.roll} · {c.batch ?? "no batch"}
+                            </span>
+                          </span>
+                          <Badge variant="outline" className="shrink-0 font-normal">
+                            {STATUS_LABEL[c.status]}
+                          </Badge>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </form>
