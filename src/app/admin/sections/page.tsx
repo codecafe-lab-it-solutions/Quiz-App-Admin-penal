@@ -528,11 +528,16 @@ export default function SectionsPage() {
                       {eligibleCandidates.map((c) => (
                         <div
                           key={c.roll}
-                          onClick={() => toggleRoll(c.roll)}
-                          className="flex cursor-pointer items-center gap-2.5 p-2 text-sm hover:bg-accent/50"
+                          className="flex items-center gap-2.5 p-2 text-sm hover:bg-accent/50"
                         >
-                          <Checkbox checked={selectedRolls.has(c.roll)} />
-                          <span className="min-w-0 flex-1">
+                          <Checkbox
+                            checked={selectedRolls.has(c.roll)}
+                            onCheckedChange={() => toggleRoll(c.roll)}
+                          />
+                          <span
+                            onClick={() => toggleRoll(c.roll)}
+                            className="min-w-0 flex-1 cursor-pointer"
+                          >
                             <span className="block truncate font-medium">{c.name}</span>
                             <span className="block truncate text-xs text-muted-foreground">
                               {c.roll} · {c.batch ?? "no batch"}
