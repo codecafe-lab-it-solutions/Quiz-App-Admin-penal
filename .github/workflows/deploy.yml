@@ -16,7 +16,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: "lts/Krypton"
+          node-version: "lts/*"
 
       - name: Install PM2
         run: npm install -g pm2
@@ -28,9 +28,9 @@ jobs:
           echo "${{ secrets.CCL_PROD_WEBAPP_SSH_KEY }}" > ~/.ssh/ccl-prod-sites
           chmod 600 ~/.ssh/ccl-prod-sites
           cat > ~/.ssh/config << EOF
-          Host CCL-PROD-SITES
+          Host QUIZ-APP-PROD
               HostName ${{ secrets.CCL_PROD_WEBAPP_HOST }}
-              User webapp
+              User sites
               IdentityFile ~/.ssh/ccl-prod-sites
               StrictHostKeyChecking no
               UserKnownHostsFile=/dev/null

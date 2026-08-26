@@ -40,9 +40,9 @@ module.exports = {
             // if that account doesn't also accept this same "sites" login,
             // the GitHub Actions auto-deploy will fail until reconciled.
             user: "sites",
-            host: "CCL-PROD-SITES",
+            host: "QUIZ-APP-PROD",
             ref: "origin/main",
-            repo: "git@github.com:codecafe-lab-it-solutions/Quiz-App-Admin-penal.git",
+            repo: "git@github-quiz-app:codecafe-lab-it-solutions/Quiz-App-Admin-penal.git",
             path: "/home/sites/quiz-app",
             'post-deploy': 'bash scripts/post-deploy.sh',
             'pre-deploy-local': "echo 'Starting deployment...'",
