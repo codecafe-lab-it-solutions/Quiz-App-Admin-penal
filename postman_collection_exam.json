@@ -137,6 +137,16 @@
             "method": "GET",
             "url": "{{baseUrl}}/api/faculty/quiz/{{quizId}}/attempts"
           }
+        },
+        {
+          "name": "Geofence Check (before invigilating)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/api/faculty/quiz/{{quizId}}/geofence-check",
+            "body": { "mode": "raw", "raw": "{\n  \"latitude\": {{latitude}},\n  \"longitude\": {{longitude}}\n}" },
+            "description": "Checks the logged-in faculty's current location against the quiz's building radius - same check the student flow uses, but for the faculty invigilating that quiz. Only works for a quiz owned by this faculty (404 otherwise). Returns isWithinRange, distanceMeters, allowedRadiusMeters, buildingName. If the quiz has requireLocation=false, returns isWithinRange: true with skipped: true instead of failing."
+          }
         }
       ]
     },
