@@ -139,6 +139,15 @@
           }
         },
         {
+          "name": "Reopen Attempt (auto-submitted)",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/faculty/quiz/{{quizId}}/allotments/:roll/reopen-attempt",
+            "variable": [{ "key": "roll", "value": "STU001" }],
+            "description": "Flips a student's auto_submitted attempt back to in_progress so they can resume - saved answers are untouched. 400 if the attempt is a manual \"submitted\" (not auto_submitted), 404 if there's no attempt at all. Also resets the allotment status back to \"allotted\". Only works for a quiz owned by this faculty."
+          }
+        },
+        {
           "name": "Geofence Check (before invigilating)",
           "request": {
             "method": "POST",

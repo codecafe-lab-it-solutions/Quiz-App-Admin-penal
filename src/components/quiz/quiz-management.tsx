@@ -573,6 +573,22 @@ export function QuizManagement({
     }
   };
 
+  const handleReopenAttempt = async (roll: string) => {
+    try {
+      await apiClient.post(
+        `/api/faculty/quiz/${quizId}/allotments/${encodeURIComponent(roll)}/reopen-attempt`,
+      );
+      toast.success(`${roll}'s attempt reopened - they can resume now`);
+      mutateAttempts();
+    } catch (error) {
+      toast.error(
+        error instanceof ApiClientError
+          ? error.message
+          : "Failed to reopen attempt",
+      );
+    }
+  };
+
   const handleToggleLocationBypass = async (
     roll: string,
     currentlyBypassed: boolean,
@@ -788,6 +804,7 @@ export function QuizManagement({
           data={attemptsData}
           onToggleProxy={handleToggleProxy}
           onToggleLocationBypass={handleToggleLocationBypass}
+          onReopenAttempt={handleReopenAttempt}
         />
       )}
 
@@ -1229,10 +1246,12 @@ function LiveMonitoringCard({
   data,
   onToggleProxy,
   onToggleLocationBypass,
+  onReopenAttempt,
 }: {
   data: AttemptsResponse | undefined;
   onToggleProxy: (roll: string, currentlyProxy: boolean) => void;
   onToggleLocationBypass: (roll: string, currentlyBypassed: boolean) => void;
+  onReopenAttempt: (roll: string) => void;
 }) {
   const [page, setPage] = useState(1);
   const entries = [
@@ -1310,6 +1329,15 @@ function LiveMonitoringCard({
                   >
                     {entry.isProxy ? "Remove Proxy" : "Mark Proxy"}
                   </Button>
+                  {entry.attempt?.status === "auto_submitted" && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => onReopenAttempt(entry.student.roll)}
+                    >
+                      Re-enable Attempt
+                    </Button>
+                  )}
                 </div>
               </div>
             ))}
