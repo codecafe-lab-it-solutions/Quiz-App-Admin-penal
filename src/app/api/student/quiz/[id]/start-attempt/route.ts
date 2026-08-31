@@ -42,11 +42,24 @@ export async function POST(
     const existingAttempt = await prisma.quizAttempt.findUnique({
       where: { quizId_studentRoll: { quizId, studentRoll: String(user.sub) } },
     });
-    if (existingAttempt)
+    if (existingAttempt && existingAttempt.status !== "in_progress")
       throw new ApiError(
         409,
         "You have already started or completed this attempt",
       );
+    if (existingAttempt) {
+      const questionOrder: number[] = existingAttempt.questionOrder
+        ? JSON.parse(existingAttempt.questionOrder)
+        : quiz.questions.map((q) => q.id);
+      return created({
+        attemptId: existingAttempt.id,
+        quizId,
+        durationMinutes: quiz.durationMinutes,
+        startTime: existingAttempt.startTime,
+        totalQuestions: questionOrder.length,
+        allowSkipSwitch: quiz.allowSkipSwitch,
+      });
+    }
 
     if (
       !quiz.requireLocation ||

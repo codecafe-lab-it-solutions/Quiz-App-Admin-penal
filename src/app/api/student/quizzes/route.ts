@@ -43,6 +43,7 @@ export async function GET(req: NextRequest) {
             },
           },
           allotments: { where: { studentRoll }, select: { status: true } },
+          attempts: { where: { studentRoll }, select: { status: true } },
         },
       }),
       prisma.quiz.count({ where }),
@@ -59,7 +60,9 @@ export async function GET(req: NextRequest) {
         name: facultyNames.get(q.facultyRoll) ?? q.facultyRoll,
       },
       myAllotmentStatus: q.allotments[0]?.status ?? "allotted",
+      myAttemptStatus: q.attempts[0]?.status ?? null,
       allotments: undefined,
+      attempts: undefined,
     }));
 
     return ok({ items: shaped, meta: paginationMeta(total, page, pageSize) });
