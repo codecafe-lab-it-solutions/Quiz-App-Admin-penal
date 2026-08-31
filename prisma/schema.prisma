@@ -364,6 +364,25 @@ model BatchTableRegistry {
   @@map("batch_table_registry")
 }
 
+// Forgot-password OTPs for isr_login_tbl accounts (student or faculty). The
+// OTP itself is bcrypt-hashed, never stored plain - same reasoning as
+// refresh-token storage elsewhere in this app. `attempts` caps brute-forcing
+// a 5-digit code within its expiry window (see MAX_OTP_ATTEMPTS in the
+// reset-password route).
+model PasswordResetOtp {
+  id         Int       @id @default(autoincrement())
+  userRoll   String    @map("user_roll")
+  userType   String    @map("user_type") // 'FAC' | 'STU'
+  otpHash    String    @map("otp_hash")
+  expiresAt  DateTime  @map("expires_at")
+  attempts   Int       @default(0)
+  consumedAt DateTime? @map("consumed_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
+
+  @@index([userRoll])
+  @@map("password_reset_otps")
+}
+
 // ---------------------------------------------------------------------------
 // Quiz domain
 // ---------------------------------------------------------------------------

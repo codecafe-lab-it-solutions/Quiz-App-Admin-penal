@@ -19,3 +19,13 @@ export const changePasswordSchema = z.object({
   currentPassword: z.string().min(1, "Current password is required"),
   newPassword: z.string().min(6, "New password must be at least 6 characters"),
 });
+
+export const forgotPasswordSchema = z.object({
+  identifier: z.string().trim().min(1, "Enter your roll number, email, or mobile number"),
+});
+
+export const resetPasswordSchema = z.object({
+  identifier: z.string().trim().min(1, "Enter your roll number, email, or mobile number"),
+  otp: z.string().trim().min(1, "Enter the code sent to your email"),
+  newPassword: z.string().min(6, "New password must be at least 6 characters"),
+});
