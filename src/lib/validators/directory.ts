@@ -1,9 +1,17 @@
 import { z } from "zod";
 
+// isr_login_tbl.user_mobile - same 10-digit format the forgot-password SMS
+// OTP send gates on (see MOBILE_REGEX in api/auth/forgot-password/route.ts).
+// A number that doesn't match this simply never gets an SMS OTP - keeping
+// the two in sync means an admin can't create an account that then silently
+// can't receive one.
+const mobileSchema = z.string().trim().regex(/^\d{10}$/, "Enter a valid 10-digit mobile number");
+
 export const facultyCreateSchema = z.object({
   roll: z.string().trim().min(1, "Roll is required"),
   name: z.string().trim().min(2, "Name must be at least 2 characters"),
   email: z.string().trim().email("Enter a valid email"),
+  mobile: mobileSchema,
   password: z.string().min(6, "Password must be at least 6 characters"),
 });
 
@@ -12,6 +20,7 @@ export const studentCreateSchema = z
     roll: z.string().trim().min(1, "Roll is required"),
     name: z.string().trim().min(2, "Name must be at least 2 characters"),
     email: z.string().trim().email("Enter a valid email"),
+    mobile: mobileSchema,
     password: z.string().min(6, "Password must be at least 6 characters"),
     major: z.string().trim().min(1, "Major is required"),
     batch: z.string().trim().min(1, "Batch is required"),
@@ -23,12 +32,14 @@ export const studentCreateSchema = z
 export const facultyUpdateSchema = z.object({
   name: z.string().trim().min(2, "Name must be at least 2 characters").optional(),
   email: z.string().trim().email("Enter a valid email").optional(),
+  mobile: mobileSchema.optional(),
   password: z.string().min(6, "Password must be at least 6 characters").optional(),
 });
 
 export const studentUpdateSchema = z.object({
   name: z.string().trim().min(2, "Name must be at least 2 characters").optional(),
   email: z.string().trim().email("Enter a valid email").optional(),
+  mobile: mobileSchema.optional(),
   password: z.string().min(6, "Password must be at least 6 characters").optional(),
   major: z.string().trim().min(1, "Major is required").optional(),
   batch: z.string().trim().min(1, "Batch is required").optional(),

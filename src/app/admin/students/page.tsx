@@ -30,6 +30,7 @@ interface Student {
   roll: string;
   name: string;
   email: string;
+  mobile: string | null;
   major: string;
   batch: string;
   semNow: string;
@@ -49,6 +50,10 @@ const schema = z.object({
   roll: z.string().trim().min(1, "Roll is required"),
   name: z.string().trim().min(2, "Name must be at least 2 characters"),
   email: z.string().trim().email("Enter a valid email"),
+  // Required (not "leave blank to keep") on both create and edit - the
+  // forgot-password SMS OTP flow can't reach an account without this, so the
+  // edit dialog doubles as a way to backfill it for older records.
+  mobile: z.string().trim().regex(/^\d{10}$/, "Enter a valid 10-digit mobile number"),
   password: z.string().optional(),
   major: z.string().trim().min(1, "Major is required"),
   batch: z.string().trim().min(1, "Batch is required"),
@@ -76,7 +81,7 @@ export default function StudentListPage() {
 
   const openCreate = () => {
     setEditing(null);
-    reset({ roll: "", name: "", email: "", password: "", major: "", batch: "", semNow: "" });
+    reset({ roll: "", name: "", email: "", mobile: "", password: "", major: "", batch: "", semNow: "" });
     setDialogOpen(true);
   };
 
@@ -86,6 +91,7 @@ export default function StudentListPage() {
       roll: student.roll,
       name: student.name,
       email: student.email,
+      mobile: student.mobile ?? "",
       password: "",
       major: student.major,
       batch: student.batch,
@@ -101,6 +107,7 @@ export default function StudentListPage() {
         await apiClient.patch(`/api/admin/students/${editing.roll}`, {
           name: values.name,
           email: values.email,
+          mobile: values.mobile,
           password: values.password || undefined,
           major: values.major,
           batch: values.batch,
@@ -149,6 +156,7 @@ export default function StudentListPage() {
   const columns: DataTableColumn<Student>[] = [
     { key: "name", header: "Name", render: (r) => <span className="font-medium">{r.name}</span> },
     { key: "email", header: "Email", render: (r) => r.email },
+    { key: "mobile", header: "Mobile", render: (r) => r.mobile || "—" },
     { key: "roll", header: "Roll", render: (r) => r.roll },
     { key: "major", header: "Major", render: (r) => r.major || "—" },
     { key: "batch", header: "Batch", render: (r) => r.batch || "—" },
@@ -263,6 +271,18 @@ export default function StudentListPage() {
               <Label htmlFor="email">Email</Label>
               <Input id="email" type="email" {...register("email")} />
               {errors.email && <p className="text-sm text-destructive">{errors.email.message}</p>}
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="mobile">Mobile Number</Label>
+              <Input
+                id="mobile"
+                type="tel"
+                inputMode="numeric"
+                maxLength={10}
+                placeholder="10-digit mobile number"
+                {...register("mobile")}
+              />
+              {errors.mobile && <p className="text-sm text-destructive">{errors.mobile.message}</p>}
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="password">{editing ? "Reset password (optional)" : "Password"}</Label>

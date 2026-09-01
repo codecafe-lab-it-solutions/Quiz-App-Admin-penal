@@ -26,6 +26,7 @@ export interface LegacyFaculty {
   roll: string;
   name: string;
   email: string;
+  mobile: string | null;
   status: number;
   dept: string | null;
   empCode: string | null;
@@ -36,6 +37,7 @@ export interface LegacyStudent {
   roll: string;
   name: string;
   email: string;
+  mobile: string | null;
   major: string;
   batch: string;
   semNow: string;
@@ -129,9 +131,9 @@ export async function verifyLegacyPassword(plainPassword: string, storedHash: st
 
 export async function getFacultyByRoll(roll: string): Promise<LegacyFaculty | null> {
   const rows = await prisma.$queryRaw<
-    { roll: string; name: string; user_email: string; status: number; dept: string | null; emp_code: string | null; fac_status: string | null }[]
+    { roll: string; name: string; user_email: string; user_mobile: string | null; status: number; dept: string | null; emp_code: string | null; fac_status: string | null }[]
   >`
-    SELECT f.roll AS roll, f.name AS name, l.user_email AS user_email, l.status AS status,
+    SELECT f.roll AS roll, f.name AS name, l.user_email AS user_email, l.user_mobile AS user_mobile, l.status AS status,
            f.dept AS dept, f.emp_code AS emp_code, f.fac_status AS fac_status
     FROM isr_faculty_tbl f
     JOIN isr_login_tbl l ON l.user_roll = f.roll
@@ -144,6 +146,7 @@ export async function getFacultyByRoll(roll: string): Promise<LegacyFaculty | nu
     roll: row.roll,
     name: row.name,
     email: row.user_email,
+    mobile: row.user_mobile,
     status: row.status,
     dept: row.dept,
     empCode: row.emp_code,
@@ -155,11 +158,11 @@ export async function getStudentByRoll(roll: string): Promise<LegacyStudent | nu
   const rows = await prisma.$queryRaw<
     {
       // sem_now is a real INT column - mysql2 returns a JS number for it.
-      roll: string; stu_name: string; user_email: string; major: string; batch: string; sem_now: number | null;
+      roll: string; stu_name: string; user_email: string; user_mobile: string | null; major: string; batch: string; sem_now: number | null;
       status: number; reg_status: string | null; attn_ok: string | null; stu_status: string | null;
     }[]
   >`
-    SELECT d.stu_roll AS roll, d.stu_name AS stu_name, l.user_email AS user_email, l.status AS status,
+    SELECT d.stu_roll AS roll, d.stu_name AS stu_name, l.user_email AS user_email, l.user_mobile AS user_mobile, l.status AS status,
            m.major AS major, m.batch AS batch, m.sem_now AS sem_now,
            m.reg_status AS reg_status, m.attn_ok AS attn_ok, m.stu_status AS stu_status
     FROM isr_stu_data_tbl d
@@ -174,6 +177,7 @@ export async function getStudentByRoll(roll: string): Promise<LegacyStudent | nu
     roll: row.roll,
     name: row.stu_name,
     email: row.user_email,
+    mobile: row.user_mobile,
     major: row.major ?? "",
     batch: row.batch ?? "",
     semNow: row.sem_now == null ? "" : String(row.sem_now),
@@ -250,8 +254,8 @@ export async function listFaculty(params: { search?: string; page: number; pageS
     : Prisma.empty;
 
   const [items, countRows] = await Promise.all([
-    prisma.$queryRaw<{ roll: string; name: string; user_email: string; status: number; dept: string | null; fac_status: string | null }[]>(Prisma.sql`
-      SELECT f.roll AS roll, f.name AS name, l.user_email AS user_email, l.status AS status, f.dept AS dept, f.fac_status AS fac_status
+    prisma.$queryRaw<{ roll: string; name: string; user_email: string; user_mobile: string | null; status: number; dept: string | null; fac_status: string | null }[]>(Prisma.sql`
+      SELECT f.roll AS roll, f.name AS name, l.user_email AS user_email, l.user_mobile AS user_mobile, l.status AS status, f.dept AS dept, f.fac_status AS fac_status
       FROM isr_faculty_tbl f
       JOIN isr_login_tbl l ON l.user_roll = f.roll AND l.user_type = 'FAC'
       ${whereClause}
@@ -267,7 +271,7 @@ export async function listFaculty(params: { search?: string; page: number; pageS
   ]);
 
   return {
-    items: items.map((r) => ({ roll: r.roll, name: r.name, email: r.user_email, status: r.status, dept: r.dept, facStatus: r.fac_status })),
+    items: items.map((r) => ({ roll: r.roll, name: r.name, email: r.user_email, mobile: r.user_mobile, status: r.status, dept: r.dept, facStatus: r.fac_status })),
     total: Number(countRows[0]?.total ?? 0),
   };
 }
@@ -300,9 +304,9 @@ export async function listStudents(params: {
   const [items, countRows] = await Promise.all([
     prisma.$queryRaw<
       // sem_now is a real INT column - mysql2 returns a JS number for it.
-      { roll: string; stu_name: string; user_email: string; major: string; batch: string; sem_now: number | null; status: number; category: string | null }[]
+      { roll: string; stu_name: string; user_email: string; user_mobile: string | null; major: string; batch: string; sem_now: number | null; status: number; category: string | null }[]
     >(Prisma.sql`
-      SELECT d.stu_roll AS roll, d.stu_name AS stu_name, l.user_email AS user_email, l.status AS status,
+      SELECT d.stu_roll AS roll, d.stu_name AS stu_name, l.user_email AS user_email, l.user_mobile AS user_mobile, l.status AS status,
              m.major AS major, m.batch AS batch, m.sem_now AS sem_now, d.category AS category
       FROM isr_stu_data_tbl d
       JOIN isr_login_tbl l ON l.user_roll = d.stu_roll AND l.user_type = 'STU'
@@ -325,6 +329,7 @@ export async function listStudents(params: {
       roll: r.roll,
       name: r.stu_name,
       email: r.user_email,
+      mobile: r.user_mobile,
       major: r.major ?? "",
       batch: r.batch ?? "",
       semNow: r.sem_now == null ? "" : String(r.sem_now),
@@ -347,6 +352,7 @@ export async function createFaculty(data: {
   roll: string;
   name: string;
   email: string;
+  mobile: string;
   password: string;
 }): Promise<LegacyFaculty> {
   const existingRoll = await prisma.isrLoginTbl.findUnique({ where: { userRoll: data.roll } });
@@ -359,17 +365,17 @@ export async function createFaculty(data: {
 
   await prisma.$transaction([
     prisma.isrLoginTbl.create({
-      data: { userRoll: data.roll, userEmail: data.email, userPassword: passwordHash, userType: "FAC" },
+      data: { userRoll: data.roll, userEmail: data.email, userMobile: data.mobile, userPassword: passwordHash, userType: "FAC" },
     }),
     prisma.isrFacultyTbl.create({ data: { roll: data.roll, name: data.name } }),
   ]);
 
-  return { roll: data.roll, name: data.name, email: data.email, status: 1, dept: null, empCode: null, facStatus: null };
+  return { roll: data.roll, name: data.name, email: data.email, mobile: data.mobile, status: 1, dept: null, empCode: null, facStatus: null };
 }
 
 export async function updateFaculty(
   roll: string,
-  data: { name?: string; email?: string; password?: string }
+  data: { name?: string; email?: string; mobile?: string; password?: string }
 ): Promise<LegacyFaculty> {
   const login = await prisma.isrLoginTbl.findUnique({ where: { userRoll: roll } });
   if (!login || login.userType !== "FAC") throw new ApiError(404, "Faculty not found");
@@ -379,11 +385,12 @@ export async function updateFaculty(
     if (emailConflict) throw new ApiError(409, "A user with this email already exists");
   }
 
-  if (data.email || data.password) {
+  if (data.email || data.mobile || data.password) {
     await prisma.isrLoginTbl.update({
       where: { userRoll: roll },
       data: {
         ...(data.email ? { userEmail: data.email } : {}),
+        ...(data.mobile ? { userMobile: data.mobile } : {}),
         ...(data.password ? { userPassword: hashLegacyPassword(data.password) } : {}),
       },
     });
@@ -413,6 +420,7 @@ export async function createStudent(data: {
   roll: string;
   name: string;
   email: string;
+  mobile: string;
   password: string;
   major: string;
   batch: string;
@@ -428,7 +436,7 @@ export async function createStudent(data: {
 
   await prisma.$transaction([
     prisma.isrLoginTbl.create({
-      data: { userRoll: data.roll, userEmail: data.email, userPassword: passwordHash, userType: "STU" },
+      data: { userRoll: data.roll, userEmail: data.email, userMobile: data.mobile, userPassword: passwordHash, userType: "STU" },
     }),
     prisma.isrStuDataTbl.create({ data: { stuRoll: data.roll, stuName: data.name } }),
     prisma.isrStuMainTbl.create({
@@ -440,14 +448,14 @@ export async function createStudent(data: {
   ]);
 
   return {
-    roll: data.roll, name: data.name, email: data.email, major: data.major, batch: data.batch, semNow: data.semNow,
+    roll: data.roll, name: data.name, email: data.email, mobile: data.mobile, major: data.major, batch: data.batch, semNow: data.semNow,
     status: 1, section: null, regStatus: null, attnOk: null, stuStatus: null,
   };
 }
 
 export async function updateStudent(
   roll: string,
-  data: { name?: string; email?: string; password?: string; major?: string; batch?: string; semNow?: string }
+  data: { name?: string; email?: string; mobile?: string; password?: string; major?: string; batch?: string; semNow?: string }
 ): Promise<LegacyStudent> {
   const login = await prisma.isrLoginTbl.findUnique({ where: { userRoll: roll } });
   if (!login || login.userType !== "STU") throw new ApiError(404, "Student not found");
@@ -457,11 +465,12 @@ export async function updateStudent(
     if (emailConflict) throw new ApiError(409, "A user with this email already exists");
   }
 
-  if (data.email || data.password) {
+  if (data.email || data.mobile || data.password) {
     await prisma.isrLoginTbl.update({
       where: { userRoll: roll },
       data: {
         ...(data.email ? { userEmail: data.email } : {}),
+        ...(data.mobile ? { userMobile: data.mobile } : {}),
         ...(data.password ? { userPassword: hashLegacyPassword(data.password) } : {}),
       },
     });

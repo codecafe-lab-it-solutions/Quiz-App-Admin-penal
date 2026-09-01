@@ -30,6 +30,7 @@ interface Faculty {
   roll: string;
   name: string;
   email: string;
+  mobile: string | null;
   status: number; // 1-Active, 2-Inactive
   dept: string | null;
   facStatus: string | null; // R-Regular, V-Visiting, P-PFD, T-Temporary
@@ -53,6 +54,10 @@ const schema = z.object({
   roll: z.string().trim().min(1, "Roll is required"),
   name: z.string().trim().min(2, "Name must be at least 2 characters"),
   email: z.string().trim().email("Enter a valid email"),
+  // Required (not "leave blank to keep") on both create and edit - the
+  // forgot-password SMS OTP flow can't reach an account without this, so the
+  // edit dialog doubles as a way to backfill it for older records.
+  mobile: z.string().trim().regex(/^\d{10}$/, "Enter a valid 10-digit mobile number"),
   password: z.string().optional(),
 });
 type FormValues = z.infer<typeof schema>;
@@ -77,13 +82,13 @@ export default function FacultyListPage() {
 
   const openCreate = () => {
     setEditing(null);
-    reset({ roll: "", name: "", email: "", password: "" });
+    reset({ roll: "", name: "", email: "", mobile: "", password: "" });
     setDialogOpen(true);
   };
 
   const openEdit = (faculty: Faculty) => {
     setEditing(faculty);
-    reset({ roll: faculty.roll, name: faculty.name, email: faculty.email, password: "" });
+    reset({ roll: faculty.roll, name: faculty.name, email: faculty.email, mobile: faculty.mobile ?? "", password: "" });
     setDialogOpen(true);
   };
 
@@ -94,6 +99,7 @@ export default function FacultyListPage() {
         await apiClient.patch(`/api/admin/faculty/${editing.roll}`, {
           name: values.name,
           email: values.email,
+          mobile: values.mobile,
           password: values.password || undefined,
         });
         toast.success("Faculty updated");
@@ -139,6 +145,7 @@ export default function FacultyListPage() {
   const columns: DataTableColumn<Faculty>[] = [
     { key: "name", header: "Name", render: (r) => <span className="font-medium">{r.name}</span> },
     { key: "email", header: "Email", render: (r) => r.email },
+    { key: "mobile", header: "Mobile", render: (r) => r.mobile || "—" },
     { key: "roll", header: "Roll", render: (r) => r.roll },
     { key: "dept", header: "Department", render: (r) => r.dept || "—" },
     { key: "facStatus", header: "Type", render: (r) => (r.facStatus ? FAC_STATUS_LABEL[r.facStatus] ?? r.facStatus : "—") },
@@ -248,6 +255,18 @@ export default function FacultyListPage() {
               <Label htmlFor="email">Email</Label>
               <Input id="email" type="email" {...register("email")} />
               {errors.email && <p className="text-sm text-destructive">{errors.email.message}</p>}
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="mobile">Mobile Number</Label>
+              <Input
+                id="mobile"
+                type="tel"
+                inputMode="numeric"
+                maxLength={10}
+                placeholder="10-digit mobile number"
+                {...register("mobile")}
+              />
+              {errors.mobile && <p className="text-sm text-destructive">{errors.mobile.message}</p>}
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="password">{editing ? "Reset password (optional)" : "Password"}</Label>
