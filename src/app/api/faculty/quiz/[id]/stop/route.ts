@@ -4,6 +4,7 @@ import { ok, handleApiError, ApiError } from "@/lib/api-response";
 import { getAuthUser, requireRole } from "@/lib/auth";
 import { idParamSchema } from "@/lib/validators/common";
 import { loadAccessibleQuiz } from "@/lib/quiz-access";
+import { finalizeAttempt, scoreAttemptAnswers } from "@/lib/attempt-scoring";
 
 export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
   try {
@@ -25,6 +26,57 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
         where: { id },
         data: { status: "completed", actualStopTime: stopTime },
       });
+
+      // Auto-submit every attempt still in progress using its current saved
+      // answers, before anyone still "allotted" is marked absent below -
+      // otherwise a student who started but hadn't submitted yet would fall
+      // through and get wrongly marked absent, losing their attempt.
+      const inProgressAttempts = await tx.quizAttempt.findMany({
+        where: { quizId: id, status: "in_progress" },
+      });
+
+      if (inProgressAttempts.length > 0) {
+        const orderedIdsByAttempt = new Map(
+          inProgressAttempts.map((a) => [a.id, (a.questionOrder ? JSON.parse(a.questionOrder) : []) as number[]]),
+        );
+        const allQuestionIds = [...new Set([...orderedIdsByAttempt.values()].flat())];
+
+        const [questions, options, formulas, answers] = await Promise.all([
+          tx.question.findMany({ where: { id: { in: allQuestionIds } } }),
+          tx.questionOption.findMany({ where: { questionId: { in: allQuestionIds } } }),
+          tx.questionFormula.findMany({ where: { questionId: { in: allQuestionIds } } }),
+          tx.studentAnswer.findMany({ where: { attemptId: { in: inProgressAttempts.map((a) => a.id) } } }),
+        ]);
+
+        const answersByAttempt = new Map<number, typeof answers>();
+        for (const a of answers) {
+          const list = answersByAttempt.get(a.attemptId) ?? [];
+          list.push(a);
+          answersByAttempt.set(a.attemptId, list);
+        }
+
+        for (const attempt of inProgressAttempts) {
+          const { scoredAnswers, totalMarksObtained } = scoreAttemptAnswers({
+            orderedIds: orderedIdsByAttempt.get(attempt.id) ?? [],
+            questions,
+            options,
+            formulas,
+            existingAnswers: answersByAttempt.get(attempt.id) ?? [],
+            negativeMarking: quiz.negativeMarking,
+          });
+
+          await finalizeAttempt(tx, {
+            attemptId: attempt.id,
+            quiz,
+            studentRoll: attempt.studentRoll,
+            status: "auto_submitted",
+            endTime: stopTime,
+            autoSubmitReason: "quiz_stopped_by_faculty",
+            scoredAnswers,
+            totalMarksObtained,
+          });
+        }
+      }
 
       const unattempted = await tx.quizAllotment.findMany({
         where: { quizId: id, status: "allotted" },

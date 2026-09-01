@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "Quiz Exam App API (Faculty + Student)",
-    "description": "Trimmed-down REST API collection for a standalone examination app: faculty login + their quiz list, and the complete student exam flow (list allotted quizzes, geofence check, start attempt, fetch questions, save answers, anti-cheat, submit, view published results). Set `baseUrl` to your running server. Login requests auto-save accessToken/refreshToken; Start Attempt auto-saves attemptId - run requests top to bottom inside a folder and you shouldn't need to copy anything by hand.",
+    "description": "Trimmed-down REST API collection for a standalone examination app: faculty login + their quiz list, and the complete student exam flow (list allotted quizzes, geofence check, start attempt, fetch questions, save answers, submit, view published results). Set `baseUrl` to your running server. Login requests auto-save accessToken/refreshToken; Start Attempt auto-saves attemptId - run requests top to bottom inside a folder and you shouldn't need to copy anything by hand.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -111,6 +111,28 @@
             "url": "{{baseUrl}}/api/auth/logout",
             "body": { "mode": "raw", "raw": "{\n  \"refreshToken\": \"{{refreshToken}}\"\n}" }
           }
+        },
+        {
+          "name": "Forgot Password",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "auth": { "type": "noauth" },
+            "url": "{{baseUrl}}/api/auth/forgot-password",
+            "body": { "mode": "raw", "raw": "{\n  \"identifier\": \"student@example.edu\"\n}" },
+            "description": "identifier is roll number, email, or mobile - works for both a student and a faculty account. Always returns the same generic success message regardless of whether the account exists, so the response never reveals which identifiers are real. If it does exist, a 5-digit OTP is emailed via the RGIPT ERP mail API and expires in 10 minutes."
+          }
+        },
+        {
+          "name": "Reset Password",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "auth": { "type": "noauth" },
+            "url": "{{baseUrl}}/api/auth/reset-password",
+            "body": { "mode": "raw", "raw": "{\n  \"identifier\": \"student@example.edu\",\n  \"otp\": \"12345\",\n  \"newPassword\": \"NewPass123\"\n}" },
+            "description": "otp is the 5-digit code from Forgot Password. Fails with 400 \"Invalid or expired code\" if wrong, expired, already used, or after 5 wrong attempts on the same code."
+          }
         }
       ]
     },
@@ -155,6 +177,49 @@
             "url": "{{baseUrl}}/api/faculty/quiz/{{quizId}}/geofence-check",
             "body": { "mode": "raw", "raw": "{\n  \"latitude\": {{latitude}},\n  \"longitude\": {{longitude}}\n}" },
             "description": "Checks the logged-in faculty's current location against the quiz's building radius - same check the student flow uses, but for the faculty invigilating that quiz. Only works for a quiz owned by this faculty (404 otherwise). Returns isWithinRange, distanceMeters, allowedRadiusMeters, buildingName. If the quiz has requireLocation=false, returns isWithinRange: true with skipped: true instead of failing."
+          }
+        },
+        {
+          "name": "Allotment: Mark Student as Proxy",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/faculty/quiz/{{quizId}}/allotments/:roll/proxy",
+            "variable": [{ "key": "roll", "value": "STU001" }],
+            "description": "Flags someone else appearing to take the exam as that student - a proxy always counts as absent regardless of what's been submitted. Only works for a quiz owned by this faculty."
+          }
+        },
+        {
+          "name": "Allotment: Revert Proxy Flag",
+          "request": {
+            "method": "DELETE",
+            "url": "{{baseUrl}}/api/faculty/quiz/{{quizId}}/allotments/:roll/proxy",
+            "variable": [{ "key": "roll", "value": "STU001" }],
+            "description": "Reverts a proxy flag, restoring the student's real status: \"attempted\" if they have a submitted attempt, otherwise back to \"allotted\"."
+          }
+        },
+        {
+          "name": "Allotment: Bypass Location Requirement",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/faculty/quiz/{{quizId}}/allotments/:roll/location-bypass",
+            "variable": [{ "key": "roll", "value": "STU001" }],
+            "description": "Exempts this one student from the quiz's GPS/location requirement - they can start the attempt from anywhere, regardless of Quiz.requireLocation."
+          }
+        },
+        {
+          "name": "Allotment: Reinstate Location Requirement",
+          "request": {
+            "method": "DELETE",
+            "url": "{{baseUrl}}/api/faculty/quiz/{{quizId}}/allotments/:roll/location-bypass",
+            "variable": [{ "key": "roll", "value": "STU001" }],
+            "description": "Reinstates the location requirement for this student."
+          }
+        },
+        {
+          "name": "My Attendance",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/faculty/attendance?page=1&pageSize=10"
           }
         }
       ]
@@ -252,27 +317,17 @@
           }
         },
         {
-          "name": "6. Report Anti-Cheat Event",
-          "request": {
-            "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "url": "{{baseUrl}}/api/student/attempt/{{attemptId}}/anti-cheat-event",
-            "body": { "mode": "raw", "raw": "{\n  \"eventType\": \"screen_switch\"\n}" },
-            "description": "eventType is one of screen_switch | overlay_detected | background. The response always instructs the client to immediately call Submit Attempt with autoSubmitted=true and the same reason - the server does not auto-submit for you."
-          }
-        },
-        {
-          "name": "7. Submit Attempt",
+          "name": "6. Submit Attempt",
           "request": {
             "method": "POST",
             "header": [{ "key": "Content-Type", "value": "application/json" }],
             "url": "{{baseUrl}}/api/student/attempt/{{attemptId}}/submit",
             "body": { "mode": "raw", "raw": "{\n  \"autoSubmitted\": false\n}" },
-            "description": "Scores every MCQ/numeric answer immediately (marksObtained, isCorrect) and returns the total - but the Result row is created with status \"pending\" and is NOT visible to the student yet. It only appears under My Results once the faculty calls Declare Result then Publish Result on their side. For an auto-submit (timer ran out / anti-cheat), send {\"autoSubmitted\": true, \"reason\": \"time_up\"}."
+            "description": "Scores every MCQ/numeric answer immediately (marksObtained, isCorrect) and returns the total - but the Result row is created with status \"pending\" and is NOT visible to the student yet. It only appears under My Results once the faculty calls Publish Result on their side (single step - there is no separate declare step). For an auto-submit (timer ran out / stopped by faculty), send {\"autoSubmitted\": true, \"reason\": \"time_up\"}."
           }
         },
         {
-          "name": "7b. Submit Attempt (auto-submit example)",
+          "name": "6b. Submit Attempt (auto-submit example)",
           "request": {
             "method": "POST",
             "header": [{ "key": "Content-Type", "value": "application/json" }],
@@ -281,7 +336,7 @@
           }
         },
         {
-          "name": "8. My Results (after faculty publishes)",
+          "name": "7. My Results (after faculty publishes)",
           "request": {
             "method": "GET",
             "url": "{{baseUrl}}/api/student/results?page=1&pageSize=10",
@@ -289,11 +344,18 @@
           }
         },
         {
-          "name": "9. Get Attempt Result Detail (correct answers)",
+          "name": "8. Get Attempt Result Detail (correct answers)",
           "request": {
             "method": "GET",
             "url": "{{baseUrl}}/api/student/attempt/{{attemptId}}/result",
-            "description": "Per-question breakdown for a submitted attempt: your answer, whether it was correct, the correct option(s)/value, and marks obtained. Returns 403 until the faculty has run Declare Result then Publish Result for this quiz (declared alone is not enough - matches My Results' visibility rule). Subjective questions show manuallyGraded: false and marksObtained: 0 until a faculty member grades them."
+            "description": "Per-question breakdown for a submitted attempt: your answer, whether it was correct, the correct option(s)/value, and marks obtained. Returns 403 until the faculty has run Publish Result for this quiz. Subjective questions show manuallyGraded: false and marksObtained: 0 until a faculty member grades them."
+          }
+        },
+        {
+          "name": "9. My Attendance",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/student/attendance?page=1&pageSize=10"
           }
         }
       ]

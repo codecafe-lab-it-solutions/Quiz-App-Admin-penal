@@ -4,6 +4,7 @@ import { ok, handleApiError, ApiError } from "@/lib/api-response";
 import { getAuthUser, requireRole } from "@/lib/auth";
 import { submitAttemptSchema } from "@/lib/validators/attempt";
 import { idParamSchema } from "@/lib/validators/common";
+import { finalizeAttempt, scoreAttemptAnswers } from "@/lib/attempt-scoring";
 
 export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
   try {
@@ -29,161 +30,31 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       prisma.studentAnswer.findMany({ where: { attemptId } }),
     ]);
 
-    const questionById = new Map(questions.map((q) => [q.id, q]));
-    const optionsByQuestion = new Map<number, typeof options>();
-    for (const opt of options) {
-      const list = optionsByQuestion.get(opt.questionId) ?? [];
-      list.push(opt);
-      optionsByQuestion.set(opt.questionId, list);
-    }
-    const formulaByQuestion = new Map(formulas.map((f) => [f.questionId, f]));
-    const answerByQuestion = new Map(existingAnswers.map((a) => [a.questionId, a]));
-
-    let totalMarksObtained = 0;
-
-    const scoredAnswers = orderedIds.map((questionId, orderIndex) => {
-      const question = questionById.get(questionId);
-      const existing = answerByQuestion.get(questionId);
-
-      if (!question) {
-        return { questionId, orderIndex, isSkipped: true, isCorrect: null, marksObtained: 0, selectedOptionId: null, answerValue: null, writtenAnswer: null };
-      }
-
-      const isSkipped =
-        !existing ||
-        existing.isSkipped ||
-        (question.questionType === "subjective"
-          ? !existing.writtenAnswer || existing.writtenAnswer.trim() === ""
-          : existing.selectedOptionId == null && existing.answerValue == null);
-
-      if (isSkipped) {
-        return {
-          questionId,
-          orderIndex,
-          isSkipped: true,
-          isCorrect: null,
-          marksObtained: 0,
-          selectedOptionId: existing?.selectedOptionId ?? null,
-          answerValue: existing?.answerValue ?? null,
-          writtenAnswer: existing?.writtenAnswer ?? null,
-        };
-      }
-
-      // Subjective answers are never auto-scored - a faculty member grades
-      // them manually after submission (marksObtained stays 0 until then).
-      if (question.questionType === "subjective") {
-        return {
-          questionId,
-          orderIndex,
-          isSkipped: false,
-          isCorrect: null,
-          marksObtained: 0,
-          selectedOptionId: null,
-          answerValue: null,
-          writtenAnswer: existing!.writtenAnswer,
-        };
-      }
-
-      let isCorrect = false;
-
-      if (question.questionType === "mcq") {
-        const correctOption = (optionsByQuestion.get(questionId) ?? []).find((o) => o.isCorrect);
-        isCorrect = !!correctOption && correctOption.id === existing!.selectedOptionId;
-      } else {
-        const formula = formulaByQuestion.get(questionId);
-        if (formula && existing!.answerValue != null) {
-          isCorrect = Math.abs(existing!.answerValue - formula.correctValue) <= formula.tolerance;
-        }
-      }
-
-      const marksObtained = isCorrect
-        ? question.marks
-        : quiz.negativeMarking
-          ? -question.negativeMarks
-          : 0;
-
-      totalMarksObtained += marksObtained;
-
-      return {
-        questionId,
-        orderIndex,
-        isSkipped: false,
-        isCorrect,
-        marksObtained,
-        selectedOptionId: existing!.selectedOptionId,
-        answerValue: existing!.answerValue,
-        writtenAnswer: null,
-      };
+    const { scoredAnswers, totalMarksObtained } = scoreAttemptAnswers({
+      orderedIds,
+      questions,
+      options,
+      formulas,
+      existingAnswers,
+      negativeMarking: quiz.negativeMarking,
     });
 
     const percentage = quiz.totalMarks > 0 ? (totalMarksObtained / quiz.totalMarks) * 100 : 0;
     const submittedAt = new Date();
     const status = body.autoSubmitted ? "auto_submitted" : "submitted";
 
-    await prisma.$transaction(async (tx) => {
-      for (const answer of scoredAnswers) {
-        await tx.studentAnswer.upsert({
-          where: { attemptId_questionId: { attemptId, questionId: answer.questionId } },
-          update: {
-            isCorrect: answer.isCorrect,
-            marksObtained: answer.marksObtained,
-            isSkipped: answer.isSkipped,
-            orderIndex: answer.orderIndex,
-          },
-          create: {
-            attemptId,
-            questionId: answer.questionId,
-            selectedOptionId: answer.selectedOptionId,
-            answerValue: answer.answerValue,
-            writtenAnswer: answer.writtenAnswer,
-            isCorrect: answer.isCorrect,
-            marksObtained: answer.marksObtained,
-            isSkipped: answer.isSkipped,
-            orderIndex: answer.orderIndex,
-          },
-        });
-      }
-
-      await tx.quizAttempt.update({
-        where: { id: attemptId },
-        data: {
-          status,
-          endTime: submittedAt,
-          autoSubmitted: body.autoSubmitted,
-          autoSubmitReason: body.autoSubmitted ? body.reason ?? "auto_submitted" : null,
-        },
-      });
-
-      await tx.quizAllotment.update({
-        where: { quizId_studentRoll: { quizId: attempt.quizId, studentRoll: String(user.sub) } },
-        data: { status: "attempted" },
-      });
-
-      await tx.attendance.upsert({
-        where: { studentRoll_quizId: { studentRoll: String(user.sub), quizId: attempt.quizId } },
-        update: { status: "present" },
-        create: {
-          studentRoll: String(user.sub),
-          courseCode: quiz.courseCode,
-          courseName: quiz.courseName,
-          quizId: attempt.quizId,
-          date: quiz.startTime,
-          status: "present",
-        },
-      });
-
-      await tx.result.upsert({
-        where: { quizId_studentRoll: { quizId: attempt.quizId, studentRoll: String(user.sub) } },
-        update: { marksObtained: totalMarksObtained, percentage },
-        create: {
-          quizId: attempt.quizId,
-          studentRoll: String(user.sub),
-          marksObtained: totalMarksObtained,
-          percentage,
-          status: "pending",
-        },
-      });
-    });
+    await prisma.$transaction((tx) =>
+      finalizeAttempt(tx, {
+        attemptId,
+        quiz,
+        studentRoll: String(user.sub),
+        status,
+        endTime: submittedAt,
+        autoSubmitReason: body.autoSubmitted ? body.reason ?? "auto_submitted" : null,
+        scoredAnswers,
+        totalMarksObtained,
+      }),
+    );
 
     return ok({
       attemptId,
