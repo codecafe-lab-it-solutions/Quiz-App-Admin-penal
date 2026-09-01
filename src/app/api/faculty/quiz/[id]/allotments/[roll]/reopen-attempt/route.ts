@@ -5,10 +5,11 @@ import { getAuthUser, requireRole } from "@/lib/auth";
 import { idParamSchema } from "@/lib/validators/common";
 import { getStudentNamesByRolls } from "@/lib/legacy-db";
 
-// Reopens an auto-submitted attempt so the student can resume where they left
-// off. Only flips the attempt back to in_progress - saved answers are never
-// touched, and only an auto-submitted attempt qualifies (a manual "submitted"
-// is left alone).
+// Reopens a submitted or auto-submitted attempt so the student can resume
+// where they left off. Only flips the attempt back to in_progress - saved
+// answers are never touched. Blocked once the quiz itself has been stopped
+// (quiz.status "completed"), or if the attempt is already in_progress (i.e.
+// there's nothing to reopen).
 export async function POST(
   req: NextRequest,
   { params }: { params: { id: string; roll: string } },
@@ -32,8 +33,11 @@ export async function POST(
       where: { quizId_studentRoll: { quizId, studentRoll: params.roll } },
     });
     if (!attempt) throw new ApiError(404, "This student has no attempt for this quiz");
-    if (attempt.status !== "auto_submitted") {
-      throw new ApiError(400, "Only an auto-submitted attempt can be reopened");
+    if (attempt.status === "in_progress") {
+      throw new ApiError(400, "Attempt is already in progress");
+    }
+    if (quiz.status === "completed") {
+      throw new ApiError(400, "Cannot reopen after the test has ended");
     }
 
     const [updatedAttempt, updatedAllotment] = await prisma.$transaction([
