@@ -120,7 +120,7 @@
             "auth": { "type": "noauth" },
             "url": "{{baseUrl}}/api/auth/forgot-password",
             "body": { "mode": "raw", "raw": "{\n  \"identifier\": \"student@example.edu\"\n}" },
-            "description": "identifier is roll number, email, or mobile - works for both a student and a faculty account. Always returns the same generic success message regardless of whether the account exists, so the response never reveals which identifiers are real. If it does exist, a 5-digit OTP is emailed via the RGIPT ERP mail API and expires in 10 minutes."
+            "description": "identifier is roll number, email, or mobile - works for both a student and a faculty account. Always returns the same generic success message regardless of whether the account exists, so the response never reveals which identifiers are real. If it does exist, a 5-digit OTP is sent via the RGIPT ERP API - by email always, and also by SMS to the account's registered mobile number if it's a valid 10-digit number. Both channels are independent best-effort sends; expires in 10 minutes."
           }
         },
         {

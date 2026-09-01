@@ -5,10 +5,11 @@ import { ok, handleApiError } from "@/lib/api-response";
 import { forgotPasswordSchema } from "@/lib/validators/auth";
 import { findLoginByIdentifier } from "@/lib/legacy-db";
 import { hashToken } from "@/lib/auth";
-import { sendErpMailOtp } from "@/lib/erp-mail";
+import { sendErpMailOtp, sendErpSmsOtp } from "@/lib/erp-otp";
 
 const OTP_EXPIRY_MINUTES = 10;
-const GENERIC_MESSAGE = "If an account exists for that ID, a code has been emailed.";
+const GENERIC_MESSAGE = "If an account exists for that ID, a code has been sent.";
+const MOBILE_REGEX = /^\d{10}$/;
 
 function generateOtp(): string {
   return String(randomInt(10000, 100000)); // always 5 digits
@@ -33,13 +34,19 @@ export async function POST(req: NextRequest) {
         data: { userRoll: login.userRoll, userType: login.userType, otpHash, expiresAt },
       });
 
-      try {
-        await sendErpMailOtp({ mailTo: login.userEmail, otp });
-      } catch (error) {
-        // Logged for ops, but never surfaced - the response must stay generic
-        // whether or not the account exists or the mail send succeeded.
-        console.error("forgot-password: failed to send OTP mail", error);
-      }
+      // Both channels are best-effort and independent - a failure (or a
+      // stored mobile number that isn't a valid 10-digit number) on one
+      // never blocks the other, and neither is ever surfaced to the caller.
+      await Promise.all([
+        sendErpMailOtp({ mailTo: login.userEmail, otp }).catch((error) => {
+          console.error("forgot-password: failed to send OTP email", error);
+        }),
+        MOBILE_REGEX.test(login.userMobile ?? "")
+          ? sendErpSmsOtp({ mobile: login.userMobile!, otp }).catch((error) => {
+              console.error("forgot-password: failed to send OTP SMS", error);
+            })
+          : Promise.resolve(),
+      ]);
     }
 
     return ok({ message: GENERIC_MESSAGE });
