@@ -15,3 +15,8 @@ export const adminUserSchema = z.object({
   password: z.string().min(6, "Password must be at least 6 characters").optional(),
 });
 export type AdminUserInput = z.infer<typeof adminUserSchema>;
+
+export const accountDeletionRequestStatusSchema = z.object({
+  status: z.enum(["pending", "completed", "rejected"]),
+});
+export type AccountDeletionRequestStatusInput = z.infer<typeof accountDeletionRequestStatusSchema>;

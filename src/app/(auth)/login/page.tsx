@@ -1,6 +1,7 @@
 "use client";
 
 import { Suspense, useState } from "react";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -125,6 +126,12 @@ function LoginForm() {
               {submitting ? "Signing in..." : "Sign in"}
             </Button>
           </form>
+          <Link
+            href="/login/deleteaccount"
+            className="mt-4 block text-center text-sm text-muted-foreground hover:text-foreground hover:underline"
+          >
+            Delete Account request
+          </Link>
         </CardContent>
       </Card>
     </div>

@@ -11,6 +11,7 @@ import {
   ShieldCheck,
   CalendarClock,
   ClipboardList,
+  UserX,
 } from "lucide-react";
 import type { NavGroup } from "@/components/shell/nav-sidebar";
 
@@ -26,6 +27,7 @@ export const ADMIN_NAV_GROUPS: NavGroup[] = [
     items: [
       { label: "Faculty", href: "/admin/faculty", icon: GraduationCap },
       { label: "Students", href: "/admin/students", icon: Users },
+      { label: "Deletion Requests", href: "/admin/deletion-requests", icon: UserX },
     ],
   },
   {

@@ -383,6 +383,29 @@ model PasswordResetOtp {
   @@map("password_reset_otps")
 }
 
+enum AccountDeletionRequestStatus {
+  pending
+  completed
+  rejected
+}
+
+// Public "Delete Account" requests submitted from the login page (a public
+// web page for this is required for Play Store compliance). Accounts here
+// live in the external ISR/legacy system (see IsrLoginTbl), so this app
+// can't delete them itself - a request just queues here for an admin to
+// action manually in the legacy system, then mark resolved.
+model AccountDeletionRequest {
+  id                Int                           @id @default(autoincrement())
+  identifier        String                        @map("identifier")
+  status            AccountDeletionRequestStatus  @default(pending)
+  reviewedByAdminId Int?                           @map("reviewed_by_admin_id")
+  reviewedAt        DateTime?                      @map("reviewed_at")
+  createdAt         DateTime                       @default(now()) @map("created_at")
+
+  @@index([status])
+  @@map("account_deletion_requests")
+}
+
 // ---------------------------------------------------------------------------
 // Quiz domain
 // ---------------------------------------------------------------------------
