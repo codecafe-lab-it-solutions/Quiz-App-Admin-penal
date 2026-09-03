@@ -189,6 +189,31 @@ export async function getStudentByRoll(roll: string): Promise<LegacyStudent | nu
   };
 }
 
+export interface MatchedAccount {
+  type: "student" | "faculty";
+  roll: string;
+  name: string | null;
+  email: string;
+}
+
+// Best-effort match of a free-typed identifier (email/roll/mobile) against
+// the legacy accounts DB, tried as a student first then faculty - used by
+// the admin-panel "Delete Account" request queue both to display who a
+// request matches and to act on that exact account (delete/deactivate).
+export async function resolveAccountByIdentifier(identifier: string): Promise<MatchedAccount | null> {
+  const student = await findLoginByIdentifier(identifier, "STU");
+  if (student) {
+    const profile = await getStudentByRoll(student.userRoll);
+    return { type: "student", roll: student.userRoll, name: profile?.name ?? null, email: student.userEmail };
+  }
+  const faculty = await findLoginByIdentifier(identifier, "FAC");
+  if (faculty) {
+    const profile = await getFacultyByRoll(faculty.userRoll);
+    return { type: "faculty", roll: faculty.userRoll, name: profile?.name ?? null, email: faculty.userEmail };
+  }
+  return null;
+}
+
 // ---------------------------------------------------------------------------
 // Login activation (isr_login_tbl.status: 1-Active, 2-Inactive)
 // ---------------------------------------------------------------------------

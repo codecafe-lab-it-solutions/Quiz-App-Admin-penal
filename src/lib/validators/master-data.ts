@@ -18,5 +18,9 @@ export type AdminUserInput = z.infer<typeof adminUserSchema>;
 
 export const accountDeletionRequestStatusSchema = z.object({
   status: z.enum(["pending", "completed", "rejected"]),
+  // Only meaningful (and required) when status is "completed" with a matched
+  // account: what to actually do to that account in the legacy system -
+  // "delete" removes it outright, "deactivate" just flips its login off.
+  accountAction: z.enum(["delete", "deactivate"]).optional(),
 });
 export type AccountDeletionRequestStatusInput = z.infer<typeof accountDeletionRequestStatusSchema>;

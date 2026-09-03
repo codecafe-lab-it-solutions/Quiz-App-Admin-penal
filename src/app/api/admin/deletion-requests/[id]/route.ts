@@ -4,6 +4,7 @@ import { ok, handleApiError, ApiError } from "@/lib/api-response";
 import { getAuthUser, requireRole } from "@/lib/auth";
 import { idParamSchema } from "@/lib/validators/common";
 import { accountDeletionRequestStatusSchema } from "@/lib/validators/master-data";
+import { resolveAccountByIdentifier, deleteStudent, deleteFaculty, setLoginStatus } from "@/lib/legacy-db";
 
 export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
   try {
@@ -15,6 +16,21 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
 
     const existing = await prisma.accountDeletionRequest.findUnique({ where: { id } });
     if (!existing) throw new ApiError(404, "Deletion request not found");
+
+    // Approving a request is the actual point of this queue - it must act on
+    // the real legacy account, not just relabel the request row, or the
+    // account never actually gets deleted/deactivated.
+    if (body.status === "completed" && body.accountAction) {
+      const matched = await resolveAccountByIdentifier(existing.identifier);
+      if (!matched) throw new ApiError(404, "No matching account found for this identifier");
+
+      if (body.accountAction === "delete") {
+        if (matched.type === "student") await deleteStudent(matched.roll);
+        else await deleteFaculty(matched.roll);
+      } else {
+        await setLoginStatus(matched.roll, matched.type === "student" ? "STU" : "FAC", false);
+      }
+    }
 
     const request = await prisma.accountDeletionRequest.update({
       where: { id },

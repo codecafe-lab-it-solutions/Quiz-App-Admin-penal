@@ -11,7 +11,7 @@ import { ConfirmDialog } from "@/components/admin/confirm-dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { SearchableSelect } from "@/components/ui/searchable-select";
-import { CheckCircle2, XCircle, RotateCcw } from "lucide-react";
+import { CheckCircle2, XCircle, RotateCcw, Trash2, UserX } from "lucide-react";
 
 type RequestStatus = "pending" | "completed" | "rejected";
 
@@ -58,10 +58,16 @@ export default function DeletionRequestsPage() {
   const params = new URLSearchParams({ page: String(page), pageSize: "10", search, ...(status ? { status } : {}) });
   const { data, isLoading, mutate } = useSWR(`/api/admin/deletion-requests?${params.toString()}`, fetcher);
 
-  const updateStatus = async (id: number, newStatus: RequestStatus) => {
+  const updateStatus = async (id: number, newStatus: RequestStatus, accountAction?: "delete" | "deactivate") => {
     try {
-      await apiClient.patch(`/api/admin/deletion-requests/${id}`, { status: newStatus });
-      toast.success("Request updated");
+      await apiClient.patch(`/api/admin/deletion-requests/${id}`, { status: newStatus, accountAction });
+      toast.success(
+        accountAction === "delete"
+          ? "Account deleted and request marked completed"
+          : accountAction === "deactivate"
+            ? "Account deactivated and request marked completed"
+            : "Request updated"
+      );
       mutate();
     } catch (error) {
       toast.error(error instanceof ApiClientError ? error.message : "Update failed");
@@ -108,17 +114,44 @@ export default function DeletionRequestsPage() {
         <div className="flex justify-end gap-2">
           {r.status === "pending" ? (
             <>
-              <ConfirmDialog
-                trigger={
-                  <Button variant="ghost" size="icon" title="Mark completed">
-                    <CheckCircle2 className="h-4 w-4 text-green-600" />
-                  </Button>
-                }
-                title="Mark request completed?"
-                description={`Confirm the account for "${r.identifier}" has been deleted. This marks the request resolved.`}
-                confirmLabel="Mark Completed"
-                onConfirm={() => updateStatus(r.id, "completed")}
-              />
+              {r.matchedAccount ? (
+                <>
+                  <ConfirmDialog
+                    trigger={
+                      <Button variant="ghost" size="icon" title="Delete account">
+                        <Trash2 className="h-4 w-4 text-destructive" />
+                      </Button>
+                    }
+                    title="Delete this account?"
+                    description={`Permanently delete the ${r.matchedAccount.type} account for "${r.matchedAccount.name ?? r.matchedAccount.roll}" (${r.matchedAccount.roll}) from the system. This cannot be undone.`}
+                    confirmLabel="Delete Account"
+                    onConfirm={() => updateStatus(r.id, "completed", "delete")}
+                  />
+                  <ConfirmDialog
+                    trigger={
+                      <Button variant="ghost" size="icon" title="Deactivate account">
+                        <UserX className="h-4 w-4 text-amber-600" />
+                      </Button>
+                    }
+                    title="Deactivate this account?"
+                    description={`Deactivate the login for the ${r.matchedAccount.type} account "${r.matchedAccount.name ?? r.matchedAccount.roll}" (${r.matchedAccount.roll}) instead of deleting it. They will no longer be able to sign in.`}
+                    confirmLabel="Deactivate"
+                    onConfirm={() => updateStatus(r.id, "completed", "deactivate")}
+                  />
+                </>
+              ) : (
+                <ConfirmDialog
+                  trigger={
+                    <Button variant="ghost" size="icon" title="Mark completed">
+                      <CheckCircle2 className="h-4 w-4 text-green-600" />
+                    </Button>
+                  }
+                  title="Mark request completed?"
+                  description={`No account currently matches "${r.identifier}" - mark this request resolved anyway?`}
+                  confirmLabel="Mark Completed"
+                  onConfirm={() => updateStatus(r.id, "completed")}
+                />
+              )}
               <ConfirmDialog
                 trigger={
                   <Button variant="ghost" size="icon" title="Reject">
@@ -146,8 +179,8 @@ export default function DeletionRequestsPage() {
       <div>
         <h1 className="text-2xl font-bold tracking-tight">Delete Account Requests</h1>
         <p className="text-sm text-muted-foreground">
-          Requests submitted from the login page. Accounts live in the legacy university system, so process the
-          deletion there (Faculty/Students pages), then mark the request completed here.
+          Requests submitted from the login page. Delete or deactivate the matched account directly from here - both
+          actions apply immediately and mark the request completed.
         </p>
       </div>
 
