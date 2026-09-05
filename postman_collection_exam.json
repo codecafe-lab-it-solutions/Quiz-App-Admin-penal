@@ -161,6 +161,22 @@
           }
         },
         {
+          "name": "Stop Quiz",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/faculty/quiz/{{quizId}}/stop",
+            "description": "Ends a live quiz: flips status to completed, auto-submits (and scores) every attempt still in_progress using its currently saved answers, then marks every still-\"allotted\" student absent. 400 if the quiz isn't currently \"live\" (already completed, or not started yet) - only a live quiz can be stopped. Only works for a quiz owned by this faculty (404 otherwise). Do this BEFORE Publish Result - publishing requires status completed."
+          }
+        },
+        {
+          "name": "Publish Result",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/faculty/quiz/{{quizId}}/publish-result",
+            "description": "Single-step result publish - there is no separate \"declare\" step, so the app and portal must both call this the same action and label it the same way (\"Publish Result\", not \"Declare Result\"). Computes each attempt's total from its already-scored answers (including any negative marking) and writes every submitted/auto_submitted attempt's Result straight to status \"published\", visible to the student immediately. Preconditions - each returns a 400 with a specific message if not met: (1) quiz.status must be \"completed\" (call Stop Quiz first), (2) every subjective answer in the quiz must already be manually graded, (3) at least one attempt must be submitted/auto_submitted. 404 if this faculty doesn't own the quiz. Idempotent - safe to call again (e.g. after grading more subjective answers or new students submit)."
+          }
+        },
+        {
           "name": "Reopen Attempt (auto-submitted)",
           "request": {
             "method": "POST",
