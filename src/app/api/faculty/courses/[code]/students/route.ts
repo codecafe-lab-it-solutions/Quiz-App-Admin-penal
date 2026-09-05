@@ -2,16 +2,23 @@ import { NextRequest } from "next/server";
 import { prisma } from "@/lib/db";
 import { ok, handleApiError, ApiError } from "@/lib/api-response";
 import { getAuthUser, requireRole } from "@/lib/auth";
-import { getCourseRoster, isFacultyMappedToCourse } from "@/lib/legacy-db";
-import { getRealSectionsForFacultyCourse } from "@/lib/section-sync";
+import { isFacultyMappedToCourse } from "@/lib/legacy-db";
+import { getStudentsForRealSections } from "@/lib/section-sync";
 import { getCurrentSubList } from "@/lib/config";
 import { resolveFacultyRoll } from "@/lib/quiz-access";
 
-// Real course roster for a faculty's course, sourced live from the legacy
-// per-batch isr_reg_<batch>_tbl registration tables (spec §5, §8). Enriches
-// each row with attendance % and last-test score computed from this app's
-// own quiz/attendance tables, scoped to quizzes for this course code taught
-// by this faculty (best-effort - only populated once quizzes exist).
+// Real course roster for a faculty's course, for exactly the section clicked
+// on the My Courses page. Deliberately the same getStudentsForRealSections
+// call the quiz-creation "Allot Students" picker uses (see
+// /api/faculty/quiz-sections/students) - these two surfaces must always
+// agree on who's in a section, so they share the one function rather than
+// each re-deriving membership its own way. Self-validating: a section this
+// faculty doesn't actually teach this course under simply resolves to no
+// isr_sub_available_tbl rows, so it returns no students rather than trusting
+// an arbitrary client-supplied value. Enriches each row with attendance %
+// and last-test score computed from this app's own quiz/attendance tables,
+// scoped to quizzes for this course code taught by this faculty (best-effort
+// - only populated once quizzes exist).
 export async function GET(req: NextRequest, { params }: { params: { code: string } }) {
   try {
     const user = getAuthUser(req);
@@ -24,18 +31,8 @@ export async function GET(req: NextRequest, { params }: { params: { code: string
     const mapped = await isFacultyMappedToCourse(facultyRoll, courseCode, subList);
     if (!mapped) throw new ApiError(403, "This faculty member is not mapped to teach this course");
 
-    // Only honor a `section` param that's one of this faculty's own real
-    // sections for this course (see getRealSectionsForFacultyCourse) - an
-    // unrecognized value is ignored rather than trusted, same "must be a
-    // real, verified mapping" rule section-sync.ts applies to quiz allotment.
-    const requestedSection = req.nextUrl.searchParams.get("section");
-    let section: string | null = null;
-    if (requestedSection) {
-      const realSections = await getRealSectionsForFacultyCourse(facultyRoll, courseCode, subList);
-      if (realSections.some((s) => s.name === requestedSection)) section = requestedSection;
-    }
-
-    const roster = await getCourseRoster(courseCode, subList, section);
+    const section = req.nextUrl.searchParams.get("section");
+    const roster = await getStudentsForRealSections(facultyRoll, courseCode, subList, section ? [section] : []);
 
     const quizzes = await prisma.quiz.findMany({
       where: { facultyRoll, courseCode },
