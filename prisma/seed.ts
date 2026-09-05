@@ -203,7 +203,7 @@ async function backfillSectionColumnAcrossAllCycles(): Promise<number> {
     const major = resolveMajorFromBranch(row.branch!, realMajors);
     await prisma.isrSubAvailableTbl.update({
       where: { id: row.id },
-      data: { section: `${major.trim()}_${row.sem!.trim()}` },
+      data: { section: `${major.trim()}_${row.sem}` },
     });
   }
   return rows.length;

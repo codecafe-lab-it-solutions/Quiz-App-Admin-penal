@@ -10,7 +10,10 @@ export const facultyCourseMappingQuerySchema = z.object({
 // only, never a typed code.
 export const courseCatalogQuerySchema = z.object({
   search: z.string().trim().optional().default(""),
-  pageSize: z.coerce.number().int().min(1).max(50).default(20),
+  // Capped at 200 to match the other bounded list schemas in this file - the
+  // student-course-section browse filter fetches the full catalog at exactly
+  // this size (see student-course-section/page.tsx), which a 50-cap rejected.
+  pageSize: z.coerce.number().int().min(1).max(200).default(20),
 });
 
 // Backs the same dialog's Branch/Semester dropdowns, scoped to whichever

@@ -601,7 +601,7 @@ export async function getFacultyCourseMappings(
 
   const items: FacultyCourseMapping[] = rows.map((r) => ({
     id: r.id,
-    sem: r.sem ?? "",
+    sem: r.sem != null ? String(r.sem) : "",
     subList: r.subList ?? "",
     subCode: r.subCode ?? "",
     facRoll: r.facRoll!,
@@ -635,9 +635,12 @@ export async function createFacultyCourseMapping(data: {
   const alreadyMapped = await isFacultyMappedToCourse(data.facRoll, data.subCode, data.subList);
   if (alreadyMapped) throw new ApiError(409, "This faculty is already mapped to this course for the current cycle");
 
+  const semNum = Number(data.sem);
+  if (!Number.isFinite(semNum)) throw new ApiError(400, "Semester must be a number");
+
   const row = await prisma.isrSubAvailableTbl.create({
     data: {
-      sem: data.sem,
+      sem: semNum,
       subList: data.subList,
       subCode: data.subCode,
       facRoll: data.facRoll,
@@ -716,7 +719,7 @@ export async function getAllSections(subList: string): Promise<SectionSummary[]>
   for (const row of rows) {
     const name = row.section!;
     const major = resolveMajorFromBranch(row.branch ?? "", realMajors);
-    const entry = bySection.get(name) ?? { major, sem: row.sem ?? "", courses: [] };
+    const entry = bySection.get(name) ?? { major, sem: row.sem != null ? String(row.sem) : "", courses: [] };
     entry.courses.push({
       id: row.id,
       subCode: row.subCode!,
@@ -1350,7 +1353,7 @@ export async function getFacultyCourseCatalog(facultyRoll: string, subList: stri
       // the authoritative source for THIS specific mapping row, not a
       // course-wide generality.
       branch: m.branch ?? c?.bsmsBranch ?? null,
-      sem: m.sem ?? c?.sem ?? null,
+      sem: m.sem != null ? String(m.sem) : (c?.sem ?? null),
       credits: c?.bsmsCredit ?? null,
       facRoll: m.facRoll!,
       facultyName: faculty?.name ?? null,

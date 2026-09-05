@@ -36,7 +36,7 @@ async function main() {
   const updates = rows.map((row) => ({
     id: row.id,
     from: row.section,
-    to: `${resolveMajorFromBranch(row.branch!, realMajors).trim()}_${row.sem!.trim()}`,
+    to: `${resolveMajorFromBranch(row.branch!, realMajors).trim()}_${row.sem}`,
   }));
   const changed = updates.filter((u) => u.from !== u.to);
 

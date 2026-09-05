@@ -286,7 +286,10 @@ model IsrSubAvailableTbl {
   // Confirmed nullable on the real table (`DEFAULT NULL`) - this schema
   // wrongly carried these over as required before the real export was
   // available to check against; real rows do have a null fac_roll.
-  sem     String?
+  // Confirmed `int` on the real imported table (not varchar, as this schema
+  // wrongly assumed before the real dump was available to check against) -
+  // Prisma throws P2032 on every read of this column otherwise.
+  sem     Int?
   subList String? @map("sub_list") @default("c1") // semester-cycle code, e.g. "C2" — admin-configurable "current" value
   subCode String? @map("sub_code")
   facRoll String? @map("fac_roll")

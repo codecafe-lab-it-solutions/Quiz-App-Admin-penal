@@ -46,7 +46,7 @@ export async function getRealSectionsForFacultyCourse(
   for (const row of rows) {
     if (!row.section || seen.has(row.section)) continue;
     seen.add(row.section);
-    results.push({ name: row.section, branch: row.branch, sem: row.sem });
+    results.push({ name: row.section, branch: row.branch, sem: row.sem != null ? String(row.sem) : null });
   }
   return results;
 }
