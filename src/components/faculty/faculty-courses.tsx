@@ -4,6 +4,7 @@ import { useState } from "react";
 import useSWR from "swr";
 import { apiClient } from "@/lib/api-client";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { DataTable, DataTableColumn } from "@/components/admin/data-table";
 import { PaginationBar } from "@/components/admin/pagination-bar";
@@ -38,6 +39,7 @@ export function FacultyCourses() {
   const [rosterCourse, setRosterCourse] = useState<FacultyCourse | null>(null);
   const [coursesPage, setCoursesPage] = useState(1);
   const [rosterPage, setRosterPage] = useState(1);
+  const [rosterSearch, setRosterSearch] = useState("");
 
   const { data: coursesData, isLoading: coursesLoading } = useSWR(`/api/faculty/courses`, (url: string) =>
     apiClient.get<{ items: FacultyCourse[] }>(url)
@@ -54,7 +56,13 @@ export function FacultyCourses() {
   const allCourses = coursesData?.items ?? [];
   const allRoster = rosterData?.items ?? [];
   const courses = paginate(allCourses, coursesPage);
-  const roster = paginate(allRoster, rosterPage);
+  const rosterSearchQuery = rosterSearch.trim().toLowerCase();
+  const filteredRoster = rosterSearchQuery
+    ? allRoster.filter(
+        (r) => r.roll.toLowerCase().includes(rosterSearchQuery) || r.name.toLowerCase().includes(rosterSearchQuery)
+      )
+    : allRoster;
+  const roster = paginate(filteredRoster, rosterPage);
 
   const courseColumns: DataTableColumn<FacultyCourse>[] = [
     { key: "subCode", header: "Code", render: (r) => <span className="font-medium">{r.subCode}</span> },
@@ -65,7 +73,15 @@ export function FacultyCourses() {
       key: "actions",
       header: "",
       render: (r) => (
-        <Button variant="outline" size="sm" onClick={() => setRosterCourse(r)}>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => {
+            setRosterCourse(r);
+            setRosterSearch("");
+            setRosterPage(1);
+          }}
+        >
           <Users className="mr-2 h-4 w-4" />
           View Students
         </Button>
@@ -109,6 +125,7 @@ export function FacultyCourses() {
         onOpenChange={(open) => {
           if (!open) setRosterCourse(null);
           setRosterPage(1);
+          setRosterSearch("");
         }}
       >
         <DialogContent className="max-w-2xl">
@@ -117,14 +134,24 @@ export function FacultyCourses() {
               {rosterCourse ? `${rosterCourse.title ?? rosterCourse.subCode} (${rosterCourse.subCode})` : "Students"}
             </DialogTitle>
           </DialogHeader>
+          {allRoster.length > 0 && (
+            <Input
+              placeholder="Search by roll or name"
+              value={rosterSearch}
+              onChange={(event) => {
+                setRosterSearch(event.target.value);
+                setRosterPage(1);
+              }}
+            />
+          )}
           <DataTable
             columns={rosterColumns}
             rows={roster.items}
             rowKey={(r) => r.roll}
             loading={rosterLoading}
-            emptyMessage="No students registered for this course yet."
+            emptyMessage={rosterSearchQuery ? "No students match your search." : "No students registered for this course yet."}
           />
-          {allRoster.length > 0 && (
+          {filteredRoster.length > 0 && (
             <PaginationBar
               page={rosterPage}
               totalPages={roster.totalPages}
