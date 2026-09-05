@@ -96,8 +96,12 @@ model Building {
 
 model IsrLoginTbl {
   userRoll     String  @id @map("user_roll")
-  userEmail    String  @map("user_email")
-  userPassword String  @map("user_password")
+  // Confirmed nullable on the real table (601 of 3668 real rows have a null
+  // password - accounts that apparently never set one) - this schema wrongly
+  // carried these over as required before the real export was available to
+  // check against, same mistake as isr_sub_available_tbl.sem (see there).
+  userEmail    String? @map("user_email")
+  userPassword String? @map("user_password")
   userType     String  @map("user_type") // 'FAC' | 'STU'
   // 1-Active, 2-Inactive (isr_login_tbl.status per confirmed legacy column list).
   status       Int     @default(1)

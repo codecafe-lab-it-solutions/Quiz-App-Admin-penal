@@ -121,7 +121,8 @@ export function hashLegacyPassword(plainPassword: string): string {
   return crypto.createHash("md5").update(plainPassword).digest("hex");
 }
 
-export async function verifyLegacyPassword(plainPassword: string, storedHash: string): Promise<boolean> {
+export async function verifyLegacyPassword(plainPassword: string, storedHash: string | null): Promise<boolean> {
+  if (storedHash == null) return false;
   return hashLegacyPassword(plainPassword) === storedHash;
 }
 
@@ -193,7 +194,7 @@ export interface MatchedAccount {
   type: "student" | "faculty";
   roll: string;
   name: string | null;
-  email: string;
+  email: string | null;
 }
 
 // Best-effort match of a free-typed identifier (email/roll/mobile) against

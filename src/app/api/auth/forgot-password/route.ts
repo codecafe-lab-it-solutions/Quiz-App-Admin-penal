@@ -38,9 +38,11 @@ export async function POST(req: NextRequest) {
       // stored mobile number that isn't a valid 10-digit number) on one
       // never blocks the other, and neither is ever surfaced to the caller.
       await Promise.all([
-        sendErpMailOtp({ mailTo: login.userEmail, otp }).catch((error) => {
-          console.error("forgot-password: failed to send OTP email", error);
-        }),
+        login.userEmail
+          ? sendErpMailOtp({ mailTo: login.userEmail, otp }).catch((error) => {
+              console.error("forgot-password: failed to send OTP email", error);
+            })
+          : Promise.resolve(),
         MOBILE_REGEX.test(login.userMobile ?? "")
           ? sendErpSmsOtp({ mobile: login.userMobile!, otp }).catch((error) => {
               console.error("forgot-password: failed to send OTP SMS", error);
