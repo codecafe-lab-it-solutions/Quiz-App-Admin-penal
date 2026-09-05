@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { ok, handleApiError, ApiError } from "@/lib/api-response";
 import { getAuthUser, requireRole } from "@/lib/auth";
 import { getCourseRoster, isFacultyMappedToCourse } from "@/lib/legacy-db";
+import { getRealSectionsForFacultyCourse } from "@/lib/section-sync";
 import { getCurrentSubList } from "@/lib/config";
 import { resolveFacultyRoll } from "@/lib/quiz-access";
 
@@ -23,7 +24,18 @@ export async function GET(req: NextRequest, { params }: { params: { code: string
     const mapped = await isFacultyMappedToCourse(facultyRoll, courseCode, subList);
     if (!mapped) throw new ApiError(403, "This faculty member is not mapped to teach this course");
 
-    const roster = await getCourseRoster(courseCode, subList);
+    // Only honor a `section` param that's one of this faculty's own real
+    // sections for this course (see getRealSectionsForFacultyCourse) - an
+    // unrecognized value is ignored rather than trusted, same "must be a
+    // real, verified mapping" rule section-sync.ts applies to quiz allotment.
+    const requestedSection = req.nextUrl.searchParams.get("section");
+    let section: string | null = null;
+    if (requestedSection) {
+      const realSections = await getRealSectionsForFacultyCourse(facultyRoll, courseCode, subList);
+      if (realSections.some((s) => s.name === requestedSection)) section = requestedSection;
+    }
+
+    const roster = await getCourseRoster(courseCode, subList, section);
 
     const quizzes = await prisma.quiz.findMany({
       where: { facultyRoll, courseCode },

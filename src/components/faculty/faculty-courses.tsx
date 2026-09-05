@@ -43,7 +43,11 @@ export function FacultyCourses() {
     apiClient.get<{ items: FacultyCourse[] }>(url)
   );
   const { data: rosterData, isLoading: rosterLoading } = useSWR(
-    rosterCourse ? `/api/faculty/courses/${encodeURIComponent(rosterCourse.subCode)}/students` : null,
+    rosterCourse
+      ? `/api/faculty/courses/${encodeURIComponent(rosterCourse.subCode)}/students${
+          rosterCourse.section ? `?section=${encodeURIComponent(rosterCourse.section)}` : ""
+        }`
+      : null,
     (url: string) => apiClient.get<{ items: RosterRow[] }>(url)
   );
 

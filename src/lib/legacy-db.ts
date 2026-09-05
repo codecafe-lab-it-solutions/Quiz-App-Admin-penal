@@ -1362,14 +1362,28 @@ export async function getFacultyCourseCatalog(facultyRoll: string, subList: stri
   });
 }
 
-export async function getCourseRoster(courseCode: string, subList: string): Promise<CourseRosterEntry[]> {
+// `section` scopes the roster to exactly the Major_Semester this specific
+// faculty-course mapping row resolves to (isr_sub_available_tbl.section, e.g.
+// "CE_3") - without it, every student registered anywhere for this subCode
+// this cycle comes back, which for a shared/common course taught to several
+// branches under separate mapping rows means a faculty teaching just one
+// section sees every other section's students mixed in too. Falls back to
+// the unscoped list only when the mapping row has no section (legacy rows
+// never backfilled - see scripts/backfill-section-column.ts).
+export async function getCourseRoster(courseCode: string, subList: string, section?: string | null): Promise<CourseRosterEntry[]> {
   const registrations = await getCourseRegistrations(courseCode, subList);
   if (registrations.length === 0) return [];
 
   const rolls = [...new Set(registrations.map((r) => r.roll))];
   const names = await getStudentNamesByRolls(rolls);
 
-  return rolls
+  let scopedRolls = rolls;
+  if (section) {
+    const sectionByRoll = await getSectionNamesByRolls(rolls);
+    scopedRolls = rolls.filter((roll) => sectionByRoll.get(roll) === section);
+  }
+
+  return scopedRolls
     .map((roll) => ({ roll, name: names.get(roll) ?? roll }))
     .sort((a, b) => a.name.localeCompare(b.name));
 }
